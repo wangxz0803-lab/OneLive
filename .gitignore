@@ -10,3 +10,4 @@ artifacts/playwright-results/
 .DS_Store
 coverage/
 certs/
+.worktrees/
