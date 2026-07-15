@@ -1,0 +1,12 @@
+node_modules/
+dist/
+playwright-report/
+test-results/
+artifacts/playwright-report/
+artifacts/playwright-results/
+.env
+*.local
+*.log
+.DS_Store
+coverage/
+certs/

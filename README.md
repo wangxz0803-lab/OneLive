@@ -1,0 +1,221 @@
+# OneLive
+
+> ONE SOURCE. MANY MARKETS. LIVE.
+
+OneLive 是一个面向现场演示的实时数字分身直播 MVP：一名主播提供一次中文信号，控制台同时呈现北美、日本和西语市场的本地化数字分身直播体验，并通过可复现的网络实验展示拥塞、高时延、Edge AI 和 QoD 对体验的影响。
+
+本项目优先保证离线可演示、状态可解释和失败可恢复。Mock Demo 不依赖手机、外部 AI API 或互联网。
+
+## 能力边界
+
+OneLive 在界面和文档中区分两类数据：
+
+| 标记     | 含义                           | 当前示例                                                                                               |
+| -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| LIVE     | 来自当前设备或实时会话的事实   | 已授权的摄像头/麦克风画面、WebRTC 连接状态、浏览器实际支持时的本地语音合成、已接入时的 WebRTC stats    |
+| EMULATED | 为可复现演示而由应用注入或预置 | 网络 Profile、RTT/抖动/丢包、Edge/Cloud 处理时延、QoD 资源分配、预置翻译、程序化姿态、观众数和体验评分 |
+
+需要特别说明：
+
+- 当前 QoD 与 Edge AI 是 Deployment Profile / Network Capability Simulation，不是运营商商用 API 或真实 MEC 调度。
+- 网络实验器改变应用内的处理队列、频道状态和视觉质量；它不是操作系统级网络整形工具，也不代表当前局域网的真实蜂窝质量。
+- Socket.IO 只负责会话存在状态与 WebRTC 信令，不承担媒体转发。
+- 项目不向真实直播平台推流，不包含账号、支付、数据库、多租户或生产级 TURN 部署。
+- Real AI 环境变量是可扩展接口。未配置或调用失败时，演示回退到预置多语言文本；不要把预置文本描述为实时 AI 翻译。
+
+更完整的边界与假设见 [docs/DECISIONS.md](docs/DECISIONS.md)。
+
+## 环境要求
+
+- Node.js 20 LTS 或更新版本
+- npm 10 或更新版本
+- 推荐桌面浏览器：最新版 Chrome 或 Edge
+- 手机采集：支持 getUserMedia 和 WebRTC 的现代 Safari/Chrome
+- 手机与电脑处于同一局域网；电脑防火墙允许所选端口
+
+## 安装
+
+在项目根目录执行：
+
+    npm install
+
+不要把真实 API Key 提交到仓库。服务会按 Vite 规则加载本地 `.env` / `.env.development` / `.env.production`，并由进程环境中的同名变量覆盖；`.env.example` 只用于说明变量。
+
+## 启动
+
+### 推荐：Mock Demo
+
+Mock 模式不需要手机、摄像头、API Key 或外网，是现场演示的保底路径。
+
+Windows PowerShell：
+
+    powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 mock
+
+macOS / Linux：
+
+    bash scripts/start-demo.sh mock
+
+也可以直接执行：
+
+    npm run demo:mock
+
+### HTTPS 手机联机 Demo
+
+Windows PowerShell：
+
+    powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 demo
+
+macOS / Linux：
+
+    bash scripts/start-demo.sh demo
+
+也可以直接执行：
+
+    npm run demo
+
+demo 命令会先构建项目，再以 HTTPS 方式监听 0.0.0.0。默认会话为 ONE-DEMO，终端会打印桌面入口 /?session=ONE-DEMO 和每个可用局域网 IP 的 /broadcast/ONE-DEMO；控制台二维码使用同一手机地址。
+
+### 开发模式
+
+    npm run dev
+
+开发模式用于本机迭代。跨设备摄像头采集仍需要安全上下文，手机联调应使用 demo 的 HTTPS 入口。
+
+### 启动脚本参数
+
+PowerShell：
+
+    .\scripts\start-demo.ps1 [demo|mock|dev] [-Port 5173] [-SkipInstall]
+
+Shell：
+
+    PORT=5173 bash scripts/start-demo.sh [demo|mock|dev]
+
+如果已经安装依赖，可设置 SKIP_INSTALL=1 跳过脚本的依赖检查：
+
+    SKIP_INSTALL=1 bash scripts/start-demo.sh demo
+
+## 手机首次连接与自签 HTTPS
+
+手机摄像头 API 需要安全上下文。现场 HTTPS 服务会在 certs/ 下生成带 localhost、主机名和当前局域网 IP SAN 的自签证书，因此首次打开局域网地址时浏览器通常会显示证书警告。certs/ 已被 Git 忽略；局域网 IP 变化后服务会重新生成证书。
+
+1. 电脑和手机连接同一 Wi-Fi，关闭会强制分流的 VPN 或访客网络隔离。
+2. 在电脑运行 demo，记录终端显示的局域网 HTTPS 地址。
+3. 先在手机浏览器直接打开该 HTTPS 地址。
+4. 在证书警告页选择“高级/显示详细信息”，确认访问当前局域网 IP。
+5. 回到电脑控制台扫描二维码，进入 broadcaster 会话。
+6. 只在浏览器提示时授权摄像头与麦克风。OneLive 默认不录制、不持久化媒体。
+
+iOS Safari 通常需要“显示详细信息 → 访问此网站”；Android Chrome 通常需要“高级 → 继续访问”。不同系统策略可能禁止绕过未受信任证书。若没有继续入口，不要在现场排查过久，立即切换桌面本机摄像头或 Mock Source。
+
+自签证书只适合受控局域网演示，不适合公网或生产部署。生产环境必须使用受信任 CA 证书，并配置 TURN、访问控制和隐私合规措施。
+
+## Demo 操作
+
+完整的 3–5 分钟讲解脚本见 [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md)。
+
+常用快捷键：
+
+| 键        | 操作                                      |
+| --------- | ----------------------------------------- |
+| Space     | 下一演示步骤                              |
+| Backspace | 上一演示步骤                              |
+| R         | 重置到演示初始状态                        |
+| F         | 切换全屏                                  |
+| E         | Edge / Cloud                              |
+| Q         | QoD                                       |
+| 1–4       | Premium / Congested / Weak / High Latency |
+| C         | 体验对比模式                              |
+| M         | Mock Source                               |
+
+演示前必须实际试按一遍快捷键；浏览器焦点位于输入框时，快捷键可能被输入行为拦截。
+
+## 测试与质量检查
+
+    npm run build
+    npm run lint
+    npm run test
+    npm run test:e2e
+
+这些命令的存在不等于本机已经通过验证。最终交付状态应以本次执行日志为准，不在文档中伪造测试结果。
+
+推荐视觉检查尺寸：
+
+- 1440 × 900：控制台首屏
+- 1920 × 1080：大屏控制台
+- 390 × 844：手机主播端
+
+## 可选 AI 配置
+
+.env.example 提供基础占位配置，服务端还支持会话和 ICE 配置：
+
+- AI_API_URL
+- AI_API_KEY
+- AI_MODEL
+- PORT
+- DEMO_HTTPS
+- DEMO_MOCK
+- DEMO_SESSION_ID
+- ICE_SERVERS_JSON
+
+API Key 只能由服务端读取，不得注入前端 bundle。server/translation.ts 提供 OpenAI-compatible 翻译代理和 8 秒超时，但只有前端实际调用该路由并收到成功响应时，翻译才能标记为 LIVE；默认 DemoTranslationProvider 仍使用预置文本。
+
+Windows PowerShell 示例：
+
+    $env:AI_API_URL = "https://api.example.com/v1/chat/completions"
+    $env:AI_API_KEY = "<local-only-key>"
+    $env:AI_MODEL = "<model-name>"
+    npm run demo
+
+macOS / Linux 示例：
+
+    AI_API_URL="https://api.example.com/v1/chat/completions" \
+    AI_API_KEY="<local-only-key>" \
+    AI_MODEL="<model-name>" \
+    npm run demo
+
+默认没有 STUN/TURN。受控同一局域网通常可依赖 host candidate；如需自定义 ICE server，可通过 ICE_SERVERS_JSON 传入标准 RTCIceServer 数组。不要把长期 TURN credential 写入仓库。
+
+## 常见问题
+
+### 手机打不开电脑地址
+
+- 确认两端在同一局域网且没有 AP isolation。
+- 使用终端显示的局域网 IP，不要在手机使用 localhost。
+- 放行 Windows Defender Firewall 或 macOS 防火墙中的 Node.js 入站连接。
+- 确认端口未被其他进程占用，可用 PORT 环境变量更换。
+- 仍失败时切换本机摄像头或 Mock Source。
+
+### 摄像头或麦克风被拒绝
+
+- 检查地址是否为 HTTPS。
+- 在浏览器站点设置和系统隐私设置中重新授权。
+- 关闭占用摄像头的会议软件。
+- 刷新 broadcaster 页面并重新加入原会话。
+
+### 页面有画面但没有目标语言声音
+
+浏览器或操作系统可能没有对应的 TTS voice。字幕和程序化口型仍可演示；不要临时安装未知语音包影响现场稳定性。
+
+### WebGL 不可用或性能过低
+
+关闭其他 GPU 密集应用，使用最新版 Chrome/Edge，并优先启用应用提供的 2D Avatar fallback。若当前构建没有显示 fallback，使用 Mock Demo 并避免声称三维渲染可用。
+
+### 外部 AI 请求失败
+
+演示主链路不依赖外部 AI。切换到预置台词和 Demo Translation Provider，确认界面标记为 EMULATED。
+
+## 文档
+
+- [产品规格](docs/PRODUCT_SPEC.md)
+- [系统架构](docs/ARCHITECTURE.md)
+- [演示手册](docs/DEMO_RUNBOOK.md)
+- [决策与能力边界](docs/DECISIONS.md)
+- [协作与维护约束](AGENTS.md)
+
+## 隐私与安全
+
+- 摄像头和麦克风默认不录制、不写入数据库。
+- 会话 ID 只用于短期设备配对，不是身份认证。
+- 自签 HTTPS、局域网信令和无鉴权会话只适合受控演示环境。
+- 展示 AI GENERATED / AUTHORIZED AVATAR 标识，禁止未经授权采集或冒用真人形象。
