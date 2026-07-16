@@ -3,5 +3,6 @@ models/
 FasterLivePortrait/
 out/
 __pycache__/
+.pytest_cache/
 *.wav
 *.mp4

@@ -358,6 +358,39 @@ index 8eb55b6..65c42fa 100644
      if predict_type == "ort":
          return OnnxRuntimePredictorSingleton(**kwargs)
      elif predict_type == "trt":
+diff --git a/src/pipelines/faster_live_portrait_pipeline.py b/src/pipelines/faster_live_portrait_pipeline.py
+index 9031fc3..f152104 100644
+--- a/src/pipelines/faster_live_portrait_pipeline.py
++++ b/src/pipelines/faster_live_portrait_pipeline.py
+@@ -423,6 +423,13 @@ class FasterLivePortraitPipeline:
+                 else:
+                     t_new = x_s_info['t'].copy()
+ 
++            # OneLive M0 Task5: when driving the mouth from audio (lip retargeting with
++            # driving motion kept), suppress the driving video's own lip expression so the
++            # retargeted (audio) lip ratio has full control of the mouth.
++            if self.cfg.infer_params.get("flag_lip_retarget_keep_motion", False) and \
++                    self.cfg.infer_params.flag_lip_retargeting:
++                for lip_idx in [6, 12, 14, 17, 19, 20]:
++                    delta_new[:, lip_idx, :] = x_s_info['exp'][:, lip_idx, :]
+             t_new[..., 2] = 0  # zero tz
+             x_d_i_new = scale_new * (x_c_s @ R_new + delta_new) + t_new
+             if not self.is_animal:
+@@ -456,7 +463,13 @@ class FasterLivePortraitPipeline:
+                         # ∆_lip,i = R_lip(x_s; c_s,lip, c_d,lip,i)
+                         lip_delta = self.retarget_lip(x_s, combined_lip_ratio_tensor)
+ 
+-                    if self.cfg.infer_params.flag_relative_motion:  # use x_s
++                    if self.cfg.infer_params.get("flag_lip_retarget_keep_motion", False):
++                        # OneLive M0 Task5: keep driving head pose/expression, add the
++                        # audio-driven retarget deltas on top of the animated keypoints.
++                        x_d_i_new = x_d_i_new + \
++                                    (eyes_delta.reshape(-1, x_s.shape[1], 3) if eyes_delta is not None else 0) + \
++                                    (lip_delta.reshape(-1, x_s.shape[1], 3) if lip_delta is not None else 0)
++                    elif self.cfg.infer_params.flag_relative_motion:  # use x_s
+                         x_d_i_new = x_s + \
+                                     (eyes_delta.reshape(-1, x_s.shape[1], 3) if eyes_delta is not None else 0) + \
+                                     (lip_delta.reshape(-1, x_s.shape[1], 3) if lip_delta is not None else 0)
 diff --git a/src/utils/utils.py b/src/utils/utils.py
 index 72b9237..e9e8a20 100644
 --- a/src/utils/utils.py

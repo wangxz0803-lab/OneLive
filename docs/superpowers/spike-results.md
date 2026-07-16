@@ -188,11 +188,45 @@ onnxruntime-gpu wheel（忽略，勿装）。
   `ort.get_available_providers()` = `['DmlExecutionProvider', 'CPUExecutionProvider']`，未被覆盖。
   pipeline import 与 `run.py --help` 均验证通过（未跑推理，Task 3 做）。
 
-## 2. TTS→嘴型驱动
-- 生成语言/音色：
-- 口型与音频包络主观同步性（好/可接受/差）：
-- 与头部动作迁移叠加是否冲突：
-- 结论：
+## 2. TTS→嘴型驱动（Task 5 实测 2026-07-16）
+
+- 生成语言/音色：英语 / edge-tts `en-US-JennyNeural`（需联网，本机可用）。
+  文本 ~6.65s → 16kHz 单声道 wav（ffmpeg 转码）→ 25fps 下 166 帧曲线。
+- 曲线算法：`engine/lipsync/audio_to_lip_curve`（RMS 包络按帧粒度 → 峰值归一化 0..1 →
+  不对称 EMA 平滑，attack 0.55 / release 0.25，张嘴快闭嘴慢）。TDD：2 个 pytest 用例
+  先 FAIL（ModuleNotFoundError）后 PASS（`engine/tests/test_audio_lip.py`，2 passed）。
+- **注入机制**：不用 monkey-patch——用 d14 动作模板 pkl 回放（`run_with_pkl`），逐帧把
+  `dri_motion_info[2]`（驱动 lip close-ratio，1x1）替换为音频曲线映射值；另给 clone 加了
+  一个 opt-in 开关 `infer_params.flag_lip_retarget_keep_motion`（默认关、不影响原行为）：
+  开启时 (a) 抑制驱动视频自身的嘴部 exp（idx 6/12/14/17/19/20 回退到 source exp），
+  (b) retarget 分支不再 `x_s + lip_delta`（原逻辑会丢掉整段头部动作），改为在动画后
+  keypoints 上叠加 `x_d_i_new + lip_delta`。改动 15 行，已并入
+  `engine/patches/faster-live-portrait-dml.patch`。
+- **标定**（必要！lip ratio 是 landmark 闭合比不是 0..1 开口度）：d14 全 536 帧的
+  `calc_lip_close_ratio` 分布 min 0.00013 / 中位 0.0022 / p95 0.1815 / max 0.2163
+  （值越大嘴越开）。映射：曲线 0 → p05=0.00071（闭），1 → p95=0.18153（开）。
+- 渲染证据：`engine/out/lip_drive_test.mp4`（注入+TTS 音轨，166 帧 @25fps，512 crop）、
+  `lip_drive_control.mp4`（对照组：lip retargeting 关、嘴跟随 d14 原动作，同 166 帧序列
+  逐帧可比）、`lip_curve.npz`；渲染 633/635 ms/帧（与 Task 4 基准一致，lip retarget
+  开销可忽略：stitching_lip 模型 ~0ms 量级）。脚本 `engine/lipsync/experiment_lip_drive.py`。
+- **帧级对比（提帧目视，engine/out/cmp/）**：
+  - 响音帧 f9 / f95（曲线 0.71/0.73）：注入组嘴唇明显张开、露齿；对照组同帧嘴闭合
+    → 张嘴确由音频注入产生，非驱动视频残留。
+  - 静音帧 f75（曲线 0.008）：注入组嘴完全闭合；对照组同帧嘴微张（d14 原动作）
+    → 静音压嘴生效，驱动视频嘴型已被成功抑制。
+  - f4（曲线 0）双方都闭合；f34（曲线 0.74）注入组微张、露齿缝。
+- 口型与音频包络主观同步性：**可接受偏好**——开合状态与曲线逐帧吻合（按构造帧对齐，
+  上述 5 个采样点全部符合预期）；幅度偏保守（曲线峰值 0.74 × p95 标定 → 张开为
+  "说话微张"而非大开口，可通过把上限映射到 max 0.216 或外推放大）。
+- 与头部动作迁移叠加是否冲突：**不冲突**。f150 头部姿态相对 f4 明显转动/低头（跟随
+  d14），且注入组与对照组同帧头姿完全一致；嘴部区域无撕裂/伪影，唇形自然。
+  注意：原版 LivePortrait 的 lip retarget 在 relative motion 下会直接丢弃头部动作
+  （`x_d_i_new = x_s + lip_delta`），必须用上述 keep_motion 改动才能叠加。
+- 结论：**可行**。TTS 包络 → 标定映射 → lip ratio 注入即可在保留头部动作迁移的同时用
+  音频接管嘴型，渲染成本不变。M1 改造量小：曲线模块已成品；管线侧只需 15 行 patch
+  （已完成）+ 实时路径把 `run()` 内部算出的驱动 lip ratio 替换为音频值（同一入口，
+  加一个可选参数即可）；遗留调优项 = 开口幅度映射上限、音素级口型（当前仅开合度，
+  无唇形差异——直播够用，特写镜头偏机械）。
 
 ## 3. 浏览器预览通路
 - 传输方式：WS + JPEG
