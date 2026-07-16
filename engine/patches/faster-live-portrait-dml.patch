@@ -1,8 +1,11 @@
 diff --git a/configs/onnx_infer.yaml b/configs/onnx_infer.yaml
-index 7ad99e9..ef60037 100644
+index 7ad99e9..b901d6f 100644
 --- a/configs/onnx_infer.yaml
 +++ b/configs/onnx_infer.yaml
-@@ -2,37 +2,37 @@ models:
+@@ -1,38 +1,40 @@
++# OneLive V2 M0 spike: machine-specific absolute model paths (repointed from
++# ./checkpoints/liveportrait_onnx/ to the gitignored engine/models/ download dir).
+ models:
    warping_spade:
      name: "WarpingSpadeModel"
      predict_type: "ort"
@@ -49,7 +52,7 @@ index 7ad99e9..ef60037 100644
  
  animal_models:
    warping_spade:
-@@ -62,13 +62,13 @@ animal_models:
+@@ -62,13 +64,13 @@ animal_models:
    landmark:
      name: "LandmarkModel"
      predict_type: "ort"
@@ -67,10 +70,13 @@ index 7ad99e9..ef60037 100644
  joyvasa_models:
    motion_model_path: "checkpoints/JoyVASA/motion_generator/motion_generator_hubert_chinese.pt"
 diff --git a/configs/onnx_mp_infer.yaml b/configs/onnx_mp_infer.yaml
-index 26e529a..ab73079 100644
+index 26e529a..3a2c3c7 100644
 --- a/configs/onnx_mp_infer.yaml
 +++ b/configs/onnx_mp_infer.yaml
-@@ -2,34 +2,34 @@ models:
+@@ -1,35 +1,37 @@
++# OneLive V2 M0 spike: machine-specific absolute model paths (repointed from
++# ./checkpoints/liveportrait_onnx/ to the gitignored engine/models/ download dir).
+ models:
    warping_spade:
      name: "WarpingSpadeModel"
      predict_type: "ort"
@@ -112,7 +118,7 @@ index 26e529a..ab73079 100644
  
  animal_models:
    warping_spade:
-@@ -59,7 +59,7 @@ animal_models:
+@@ -59,7 +61,7 @@ animal_models:
    landmark:
      name: "LandmarkModel"
      predict_type: "ort"
@@ -178,7 +184,7 @@ index 52f16eb..bfbaa56 100644
          assert self.model_paths
          self.face_det = get_predictor(predict_type=self.predict_type, model_path=self.model_paths[0])
 diff --git a/src/models/predictor.py b/src/models/predictor.py
-index 8eb55b6..66b7ce3 100644
+index 8eb55b6..65c42fa 100644
 --- a/src/models/predictor.py
 +++ b/src/models/predictor.py
 @@ -180,7 +180,22 @@ class OnnxRuntimePredictor:
@@ -205,7 +211,7 @@ index 8eb55b6..66b7ce3 100644
  
          print(f"OnnxRuntime use {providers}")
          opts = onnxruntime.SessionOptions()
-@@ -230,6 +245,114 @@ class OnnxRuntimePredictor:
+@@ -230,6 +245,127 @@ class OnnxRuntimePredictor:
          self.onnx_model = None
  
  
@@ -251,6 +257,11 @@ index 8eb55b6..66b7ce3 100644
 +        model_dir = os.path.dirname(os.path.abspath(model_path))
 +        with open(os.path.join(model_dir, "warping_spade_dml_split.json")) as f:
 +            self.manifest = json.load(f)
++        # This predictor is a shared singleton (one instance per model_path) and
++        # OpenVINO InferRequest objects are NOT thread-safe: concurrent infer()
++        # raises REQUEST_BUSY or corrupts results. predict() takes this lock, so
++        # multiple pipeline instances serialize on warping_spade.
++        self._predict_lock = threading.Lock()
 +        import openvino as ov
 +        core = ov.Core()
 +        ov_config = {}
@@ -289,7 +300,13 @@ index 8eb55b6..66b7ce3 100644
 +        return [(s.name, s.shape, s.type) for s in self.outputs]
 +
 +    def predict(self, *data):
++        with self._predict_lock:
++            return self._predict_locked(*data)
++
++    def _predict_locked(self, *data):
 +        import torch.nn.functional as F
++        assert len(data) == len(self.inputs), \
++            f"warping_spade split expects {len(self.inputs)} inputs, got {len(data)}"
 +        tensors = {}
 +        for spec, arr in zip(self.inputs, data):
 +            tensors[spec.name] = np.ascontiguousarray(arr, dtype=np.float32)
@@ -297,8 +314,10 @@ index 8eb55b6..66b7ce3 100644
 +            if step["type"] == "grid_sample":
 +                x = torch.from_numpy(np.ascontiguousarray(tensors[step["x"]]))
 +                grid = torch.from_numpy(np.ascontiguousarray(tensors[step["grid"]]))
-+                out = F.grid_sample(x, grid, mode="bilinear",
-+                                    padding_mode="zeros", align_corners=False)
++                out = F.grid_sample(x, grid,
++                                    mode=step.get("mode", "bilinear"),
++                                    padding_mode=step.get("padding_mode", "zeros"),
++                                    align_corners=bool(step.get("align_corners", 0)))
 +                tensors[step["out"]] = out.numpy()
 +            elif kind == "ov":
 +                feeds = {n: np.ascontiguousarray(tensors[n]) for n in step["inputs"]}
@@ -320,7 +339,7 @@ index 8eb55b6..66b7ce3 100644
  class OnnxRuntimePredictorSingleton(OnnxRuntimePredictor):
      """
      单例模式，防止模型被加载多次
-@@ -251,6 +374,18 @@ class OnnxRuntimePredictorSingleton(OnnxRuntimePredictor):
+@@ -251,6 +387,18 @@ class OnnxRuntimePredictorSingleton(OnnxRuntimePredictor):
  
  def get_predictor(**kwargs):
      predict_type = kwargs.get("predict_type", "trt")

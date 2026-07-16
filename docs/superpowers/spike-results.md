@@ -23,8 +23,12 @@
 
 warping_spade 用 `engine/tools/split_warping_spade.py` 预切分成 3 个 ONNX（写入模型目录，
 `warping_spade_dml_part{a,b,c}.onnx` + `warping_spade_dml_split.json`），由 patch 里新增的
-`SplitWarpingSpadePredictor`（predictor.py）按 manifest 顺序执行；`ONELIVE_WARPING_SPLIT=0`
-可关掉回到整模型 ORT 路径。环境：onnxruntime-directml 1.24.4 + openvino 2026.2.1 **并存**
+`SplitWarpingSpadePredictor`（predictor.py）按 manifest 顺序执行（GridSample 的
+mode/padding_mode/align_corners 属性也序列化在 manifest 里，predictor 按 manifest 执行而非
+硬编码）；`ONELIVE_WARPING_SPLIT=0` 可关掉回到整模型 ORT 路径；`ONELIVE_ORT_CPU_ONLY`
+（逗号分隔的模型文件名子串）可把任意 ORT 模型强制到纯 CPU（调试用）。
+**Task 4 注意：split predictor 是按 model_path 共享的单例，`predict()` 内部持锁——多路并发
+会在 warping_spade 上串行化（OV InferRequest 非线程安全，锁是必须的），基准设计需按此预期。**环境：onnxruntime-directml 1.24.4 + openvino 2026.2.1 **并存**
 （openvino 是独立包不与 ort 冲突；装完复测 providers 仍为 `['DmlExecutionProvider',
 'CPUExecutionProvider']`，mediapipe/insightface import 正常）。未安装 onnxruntime-openvino
 （无需换包）。

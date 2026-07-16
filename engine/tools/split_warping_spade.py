@@ -45,6 +45,21 @@ def main(model_dir):
     assert len(gs_nodes) == 2, f"expected 2 GridSample nodes, got {len(gs_nodes)}"
     gs1 = next(n for n in gs_nodes if "dense_motion" in n.name)
     gs2 = next(n for n in gs_nodes if n is not gs1)
+    node_index = {id(n): i for i, n in enumerate(g.node)}
+    assert node_index[id(gs1)] < node_index[id(gs2)], \
+        "expected the dense_motion GridSample to topologically precede the feature warp GridSample"
+
+    def gs_attrs(node):
+        """Serialize GridSample attributes; assert they map cleanly onto torch F.grid_sample."""
+        attrs = {"mode": "bilinear", "padding_mode": "zeros", "align_corners": 0}
+        for a in node.attribute:
+            if a.name == "align_corners":
+                attrs["align_corners"] = int(a.i)
+            elif a.name in ("mode", "padding_mode"):
+                attrs[a.name] = a.s.decode()
+        assert attrs["mode"] in ("bilinear", "nearest", "bicubic"), attrs
+        assert attrs["padding_mode"] in ("zeros", "border", "reflection"), attrs
+        return attrs
 
     # Partition nodes by dependency on the GridSample outputs (graph is in
     # topological order): A = independent of both, B = depends on gs1 only,
@@ -92,12 +107,32 @@ def main(model_dir):
         "original_outputs": graph_outputs,
         "steps": [
             {"type": "onnx", "file": "warping_spade_dml_parta.onnx", "inputs": inA, "outputs": outA},
-            {"type": "grid_sample", "x": gs1.input[0], "grid": gs1.input[1], "out": gs1.output[0]},
+            {"type": "grid_sample", "x": gs1.input[0], "grid": gs1.input[1], "out": gs1.output[0],
+             **gs_attrs(gs1)},
             {"type": "onnx", "file": "warping_spade_dml_partb.onnx", "inputs": inB, "outputs": outB},
-            {"type": "grid_sample", "x": gs2.input[0], "grid": gs2.input[1], "out": gs2.output[0]},
+            {"type": "grid_sample", "x": gs2.input[0], "grid": gs2.input[1], "out": gs2.output[0],
+             **gs_attrs(gs2)},
             {"type": "onnx", "file": "warping_spade_dml_partc.onnx", "inputs": inC, "outputs": outC},
         ],
     }
+
+    # Split-time validation: simulate execution over the manifest and make sure
+    # every step's inputs are available when it runs. A bad split must fail
+    # loudly here, not as a runtime KeyError inside the predictor.
+    available = set(graph_inputs)
+    for step in manifest["steps"]:
+        if step["type"] == "onnx":
+            missing = [t for t in step["inputs"] if t not in available]
+            assert not missing, f"{step['file']} needs unavailable tensors: {missing}"
+            available.update(step["outputs"])
+        else:
+            missing = [t for t in (step["x"], step["grid"]) if t not in available]
+            assert not missing, f"grid_sample '{step['out']}' needs unavailable tensors: {missing}"
+            available.add(step["out"])
+    uncovered = [t for t in graph_outputs if t not in available]
+    assert not uncovered, f"manifest never produces graph outputs: {uncovered}"
+    print("manifest validation OK")
+
     mp = os.path.join(model_dir, "warping_spade_dml_split.json")
     with open(mp, "w") as f:
         json.dump(manifest, f, indent=1)
