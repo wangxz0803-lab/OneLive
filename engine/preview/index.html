@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLive engine preview</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font-family: Consolas, monospace;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  canvas { background: #000; max-width: 100%; border: 1px solid #333; }
+  #stats { font-size: 14px; color: #8f8; }
+  #conn { font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<h1>OneLive engine preview</h1>
+<canvas id="c" width="512" height="512"></canvas>
+<div id="stats">frames: 0 | fps (last 25): -</div>
+<div id="conn">connecting...</div>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const statsEl = document.getElementById("stats");
+const connEl = document.getElementById("conn");
+
+let frames = 0;
+let fpsText = "-";
+let winStart = performance.now();
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.binaryType = "blob";
+  ws.onopen = () => { connEl.textContent = "connected"; };
+  ws.onmessage = async (ev) => {
+    const bmp = await createImageBitmap(ev.data);
+    if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+    }
+    ctx.drawImage(bmp, 0, 0);
+    bmp.close();
+    frames += 1;
+    // fps 每 25 帧结算一次（pipeline 模式 ~16s 一次）；帧计数每帧都更新以示存活
+    if (frames % 25 === 0) {
+      const now = performance.now();
+      fpsText = (25000 / (now - winStart)).toFixed(2);
+      winStart = now;
+    }
+    statsEl.textContent = `frames: ${frames} | fps (last 25): ${fpsText}`;
+  };
+  ws.onclose = () => {
+    connEl.textContent = "disconnected, retrying in 1s...";
+    setTimeout(connect, 1000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+connect();
+</script>
+</body>
+</html>
