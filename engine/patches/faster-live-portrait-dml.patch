@@ -1,97 +1,99 @@
 diff --git a/configs/onnx_infer.yaml b/configs/onnx_infer.yaml
-index 7ad99e9..b901d6f 100644
+index 7ad99e9..2d5f3e6 100644
 --- a/configs/onnx_infer.yaml
 +++ b/configs/onnx_infer.yaml
-@@ -1,38 +1,40 @@
-+# OneLive V2 M0 spike: machine-specific absolute model paths (repointed from
-+# ./checkpoints/liveportrait_onnx/ to the gitignored engine/models/ download dir).
+@@ -1,38 +1,41 @@
++# OneLive V2 M0 spike: model paths repointed from ./checkpoints/liveportrait_onnx/
++# to the gitignored engine/models/ download dir, relative to this clone dir
++# (all OneLive tooling chdirs to engine/FasterLivePortrait before loading).
  models:
    warping_spade:
      name: "WarpingSpadeModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/warping_spade.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/warping_spade.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/warping_spade.onnx"
    motion_extractor:
      name: "MotionExtractorModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/motion_extractor.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/motion_extractor.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/motion_extractor.onnx"
    landmark:
      name: "LandmarkModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/landmark.onnx"
    face_analysis:
      name: "FaceAnalysisModel"
      predict_type: "ort"
      model_path:
 -      - "./checkpoints/liveportrait_onnx/retinaface_det_static.onnx"
 -      - "./checkpoints/liveportrait_onnx/face_2dpose_106_static.onnx"
-+      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/retinaface_det_static.onnx"
-+      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/face_2dpose_106_static.onnx"
++      - "../models/liveportrait/liveportrait_onnx/retinaface_det_static.onnx"
++      - "../models/liveportrait/liveportrait_onnx/face_2dpose_106_static.onnx"
    app_feat_extractor:
      name: "AppearanceFeatureExtractorModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/appearance_feature_extractor.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/appearance_feature_extractor.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/appearance_feature_extractor.onnx"
    stitching:
      name: "StitchingModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/stitching.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/stitching.onnx"
    stitching_eye_retarget:
      name: "StitchingModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/stitching_eye.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_eye.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/stitching_eye.onnx"
    stitching_lip_retarget:
      name: "StitchingModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/stitching_lip.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_lip.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/stitching_lip.onnx"
  
  animal_models:
    warping_spade:
-@@ -62,13 +64,13 @@ animal_models:
+@@ -62,13 +65,13 @@ animal_models:
    landmark:
      name: "LandmarkModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/landmark.onnx"
    face_analysis:
      name: "FaceAnalysisModel"
      predict_type: "ort"
      model_path:
 -      - "./checkpoints/liveportrait_onnx/retinaface_det_static.onnx"
 -      - "./checkpoints/liveportrait_onnx/face_2dpose_106_static.onnx"
-+      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/retinaface_det_static.onnx"
-+      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/face_2dpose_106_static.onnx"
++      - "../models/liveportrait/liveportrait_onnx/retinaface_det_static.onnx"
++      - "../models/liveportrait/liveportrait_onnx/face_2dpose_106_static.onnx"
  
  joyvasa_models:
    motion_model_path: "checkpoints/JoyVASA/motion_generator/motion_generator_hubert_chinese.pt"
 diff --git a/configs/onnx_mp_infer.yaml b/configs/onnx_mp_infer.yaml
-index 26e529a..3a2c3c7 100644
+index 26e529a..3b0c9d5 100644
 --- a/configs/onnx_mp_infer.yaml
 +++ b/configs/onnx_mp_infer.yaml
-@@ -1,35 +1,37 @@
-+# OneLive V2 M0 spike: machine-specific absolute model paths (repointed from
-+# ./checkpoints/liveportrait_onnx/ to the gitignored engine/models/ download dir).
+@@ -1,35 +1,38 @@
++# OneLive V2 M0 spike: model paths repointed from ./checkpoints/liveportrait_onnx/
++# to the gitignored engine/models/ download dir, relative to this clone dir
++# (all OneLive tooling chdirs to engine/FasterLivePortrait before loading).
  models:
    warping_spade:
      name: "WarpingSpadeModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/warping_spade.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/warping_spade.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/warping_spade.onnx"
    motion_extractor:
      name: "MotionExtractorModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/motion_extractor.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/motion_extractor.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/motion_extractor.onnx"
    landmark:
      name: "LandmarkModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/landmark.onnx"
    face_analysis:
      name: "MediaPipeFaceModel"
      predict_type: "mp"
@@ -99,31 +101,31 @@ index 26e529a..3a2c3c7 100644
      name: "AppearanceFeatureExtractorModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/appearance_feature_extractor.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/appearance_feature_extractor.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/appearance_feature_extractor.onnx"
    stitching:
      name: "StitchingModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/stitching.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/stitching.onnx"
    stitching_eye_retarget:
      name: "StitchingModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/stitching_eye.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_eye.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/stitching_eye.onnx"
    stitching_lip_retarget:
      name: "StitchingModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/stitching_lip.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_lip.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/stitching_lip.onnx"
  
  animal_models:
    warping_spade:
-@@ -59,7 +61,7 @@ animal_models:
+@@ -59,7 +62,7 @@ animal_models:
    landmark:
      name: "LandmarkModel"
      predict_type: "ort"
 -    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
-+    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
++    model_path: "../models/liveportrait/liveportrait_onnx/landmark.onnx"
    face_analysis:
      name: "MediaPipeFaceModel"
      predict_type: "mp"

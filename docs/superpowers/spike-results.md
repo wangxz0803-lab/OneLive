@@ -63,7 +63,10 @@ mode/padding_mode/align_corners 属性也序列化在 manifest 里，predictor �
 硬编码）；`ONELIVE_WARPING_SPLIT=0` 可关掉回到整模型 ORT 路径；`ONELIVE_ORT_CPU_ONLY`
 （逗号分隔的模型文件名子串）可把任意 ORT 模型强制到纯 CPU（调试用）。
 **Task 4 注意：split predictor 是按 model_path 共享的单例，`predict()` 内部持锁——多路并发
-会在 warping_spade 上串行化（OV InferRequest 非线程安全，锁是必须的），基准设计需按此预期。**环境：onnxruntime-directml 1.24.4 + openvino 2026.2.1 **并存**
+会在 warping_spade 上串行化（OV InferRequest 非线程安全，锁是必须的），基准设计需按此预期。**
+patch 的使用前提：模型已下载到 `engine/models/liveportrait/`，且加载配置的进程先 chdir 到
+clone 目录 `engine/FasterLivePortrait/`（yaml 里的模型路径是相对 clone 根的
+`../models/liveportrait/liveportrait_onnx/...`；bench / preview / lipsync 工具均已如此做）。环境：onnxruntime-directml 1.24.4 + openvino 2026.2.1 **并存**
 （openvino 是独立包不与 ort 冲突；装完复测 providers 仍为 `['DmlExecutionProvider',
 'CPUExecutionProvider']`，mediapipe/insightface import 正常）。未安装 onnxruntime-openvino
 （无需换包）。
