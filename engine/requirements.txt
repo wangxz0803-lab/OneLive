@@ -1,0 +1,11 @@
+onnxruntime-directml>=1.20
+opencv-python
+numpy
+soundfile
+edge-tts
+fastapi
+uvicorn[standard]
+websockets
+pytest
+huggingface_hub
+omegaconf

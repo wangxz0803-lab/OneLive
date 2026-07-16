@@ -1,0 +1,7 @@
+.venv/
+models/
+FasterLivePortrait/
+out/
+__pycache__/
+*.wav
+*.mp4
