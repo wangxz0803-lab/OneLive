@@ -1,13 +1,48 @@
 # M0 Spike 结果（真实测量，禁止编造）
 
-日期：
-执行环境：Intel Arc 核显 / 32GB / Windows 11 / Python 3.12
+日期：2026-07-16
+执行环境：Intel Arc 核显 / 32GB / Windows 11 / Python 3.12（engine/.venv）；
+onnxruntime-directml 1.24.4、openvino 2026.2.1、torch 2.13.0+cpu、
+opencv-python 5.0.0.93、numpy 2.5.1、ffmpeg 8.1.2（winget，PATH 外绝对路径调用）
 
 ## 1. LivePortrait 推理基准
 | 配置 | EP | 分辨率 | 单路 fps | 三路每路 fps | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| 离线 demo（s10.jpg + d14.mp4 全 536 帧，pasteback 开） | 混合：DML(metacmd off) + OpenVINO-GPU fp16 + torch CPU GridSample | 512 crop（org 1092x1280） | **1.25**（run.py 全程中值 799.4 ms/帧；8 帧短 smoke 稳态 580ms ≈ 1.7） | 未测（Task 4） | Task 3 实测 2026-07-16，详见下方备注 |
+| 离线 demo（s10.jpg + d14.mp4 全 536 帧，pasteback 开） | 混合：DML(metacmd off) + OpenVINO-GPU fp16 + torch CPU GridSample | 512 crop（org 1092x1280） | **1.25**（run.py 全程中值 799.4 ms/帧；8 帧短 smoke 稳态 580ms ≈ 1.7） | 见 Task 4 行 | Task 3 实测 2026-07-16，详见下方备注 |
 | 同上但 warping_spade 整模型纯 CPU（rung 1） | DML + CPU 整体回退 | 512 crop | 0.13（~8s/帧） | - | warping_spade 占 >95% 耗时 |
+| 1路 round-robin（s0.jpg + d14.mp4，realtime，pasteback 关） | 混合: DML(metacmd off)+OV-GPU fp16+torch CPU GridSample(split) | 512 crop | **1.52** | 见三路行 | 300 帧计入统计（预热 30 帧丢弃），每驱动帧 avg 659/p50 660/p95 771 ms |
+| 3路 round-robin（s0.jpg+s1.jpg+s10.jpg + d14.mp4，realtime，pasteback 关） | 混合: DML(metacmd off)+OV-GPU fp16+torch CPU GridSample(split) | 512 crop | 见单路行 | **0.46** | 150 帧计入统计（预热 30 帧丢弃），每驱动帧 avg 2160/p50 2163/p95 2401 ms |
+
+### Task 4 备注：基准方法与原始数据（`engine/bench/bench_liveportrait.py`，实测 2026-07-16）
+
+**方法：** 每路（source）一个独立 `FasterLivePortraitPipeline` 实例（平滑状态隔离；
+ONNX session 按 model_path 单例缓存，权重不重复加载），`prepare_source(realtime=True)`
+后立即快照 `(src_imgs[0], src_infos[0])`。驱动视频 d14.mp4（536 帧 @30fps）逐帧读取，
+每个驱动帧按 round-robin 顺序渲染全部路，`flag_pasteback=False`（只出 512 crop）。
+前 30 个驱动帧为预热、不计入统计。每路有效 fps = 1000 / 每驱动帧平均总耗时
+（每个驱动帧所有路各渲染一次）。**不用多线程**：切分后的 warping_spade predictor 是按
+model_path 共享的单例且 `predict()` 内部持锁（OV InferRequest 非线程安全），并发流会在
+占 >85% 耗时的 warping_spade 上串行化，线程只增调度开销不增吞吐——所以三路就按顺序
+round-robin 测，结果即多路真实吞吐上界。
+
+**一次性成本（prepare）：** 首个 pipeline 构造（含全部 ONNX session 创建/EP 编译）
+~4.4-4.5s；后续实例 ~4ms（session 单例命中）。`prepare_source` 首路 760-902ms，
+后续路 224-264ms（app_feat_extractor 已预热）。
+
+**单路原始输出（--sources 1 --frames 300 --warmup 30）：**
+`路数=1 计入统计驱动帧=300 无脸帧=0 总墙钟=218.7s；每驱动帧 avg=659.0 ms p50=659.7 ms
+p95=770.6 ms；每路有效 fps=1.52`。（与 Task 3 离线 demo 799ms/帧一致量级；本基准
+pasteback 关、无视频编码，故略快。）
+
+**三路原始输出（--sources 3 --frames 150 --warmup 30）：** 300 帧预计 >10min，按计划
+降为 150 帧（>100 帧下限）。`路数=3 计入统计驱动帧=150 无脸帧=0 总墙钟=390.0s；
+每驱动帧(3路) avg=2160.5 ms p50=2163.1 ms p95=2400.8 ms；每路有效 fps=0.46。
+分路 avg：s0.jpg 686.3ms / s1.jpg 735.4ms / s10.jpg 738.8ms`。三路总耗时 ≈ 3×单路
+（2160 ≈ 3×686~739），确认 GPU 已饱和、多路无并行红利，且相比单路基准每路还慢了
+4-12%（缓存/调度竞争）。
+
+**决策门读数：** 单路 1.52 fps << 15 fps 门线（差一个数量级）；三路每路 0.46 fps。
+本地 Arc 核显连一路都远不达标，指向"边缘 GPU"方向；正式结论 Task 7 出。
 
 ### Task 3 备注：后端选型过程与坑（全部实测）
 
