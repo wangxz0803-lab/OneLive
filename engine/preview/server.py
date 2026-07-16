@@ -14,8 +14,10 @@ JPEG 二进制。两种模式：
   传输不是瓶颈。
 
 推理放在线程 executor 里跑（run_in_executor），事件循环保持响应；
-split warping_spade predictor 是持锁单例，多连接并发时会在推理上串行化，
-额外加一把进程内锁保证 pipeline 平滑状态不被交叉写。
+split warping_spade predictor 是持锁单例，多连接并发时会在推理上串行化。
+额外的进程内 infer_lock 只在数据竞争层面防止并发交叉调用；多客户端连接仍会
+互相污染 pipeline 平滑状态（OneEuroFilter 等）并分摊吞吐——本服务是单客户端
+验证工具，多客户端场景留给 M1 的 producer/订阅者结构。
 
 运行（engine/.venv）：
   python engine/preview/server.py --mode synthetic --port 8891
