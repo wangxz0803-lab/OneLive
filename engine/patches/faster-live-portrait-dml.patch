@@ -1,0 +1,356 @@
+diff --git a/configs/onnx_infer.yaml b/configs/onnx_infer.yaml
+index 7ad99e9..ef60037 100644
+--- a/configs/onnx_infer.yaml
++++ b/configs/onnx_infer.yaml
+@@ -2,37 +2,37 @@ models:
+   warping_spade:
+     name: "WarpingSpadeModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/warping_spade.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/warping_spade.onnx"
+   motion_extractor:
+     name: "MotionExtractorModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/motion_extractor.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/motion_extractor.onnx"
+   landmark:
+     name: "LandmarkModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
+   face_analysis:
+     name: "FaceAnalysisModel"
+     predict_type: "ort"
+     model_path:
+-      - "./checkpoints/liveportrait_onnx/retinaface_det_static.onnx"
+-      - "./checkpoints/liveportrait_onnx/face_2dpose_106_static.onnx"
++      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/retinaface_det_static.onnx"
++      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/face_2dpose_106_static.onnx"
+   app_feat_extractor:
+     name: "AppearanceFeatureExtractorModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/appearance_feature_extractor.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/appearance_feature_extractor.onnx"
+   stitching:
+     name: "StitchingModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/stitching.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching.onnx"
+   stitching_eye_retarget:
+     name: "StitchingModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/stitching_eye.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_eye.onnx"
+   stitching_lip_retarget:
+     name: "StitchingModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/stitching_lip.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_lip.onnx"
+ 
+ animal_models:
+   warping_spade:
+@@ -62,13 +62,13 @@ animal_models:
+   landmark:
+     name: "LandmarkModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
+   face_analysis:
+     name: "FaceAnalysisModel"
+     predict_type: "ort"
+     model_path:
+-      - "./checkpoints/liveportrait_onnx/retinaface_det_static.onnx"
+-      - "./checkpoints/liveportrait_onnx/face_2dpose_106_static.onnx"
++      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/retinaface_det_static.onnx"
++      - "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/face_2dpose_106_static.onnx"
+ 
+ joyvasa_models:
+   motion_model_path: "checkpoints/JoyVASA/motion_generator/motion_generator_hubert_chinese.pt"
+diff --git a/configs/onnx_mp_infer.yaml b/configs/onnx_mp_infer.yaml
+index 26e529a..ab73079 100644
+--- a/configs/onnx_mp_infer.yaml
++++ b/configs/onnx_mp_infer.yaml
+@@ -2,34 +2,34 @@ models:
+   warping_spade:
+     name: "WarpingSpadeModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/warping_spade.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/warping_spade.onnx"
+   motion_extractor:
+     name: "MotionExtractorModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/motion_extractor.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/motion_extractor.onnx"
+   landmark:
+     name: "LandmarkModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
+   face_analysis:
+     name: "MediaPipeFaceModel"
+     predict_type: "mp"
+   app_feat_extractor:
+     name: "AppearanceFeatureExtractorModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/appearance_feature_extractor.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/appearance_feature_extractor.onnx"
+   stitching:
+     name: "StitchingModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/stitching.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching.onnx"
+   stitching_eye_retarget:
+     name: "StitchingModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/stitching_eye.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_eye.onnx"
+   stitching_lip_retarget:
+     name: "StitchingModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/stitching_lip.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/stitching_lip.onnx"
+ 
+ animal_models:
+   warping_spade:
+@@ -59,7 +59,7 @@ animal_models:
+   landmark:
+     name: "LandmarkModel"
+     predict_type: "ort"
+-    model_path: "./checkpoints/liveportrait_onnx/landmark.onnx"
++    model_path: "C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/models/liveportrait/liveportrait_onnx/landmark.onnx"
+   face_analysis:
+     name: "MediaPipeFaceModel"
+     predict_type: "mp"
+diff --git a/run.py b/run.py
+index 52ed8d1..0610574 100644
+--- a/run.py
++++ b/run.py
+@@ -39,7 +39,8 @@ from src.pipelines.faster_live_portrait_pipeline import FasterLivePortraitPipeli
+ from src.utils.utils import video_has_audio
+ 
+ if platform.system().lower() == 'windows':
+-    FFMPEG = "third_party/ffmpeg-7.0.1-full_build/bin/ffmpeg.exe"
++    # OneLive V2 M0 spike: use system ffmpeg (winget install), third_party copy not vendored
++    FFMPEG = r"C:\Users\76475\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe"
+ else:
+     FFMPEG = "ffmpeg"
+ 
+diff --git a/src/models/base_model.py b/src/models/base_model.py
+index 142790c..29ace38 100644
+--- a/src/models/base_model.py
++++ b/src/models/base_model.py
+@@ -11,8 +11,15 @@ class BaseModel:
+     def __init__(self, **kwargs):
+         self.kwargs = copy.deepcopy(kwargs)
+         self.predictor = get_predictor(**self.kwargs)
+-        self.device = torch.cuda.current_device()
+-        self.cudaStream = torch.cuda.current_stream().cuda_stream
++        # OneLive V2 M0 spike: guard for CPU-only torch builds (no CUDA).
++        # self.device is only used as a torch .to() target in the ort path;
++        # self.cudaStream is only consumed by the trt predict path.
++        if torch.cuda.is_available():
++            self.device = torch.cuda.current_device()
++            self.cudaStream = torch.cuda.current_stream().cuda_stream
++        else:
++            self.device = "cpu"
++            self.cudaStream = None
+         self.predict_type = kwargs.get("predict_type", "trt")
+ 
+         if self.predictor is not None:
+diff --git a/src/models/face_analysis_model.py b/src/models/face_analysis_model.py
+index 52f16eb..bfbaa56 100644
+--- a/src/models/face_analysis_model.py
++++ b/src/models/face_analysis_model.py
+@@ -90,8 +90,13 @@ class FaceAnalysisModel:
+     def __init__(self, **kwargs):
+         self.model_paths = kwargs.get("model_path", [])
+         self.predict_type = kwargs.get("predict_type", "trt")
+-        self.device = torch.cuda.current_device()
+-        self.cudaStream = torch.cuda.current_stream().cuda_stream
++        # OneLive V2 M0 spike: guard for CPU-only torch builds (no CUDA).
++        if torch.cuda.is_available():
++            self.device = torch.cuda.current_device()
++            self.cudaStream = torch.cuda.current_stream().cuda_stream
++        else:
++            self.device = "cpu"
++            self.cudaStream = None
+ 
+         assert self.model_paths
+         self.face_det = get_predictor(predict_type=self.predict_type, model_path=self.model_paths[0])
+diff --git a/src/models/predictor.py b/src/models/predictor.py
+index 8eb55b6..66b7ce3 100644
+--- a/src/models/predictor.py
++++ b/src/models/predictor.py
+@@ -180,7 +180,22 @@ class OnnxRuntimePredictor:
+         assert os.path.exists(model_path), "model path must exist!"
+         # print("loading ort model:{}".format(model_path))
+         self.debug = kwargs.get("debug", False)
+-        providers = ['CUDAExecutionProvider', 'CoreMLExecutionProvider', 'CPUExecutionProvider']
++        # OneLive V2 M0 spike: prefer DirectML (Intel Arc iGPU), fall back to CPU.
++        # disable_metacommands=True is REQUIRED on this Intel Arc iGPU driver:
++        # with metacommands enabled, DML output is garbage and non-deterministic
++        # (run-to-run diff ~0.17 on identical input); with them disabled, DML matches
++        # CPU to ~1e-6 on all LivePortrait models. warping_spade.onnx (5D GridSample)
++        # still fails DML session creation (MLOperatorAuthorImpl.cpp(2818), 0x80004005)
++        # and is auto-retried on pure CPU by onnxruntime's fallback.
++        # Override per-model via ONELIVE_ORT_CPU_ONLY (comma-separated model filename
++        # substrings forced onto pure CPU).
++        cpu_only_env = os.environ.get("ONELIVE_ORT_CPU_ONLY", "")
++        cpu_only = [s.strip() for s in cpu_only_env.split(",") if s.strip()]
++        if any(s in os.path.basename(model_path) for s in cpu_only):
++            providers = ["CPUExecutionProvider"]
++        else:
++            providers = [("DmlExecutionProvider", {"device_id": 0, "disable_metacommands": True}),
++                         "CPUExecutionProvider"]
+ 
+         print(f"OnnxRuntime use {providers}")
+         opts = onnxruntime.SessionOptions()
+@@ -230,6 +245,114 @@ class OnnxRuntimePredictor:
+         self.onnx_model = None
+ 
+ 
++class _TensorSpec:
++    def __init__(self, name, shape=None, type_="tensor(float)"):
++        self.name = name
++        self.shape = shape
++        self.type = type_
++
++
++class SplitWarpingSpadePredictor:
++    """
++    OneLive V2 M0 spike: warping_spade.onnx contains two 5D GridSample nodes that
++    neither DirectML (kernel creation fails, 0x80004005) nor OpenVINO GPU
++    (4D-only GridSample) can execute, forcing the whole 402MB model onto CPU
++    (~4-8 s/frame). Workaround: the model is pre-split at the two GridSample
++    boundaries into 3 ONNX parts (see engine/tools note in spike-results.md):
++      partA (dense-motion prep)  -> OV GPU fails on a 7D Tile, runs on ORT-DML
++      grid_sample #1             -> torch CPU F.grid_sample (5D bilinear)
++      partB (dense-motion rest)  -> OpenVINO GPU (fp16)
++      grid_sample #2             -> torch CPU
++      partC (SPADE decoder)      -> OpenVINO GPU (fp16)
++    Measured: ~0.6 s/frame vs ~2.1 s (all-DML split) vs ~4-8 s (pure CPU).
++    Disable via ONELIVE_WARPING_SPLIT=0; force OV precision via
++    ONELIVE_OV_PRECISION (default: device default = fp16 on Arc GPU).
++    """
++    _instances = {}
++    _lock = threading.Lock()
++
++    def __new__(cls, **kwargs):
++        model_path = kwargs.get("model_path", "")
++        with cls._lock:
++            if model_path not in cls._instances:
++                inst = super().__new__(cls)
++                inst._init_once(**kwargs)
++                cls._instances[model_path] = inst
++        return cls._instances[model_path]
++
++    def _init_once(self, **kwargs):
++        import json
++        import torch.nn.functional  # noqa: F401 (used in predict)
++        model_path = kwargs.get("model_path", "")
++        model_dir = os.path.dirname(os.path.abspath(model_path))
++        with open(os.path.join(model_dir, "warping_spade_dml_split.json")) as f:
++            self.manifest = json.load(f)
++        import openvino as ov
++        core = ov.Core()
++        ov_config = {}
++        prec = os.environ.get("ONELIVE_OV_PRECISION", "")
++        if prec:
++            ov_config["INFERENCE_PRECISION_HINT"] = prec
++        self._steps = []
++        for step in self.manifest["steps"]:
++            if step["type"] != "onnx":
++                self._steps.append((step, None, None))
++                continue
++            part_path = os.path.join(model_dir, step["file"])
++            try:
++                cm = core.compile_model(part_path, "GPU", ov_config)
++                self._steps.append((step, "ov", cm.create_infer_request()))
++                backend = "OpenVINO-GPU"
++            except Exception as e:
++                opts = onnxruntime.SessionOptions()
++                opts.log_severity_level = 3
++                sess = onnxruntime.InferenceSession(
++                    part_path,
++                    providers=[("DmlExecutionProvider",
++                                {"device_id": 0, "disable_metacommands": True}),
++                               "CPUExecutionProvider"],
++                    sess_options=opts)
++                self._steps.append((step, "ort", sess))
++                backend = f"ORT-{sess.get_providers()[0]}"
++            print(f"warping_spade split: {step['file']} -> {backend}")
++        self.inputs = [_TensorSpec(n) for n in self.manifest["original_inputs"]]
++        self.outputs = [_TensorSpec(n) for n in self.manifest["original_outputs"]]
++
++    def input_spec(self):
++        return [(s.name, s.shape, s.type) for s in self.inputs]
++
++    def output_spec(self):
++        return [(s.name, s.shape, s.type) for s in self.outputs]
++
++    def predict(self, *data):
++        import torch.nn.functional as F
++        tensors = {}
++        for spec, arr in zip(self.inputs, data):
++            tensors[spec.name] = np.ascontiguousarray(arr, dtype=np.float32)
++        for step, kind, runner in self._steps:
++            if step["type"] == "grid_sample":
++                x = torch.from_numpy(np.ascontiguousarray(tensors[step["x"]]))
++                grid = torch.from_numpy(np.ascontiguousarray(tensors[step["grid"]]))
++                out = F.grid_sample(x, grid, mode="bilinear",
++                                    padding_mode="zeros", align_corners=False)
++                tensors[step["out"]] = out.numpy()
++            elif kind == "ov":
++                feeds = {n: np.ascontiguousarray(tensors[n]) for n in step["inputs"]}
++                result = runner.infer(feeds)
++                for port, arr in result.items():
++                    for name in port.get_names():
++                        if name in step["outputs"]:
++                            tensors[name] = arr
++            else:  # ort
++                feeds = {n: np.ascontiguousarray(tensors[n]) for n in step["inputs"]}
++                outs = runner.run(step["outputs"], feeds)
++                tensors.update(dict(zip(step["outputs"], outs)))
++        return [tensors[n] for n in self.manifest["original_outputs"]]
++
++    def __del__(self):
++        pass
++
++
+ class OnnxRuntimePredictorSingleton(OnnxRuntimePredictor):
+     """
+     单例模式，防止模型被加载多次
+@@ -251,6 +374,18 @@ class OnnxRuntimePredictorSingleton(OnnxRuntimePredictor):
+ 
+ def get_predictor(**kwargs):
+     predict_type = kwargs.get("predict_type", "trt")
++    model_path = kwargs.get("model_path", "")
++    # OneLive V2 M0 spike: route warping_spade through the split OV-GPU/DML/torch
++    # predictor when the pre-split parts exist (see SplitWarpingSpadePredictor).
++    if (predict_type == "ort" and isinstance(model_path, str)
++            and os.path.basename(model_path) == "warping_spade.onnx"
++            and os.environ.get("ONELIVE_WARPING_SPLIT", "1") != "0"
++            and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(model_path)),
++                                            "warping_spade_dml_split.json"))):
++        try:
++            return SplitWarpingSpadePredictor(**kwargs)
++        except Exception as e:
++            print(f"SplitWarpingSpadePredictor unavailable ({e}); falling back to OnnxRuntime")
+     if predict_type == "ort":
+         return OnnxRuntimePredictorSingleton(**kwargs)
+     elif predict_type == "trt":
+diff --git a/src/utils/utils.py b/src/utils/utils.py
+index 72b9237..e9e8a20 100644
+--- a/src/utils/utils.py
++++ b/src/utils/utils.py
+@@ -24,6 +24,10 @@ def video_has_audio(video_file):
+         return len(ret["streams"]) > 0
+     except ffmpeg.Error:
+         return False
++    except FileNotFoundError:
++        # OneLive V2 M0 spike: ffprobe not on PATH -> treat as no audio instead of crashing
++        print("WARNING: ffprobe not found on PATH, assuming video has no audio")
++        return False
+ 
+ 
+ def get_video_info(video_path):
