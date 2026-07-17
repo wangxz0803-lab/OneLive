@@ -179,6 +179,27 @@ def test_ingest_unknown_channel_frame_ignored():
     assert body["channels"]["0"]["errors"] == 0
 
 
+def test_capture_page_served():
+    """GET /capture 返回采集页（与 GET / viewer 同一 serve 模式）。"""
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    r = client.get("/capture")
+    assert r.status_code == 200
+    assert "OneLive" in r.text
+    assert "/ingest" in r.text  # 采集页往 /ingest 推帧
+
+
+def test_create_app_rejects_out_of_range_channel():
+    """协议头 channel 是 u8：频道号超出 0-255 必须在 create_app 就报错。"""
+    with pytest.raises(ValueError, match="out of range"):
+        create_app(lambda ch: EchoPipeline(), channels=(0, 256))
+
+
+def test_create_app_rejects_duplicate_channel():
+    with pytest.raises(ValueError, match="duplicate"):
+        create_app(lambda ch: EchoPipeline(), channels=(0, 1, 0))
+
+
 def test_ingest_garbage_text_survives():
     """坏 JSON / 未知类型的文本帧只记日志忽略，之后的二进制帧照常流转。"""
     app = create_app(lambda ch: EchoPipeline())

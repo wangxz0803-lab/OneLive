@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLive capture</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font-family: Consolas, monospace;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  video { background: #000; max-width: 100%; width: 480px; border: 1px solid #333; }
+  button { font-family: inherit; font-size: 16px; padding: 8px 24px; border: 1px solid #555;
+           background: #222; color: #ddd; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #controls { display: flex; gap: 12px; }
+  #status { font-size: 14px; color: #8f8; }
+  #conn { font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<h1 id="title">OneLive capture</h1>
+<video id="v" autoplay playsinline muted></video>
+<div id="controls">
+  <button id="start">Start</button>
+  <button id="stop" disabled>Stop</button>
+</div>
+<div id="status">idle</div>
+<div id="conn">-</div>
+<script>
+// 摄像头采集页：getUserMedia → canvas（长边 ≤640）→ JPEG → 20 字节协议头 + payload
+// → ws(s)://host/ingest。协议头与 service/protocol.py 的 <HBBQQ (LE) 严格一致。
+// 注意：getUserMedia 需要安全上下文——非 localhost 访问必须走 HTTPS（run_local --https）。
+const video = document.getElementById("v");
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const statusEl = document.getElementById("status");
+const connEl = document.getElementById("conn");
+
+// URL 参数：?fps=10（目标发送帧率，默认 10）  ?channel=0（协议头频道字节，默认 0）
+const params = new URLSearchParams(location.search);
+const fps = Math.max(1, Number(params.get("fps")) || 10);
+const channel = (Number(params.get("channel")) || 0) & 0xff;
+document.getElementById("title").textContent =
+  `OneLive capture — channel ${channel} @ ${fps}fps`;
+
+const HEADER_LEN = 20;
+const MAX_SIDE = 640;            // 发送前长边压到 640，保持宽高比
+const MAX_BUFFERED = 1024 * 1024; // ws.bufferedAmount 超 1MB 就跳帧，避免无界堆积
+
+const canvas = document.createElement("canvas"); // 仅作缩放/编码用，不上屏
+const ctx = canvas.getContext("2d");
+
+let running = false;   // Start~Stop 之间为 true
+let ws = null;
+let stream = null;
+let seq = 0;           // 只随成功发送递增；重连不清零（服务端按 seq 单调判活）
+let sent = 0;
+let skipped = 0;       // ws 未连上 / bufferedAmount 过高而跳过的节拍数
+let busy = false;      // toBlob 异步；上一帧尚未编码完则本节拍跳过，不并发编码
+let t0 = 0;            // 绝对时钟起点（performance.now()）
+let n = 0;             // 自 t0 起的节拍序号；下一拍定在 t0 + n*1000/fps，误差不累积
+
+function setStatus() {
+  const c = ws == null ? "no ws"
+    : ["connecting", "connected", "closing", "closed"][ws.readyState];
+  statusEl.textContent = running
+    ? `capturing | sent: ${sent} | skipped: ${skipped} | target: ${fps}fps | seq: ${seq}`
+    : "idle";
+  connEl.textContent = `ws: ${c} | ${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ingest`;
+}
+
+function connect() {
+  if (!running) return;
+  // ws/wss 跟随页面协议：HTTPS 页面里混发 ws:// 会被浏览器直接拒绝
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${scheme}://${location.host}/ingest`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = setStatus;
+  ws.onclose = () => {           // 断线 1s 后重连；seq 继续递增，不重置
+    ws = null;
+    if (running) setTimeout(connect, 1000);
+    setStatus();
+  };
+  ws.onerror = () => { if (ws) ws.close(); };
+  setStatus();
+}
+
+async function captureAndSend() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;        // 视频尚未出帧
+  const scale = Math.min(1, MAX_SIDE / Math.max(vw, vh));
+  const w = Math.max(1, Math.round(vw * scale));
+  const h = Math.max(1, Math.round(vh * scale));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  ctx.drawImage(video, 0, 0, w, h);
+  const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
+  if (!blob || !running || !ws || ws.readyState !== WebSocket.OPEN) { skipped += 1; return; }
+  const payload = new Uint8Array(await blob.arrayBuffer());
+  // 20 字节头（LE，对齐 protocol.py <HBBQQ）：
+  //   magic u16 @0 = 0x4F4C | version u8 @2 = 1 | channel u8 @3 | seq u64 @4 | ts_ms u64 @12
+  const buf = new ArrayBuffer(HEADER_LEN + payload.length);
+  const dv = new DataView(buf);
+  dv.setUint16(0, 0x4F4C, true);
+  dv.setUint8(2, 1);
+  dv.setUint8(3, channel);
+  dv.setBigUint64(4, BigInt(seq), true);
+  dv.setBigUint64(12, BigInt(Date.now()), true);
+  new Uint8Array(buf, HEADER_LEN).set(payload);
+  ws.send(buf);
+  seq += 1;
+  sent += 1;
+}
+
+function tick() {
+  if (!running) return;
+  n += 1;
+  const next = t0 + n * 1000 / fps;  // 绝对时钟定拍：单拍超时不会拖慢后续节奏
+  (async () => {
+    if (busy) { skipped += 1; }      // 上一帧还在编码，跳过本拍
+    else if (!ws || ws.readyState !== WebSocket.OPEN) { skipped += 1; }
+    else if (ws.bufferedAmount > MAX_BUFFERED) { skipped += 1; }  // 出口拥塞，跳帧保鲜
+    else {
+      busy = true;
+      try { await captureAndSend(); }
+      catch (err) { connEl.textContent = `frame error: ${err}`; }
+      finally { busy = false; }
+    }
+    setStatus();
+  })();
+  setTimeout(tick, Math.max(0, next - performance.now()));
+}
+
+startBtn.onclick = async () => {   // iOS 要求 getUserMedia 由用户手势触发
+  startBtn.disabled = true;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(
+      { video: { facingMode: "user" }, audio: false });
+  } catch (err) {
+    statusEl.textContent = `camera error: ${err}`;
+    startBtn.disabled = false;
+    return;
+  }
+  video.srcObject = stream;
+  try { await video.play(); } catch (_) { /* autoplay+muted 下一般不会拒 */ }
+  running = true;
+  sent = 0;
+  skipped = 0;
+  t0 = performance.now();
+  n = 0;
+  stopBtn.disabled = false;
+  connect();
+  tick();
+};
+
+stopBtn.onclick = () => {
+  running = false;
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }  // 摘掉 onclose 防止重连
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }  // 释放摄像头
+  video.srcObject = null;
+  setStatus();
+};
+setStatus();
+</script>
+</body>
+</html>

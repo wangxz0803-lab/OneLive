@@ -21,6 +21,7 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
+_CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 
 from service.protocol import FrameHeader, pack_frame, unpack_frame
 from service.worker import ChannelWorker
@@ -32,6 +33,15 @@ def create_app(pipeline_factory: Callable[[int], object],
                channels: Iterable[int] = (0,)) -> FastAPI:
     """pipeline_factory(ch) 为每个频道构造一条独立管线（协议头 channel 为 u8，
     合法频道号 0-255）。不做单管线兼容 shim——所有调用点统一工厂形式。"""
+    # 先整体校验再启动 worker：校验中途 raise 不会留下已启动的孤儿线程
+    channels = tuple(channels)
+    seen: set[int] = set()
+    for ch in channels:
+        if not 0 <= ch <= 255:
+            raise ValueError(f"channel {ch} out of range 0-255 (protocol header channel is u8)")
+        if ch in seen:
+            raise ValueError(f"duplicate channel {ch}")
+        seen.add(ch)
     workers: dict[int, ChannelWorker] = {}
     for ch in channels:
         w = ChannelWorker(pipeline=pipeline_factory(ch), name=f"ch{ch}")
@@ -55,6 +65,10 @@ def create_app(pipeline_factory: Callable[[int], object],
     @app.get("/")
     async def index() -> HTMLResponse:
         return HTMLResponse(_VIEWER_HTML.read_text(encoding="utf-8"))
+
+    @app.get("/capture")
+    async def capture() -> HTMLResponse:
+        return HTMLResponse(_CAPTURE_HTML.read_text(encoding="utf-8"))
 
     @app.get("/status")
     async def status() -> dict:
