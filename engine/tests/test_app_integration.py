@@ -44,6 +44,21 @@ def test_status_endpoint():
     assert body["engine"] == "ok"
 
 
+def test_two_subscribers_share_one_inference():
+    """扇出：两个 /out 订阅者都收到同一帧，且只推理一次（processed == 1）。"""
+    app = create_app(pipeline=EchoPipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/out") as out_a, client.websocket_connect("/out") as out_b:
+        with client.websocket_connect("/ingest") as in_ws:
+            in_ws.send_bytes(pack_frame(FrameHeader(seq=5, ts_ms=99, channel=0), _jpeg(7)))
+            blob_a = out_a.receive_bytes()
+            blob_b = out_b.receive_bytes()
+    assert unpack_frame(blob_a)[0].seq == 5
+    assert unpack_frame(blob_b)[0].seq == 5
+    body = client.get("/status").json()
+    assert body["channel"]["processed"] == 1  # 新订阅者不触发新推理，共享一次扇出
+
+
 def test_bad_frame_does_not_kill_ingest():
     app = create_app(pipeline=EchoPipeline())
     client = TestClient(app)
