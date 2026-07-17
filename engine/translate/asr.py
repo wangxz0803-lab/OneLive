@@ -9,11 +9,14 @@ feed(pcm16) 累积音频 → 能量静音检测切分（20ms 窗口 RMS）：
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 WINDOW_MS = 20
 RMS_THRESHOLD = 0.01  # 归一化 RMS（int16/32768），~328 int16
@@ -147,18 +150,29 @@ class SegmentTranscriber:
         lang: str = "zh",
         device: str = "cpu",
         compute_type: str = "int8",
+        rms_threshold: float = RMS_THRESHOLD,
+        min_speech_s: float = MIN_SPEECH_S,
+        min_silence_s: float = MIN_SILENCE_S,
+        max_segment_s: float = MAX_SEGMENT_S,
     ) -> None:
         self.model_dir = str(model_dir)
         self.model_size = model_size
         self.lang = lang
         self.device = device
         self.compute_type = compute_type
+        self._segmenter_kwargs = dict(
+            rms_threshold=rms_threshold,
+            min_speech_s=min_speech_s,
+            min_silence_s=min_silence_s,
+            max_segment_s=max_segment_s,
+        )
         self._model = None
         self._sr: int | None = None
         self._segmenter: SilenceSegmenter | None = None
         self._audio: list[np.ndarray] = []  # 全量累积（段区间是全流样本下标）
         self._fed_samples = 0
         self._seg_count = 0
+        self._error_count = 0
         self._transcribe_ms_last = 0.0
         self._pending: asyncio.Queue = asyncio.Queue()
         self._out: asyncio.Queue = asyncio.Queue()
@@ -191,7 +205,7 @@ class SegmentTranscriber:
             raise RuntimeError("feed() after close()")
         if self._sr is None:
             self._sr = sr
-            self._segmenter = SilenceSegmenter(sr)
+            self._segmenter = SilenceSegmenter(sr, **self._segmenter_kwargs)
         elif sr != self._sr:
             raise ValueError(f"sample rate changed: {self._sr} -> {sr}")
         samples = np.frombuffer(pcm16, dtype=np.int16)
@@ -219,39 +233,58 @@ class SegmentTranscriber:
                 self._pending.put_nowait(tail)
         self._pending.put_nowait(None)
         if self._worker is not None:
-            await self._worker
-        self._out.put_nowait(None)
+            try:
+                await self._worker  # worker 的 finally 负责发终止哨兵
+            except Exception:
+                # 防御：worker 意外死亡也不能让 close() 上抛（哨兵已在 finally 发出）
+                logger.exception("ASR worker died unexpectedly")
+        else:
+            self._out.put_nowait(None)  # start() 没调过：直接终止消费者
 
     def stats(self) -> dict:
         sr = self._sr or 16000
         return {
             "fed_seconds": self._fed_samples / sr,
             "segments": self._seg_count,
+            "errors": self._error_count,
             "transcribe_ms_last": self._transcribe_ms_last,
         }
 
     async def _worker_loop(self) -> None:
         loop = asyncio.get_running_loop()
         full: np.ndarray | None = None
-        while True:
-            item = await self._pending.get()
-            if item is None:
-                return
-            start, end = item
-            full = np.concatenate(self._audio) if full is None or len(full) < end else full
-            audio = full[start:end].astype(np.float32) / 32768.0
-            text = await loop.run_in_executor(None, self._transcribe, audio)
-            if not text:
-                continue
-            self._seg_count += 1
-            self._out.put_nowait(
-                TranscriptSegment(
-                    id=self._seg_count,
-                    text=text,
-                    t0=start / self._sr,
-                    t1=end / self._sr,
+        try:
+            while True:
+                item = await self._pending.get()
+                if item is None:
+                    return
+                start, end = item
+                # 单段异常绝不弄死 worker：记错误数、跳过该段、继续消费
+                try:
+                    if full is None or len(full) < end:
+                        full = np.concatenate(self._audio)
+                    audio = full[start:end].astype(np.float32) / 32768.0
+                    text = await loop.run_in_executor(None, self._transcribe, audio)
+                except Exception:
+                    self._error_count += 1
+                    logger.exception(
+                        "transcribe failed for segment [%d:%d], skipping", start, end
+                    )
+                    continue
+                if not text:
+                    continue
+                self._seg_count += 1
+                self._out.put_nowait(
+                    TranscriptSegment(
+                        id=self._seg_count,
+                        text=text,
+                        t0=start / self._sr,
+                        t1=end / self._sr,
+                    )
                 )
-            )
+        finally:
+            # 无论如何都要发终止哨兵，segments() 消费者永不悬挂
+            self._out.put_nowait(None)
 
     def _transcribe(self, audio_f32: np.ndarray) -> str:
         t = time.perf_counter()

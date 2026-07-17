@@ -10,4 +10,10 @@ pytest
 huggingface_hub
 omegaconf
 httpx
+# 注意：faster-whisper 会把 plain onnxruntime 作为依赖装进来，顶掉 onnxruntime-directml
+# 的 DmlExecutionProvider。任何触发 faster-whisper 依赖解析的 pip install 之后，必须：
+#   pip uninstall -y onnxruntime onnxruntime-directml && pip install onnxruntime-directml
+# 然后验证: python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+# 应包含 DmlExecutionProvider。（pip check 会报 faster-whisper 缺 onnxruntime——已知误报，
+# onnxruntime-directml 提供同名模块。）
 faster-whisper

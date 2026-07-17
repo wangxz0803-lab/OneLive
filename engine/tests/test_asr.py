@@ -73,6 +73,59 @@ def test_split_trailing_speech_flushed():
     assert abs(e / SR - 1.4) < 0.05
 
 
+# ---------- worker 韧性 / 配置透传（mock 模型，无 whisper） ----------
+
+
+def _mock_started(tx: SegmentTranscriber, transcribe):
+    """跳过真实模型加载，替换转写函数。"""
+    tx._load_model = lambda: None
+    tx._transcribe = transcribe
+    return tx
+
+
+@pytest.mark.anyio
+async def test_transcribe_error_does_not_kill_worker_or_hang_consumers():
+    calls = {"n": 0}
+
+    def flaky(audio):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom on first segment")
+        return f"ok{calls['n']}"
+
+    tx = _mock_started(SegmentTranscriber(), flaky)
+    await tx.start()
+    # 两个独立语音段：第一段转写抛异常，第二段必须照常产出
+    pcm = np.concatenate([_tone(1.0), _silence(1.0), _tone(0.8), _silence(1.0)])
+    _feed_in_chunks(tx, pcm)
+    # close() 必须正常完成（不上抛、不悬挂）
+    await asyncio.wait_for(tx.close(), timeout=5)
+    # 消费者必须解除阻塞并拿到第二段
+    segs = await asyncio.wait_for(_collect(tx), timeout=5)
+    assert [s.text for s in segs] == ["ok2"]
+    stats = tx.stats()
+    assert stats["errors"] >= 1
+    assert stats["segments"] == 1
+
+
+@pytest.mark.anyio
+async def test_segmenter_kwargs_passthrough():
+    # rms_threshold 提到 0.5：amp=0.3 的正弦（RMS≈0.21）不再算语音 → 0 段
+    tx = _mock_started(SegmentTranscriber(rms_threshold=0.5), lambda a: "text")
+    await tx.start()
+    pcm = np.concatenate([_tone(1.0), _silence(1.0)])
+    _feed_in_chunks(tx, pcm)
+    await tx.close()
+    assert await _collect(tx) == []
+
+    # 对照：默认阈值下同样的输入产出 1 段
+    tx2 = _mock_started(SegmentTranscriber(), lambda a: "text")
+    await tx2.start()
+    _feed_in_chunks(tx2, pcm)
+    await tx2.close()
+    assert len(await _collect(tx2)) == 1
+
+
 # ---------- 真实 faster-whisper 推理 ----------
 
 
