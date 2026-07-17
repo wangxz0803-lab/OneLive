@@ -34,7 +34,9 @@ let winStart = performance.now();
 let lastDrawnSeq = -1n;  // 乱序到达防护：createImageBitmap 异步，慢帧可能晚于新帧完成
 
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/out?channel=${encodeURIComponent(channel)}`);
+  // ws/wss 跟随页面协议：HTTPS 页面里混发 ws:// 会被浏览器直接拒绝
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${scheme}://${location.host}/out?channel=${encodeURIComponent(channel)}`);
   ws.binaryType = "arraybuffer";  // 需要 DataView 读 20 字节协议头
   ws.onopen = () => { connEl.textContent = "connected"; lastDrawnSeq = -1n; };
   ws.onmessage = async (ev) => {

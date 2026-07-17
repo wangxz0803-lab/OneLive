@@ -140,6 +140,13 @@ startBtn.onclick = async () => {   // iOS 要求 getUserMedia 由用户手势触
     startBtn.disabled = false;
     return;
   }
+  // 摄像头被系统收回/设备拔出时 track 会 ended（我们主动 stop() 不触发此事件）：
+  // 走统一停止路径释放资源，并明示原因，不让页面停在 capturing 却悄悄断流
+  const track = stream.getVideoTracks()[0];
+  if (track) track.onended = () => {
+    doStop();
+    statusEl.textContent = "camera lost — stopped";
+  };
   video.srcObject = stream;
   try { await video.play(); } catch (_) { /* autoplay+muted 下一般不会拒 */ }
   running = true;
@@ -152,7 +159,7 @@ startBtn.onclick = async () => {   // iOS 要求 getUserMedia 由用户手势触
   tick();
 };
 
-stopBtn.onclick = () => {
+function doStop() {
   running = false;
   stopBtn.disabled = true;
   startBtn.disabled = false;
@@ -160,7 +167,17 @@ stopBtn.onclick = () => {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }  // 释放摄像头
   video.srcObject = null;
   setStatus();
-};
+}
+stopBtn.onclick = doStop;
+
+// 页面转后台时 setTimeout 被浏览器节流；回前台后重置节拍基线（t0/n），
+// 否则绝对时钟定拍会把积欠的节拍一次性补发成突发帧
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && running) {
+    t0 = performance.now();
+    n = 0;
+  }
+});
 setStatus();
 </script>
 </body>
