@@ -7,8 +7,10 @@ unavailable/error 不做 TTS）→ 成功则 tts_fn → TTSReadyEvent。
 
 隔离契约：一个 (段, 语言) 的失败（TTSError、挂死超时、provider 违约
 抛异常）只产出一条 PipelineErrorEvent，绝不影响其他语言或其他段。
-TTS 调用同时受管线级 asyncio.wait_for(tts_timeout_s) 约束——即使
-tts_fn 不守自己的 timeout_s 契约（或被注入的假实现挂死）也能收割。
+两级超时兜底：translate 受 wait_for(translate_timeout_s) 约束（provider
+自带 HTTP 超时，这里防不守约实现）；TTS 受 wait_for(tts_timeout_s + 2s)
+约束——留 2s 余量让组件自己更丰富的 TTSError("timeout ...") 先赢，
+兜底只收割真正挂死的实现。
 
 events() 是单消费者契约：内部只有一个 asyncio.Queue，多个消费者会
 互相抢事件。唯一消费者是服务层（Task 5），由它负责向多个 WebSocket
@@ -68,7 +70,11 @@ class TTSReadyEvent:
 
 @dataclass
 class PipelineErrorEvent:
-    """某 (段, 语言) 在某阶段失败。stage: "translate" | "tts" | "close"。"""
+    """某 (段, 语言) 在某阶段失败。stage: "translate" | "tts" | "close"。
+
+    与 TranslationEvent(status="error") 的分工：后者是 provider 正常返回的
+    失败结果（已对消费者可见，不再重复报）；本事件只报"结果本应出现却
+    没有"的异常路径（超时、抛异常、收尾取消）。"""
 
     segment_id: int
     lang: str | None
@@ -87,15 +93,27 @@ class TranslationPipeline:
         voices: dict[str, str] = VOICES,
         tts_fn=synthesize,
         tts_timeout_s: float = 15.0,
+        translate_timeout_s: float = 12.0,
     ) -> None:
+        # 配置错误在构造期 fail-fast：漏配音色若拖到运行期，KeyError 会
+        # 死在任务里（done_callback 弹掉、异常无人取回、无事件无计数）
+        missing = set(tts_langs) - set(voices)
+        if missing:
+            raise ValueError(
+                f"tts_langs {sorted(missing)} have no voice configured in voices "
+                f"(known: {sorted(voices)})"
+            )
         self._transcriber = transcriber
         self._provider = provider
         self._tts_langs = tuple(tts_langs)
         self._voices = voices
         self._tts_fn = tts_fn
         self._tts_timeout_s = tts_timeout_s
-        # close() 收尾等待剩余任务的上限：比单次 TTS 超时略宽即可
-        self._drain_timeout_s = tts_timeout_s + 5.0
+        self._translate_timeout_s = translate_timeout_s
+        # 管线级 TTS 兜底：比组件自身超时宽 2s，让组件的 TTSError 先赢
+        self._tts_backstop_s = tts_timeout_s + 2.0
+        # close() 收尾等待剩余任务的上限：比最慢单任务略宽即可
+        self._drain_timeout_s = max(translate_timeout_s, self._tts_backstop_s) + 5.0
 
         self._events: asyncio.Queue = asyncio.Queue()
         self._tasks: dict[asyncio.Task, tuple[int, str]] = {}
@@ -115,7 +133,9 @@ class TranslationPipeline:
         self._consumer = asyncio.create_task(self._consume_segments())
 
     def feed_audio(self, pcm16: bytes, sr: int) -> None:
-        """PCM 直通转写器。"""
+        """PCM 直通转写器。close() 之后静默丢弃（直播收尾丢几帧尾音优于上抛）。"""
+        if self._closed:
+            return
         self._transcriber.feed(pcm16, sr)
 
     async def events(self):
@@ -127,7 +147,11 @@ class TranslationPipeline:
             yield item
 
     async def close(self) -> None:
-        """关转写器 → 等 consumer 退出 → 限时收割全部剩余任务 → 发事件哨兵。"""
+        """关转写器 → 等 consumer 退出 → 限时收割全部剩余任务 → 发事件哨兵。
+
+        注意总时长并非完全有界：transcriber.close() 会等 whisper 线程池转完
+        pending 段（无超时）。服务层 lifespan 如需硬上限应自行 wait_for 包裹
+        ——哨兵在 finally 里发，即使被外层取消，events() 消费者也能终结。"""
         if self._closed:
             return
         self._closed = True
@@ -182,7 +206,21 @@ class TranslationPipeline:
     async def _process_lang(self, seg: TranscriptSegment, lang: str) -> None:
         """单 (段, 语言) 全链路；任何失败就地收敛为事件，绝不外溢。"""
         try:
-            result = await self._provider.translate(seg.text, lang)
+            # provider 自带 HTTP 超时；这层 wait_for 防不守约/挂死的实现
+            result = await asyncio.wait_for(
+                self._provider.translate(seg.text, lang), self._translate_timeout_s
+            )
+        except asyncio.TimeoutError:
+            self._stats["errors"] += 1
+            self._events.put_nowait(
+                PipelineErrorEvent(
+                    segment_id=seg.id,
+                    lang=lang,
+                    stage="translate",
+                    detail=f"timeout after {self._translate_timeout_s}s",
+                )
+            )
+            return
         except Exception as e:  # provider 契约是永不抛；这里防御违约实现
             self._stats["errors"] += 1
             self._events.put_nowait(
@@ -212,11 +250,11 @@ class TranslationPipeline:
 
         voice = self._voices[lang]
         try:
-            # 双保险：把 timeout_s 传给 tts_fn，同时套管线级 wait_for
-            # （tts_fn 不守约/被注入假实现挂死时也能收割）
+            # 双保险：timeout_s 传给 tts_fn（正路，报更丰富的 TTSError），
+            # 外层兜底宽 2s，只收割真正挂死/不守约的实现
             tts = await asyncio.wait_for(
                 self._tts_fn(result.text, voice, timeout_s=self._tts_timeout_s),
-                self._tts_timeout_s,
+                self._tts_backstop_s,
             )
         except asyncio.TimeoutError:
             self._stats["errors"] += 1
@@ -225,7 +263,7 @@ class TranslationPipeline:
                     segment_id=seg.id,
                     lang=lang,
                     stage="tts",
-                    detail=f"timeout after {self._tts_timeout_s}s (voice={voice})",
+                    detail=f"timeout after {self._tts_backstop_s}s backstop (voice={voice})",
                 )
             )
             return

@@ -1,4 +1,5 @@
-"""翻译管线编排纯逻辑测试：Fake 转写器 / Provider / TTS，无网络无 whisper，全程 <2s。"""
+"""翻译管线编排纯逻辑测试：Fake 转写器 / Provider / TTS，无网络无 whisper，全程数秒内
+（唯一的慢点是 TTS 兜底超时测试，受 +2s 兜底余量下限约束 ~2.2s）。"""
 
 import asyncio
 
@@ -103,7 +104,7 @@ SEG1 = TranscriptSegment(id=1, text="大家好", t0=0.1, t1=1.2)
 SEG2 = TranscriptSegment(id=2, text="三款产品", t0=2.0, t1=3.5)
 
 
-async def run_pipeline(segs, provider, tts, langs, tts_timeout_s=15.0):
+async def run_pipeline(segs, provider, tts, langs, tts_timeout_s=15.0, translate_timeout_s=12.0):
     """跑完整个生命周期并收集全部事件（wait_for 保证消费者必然终止）。"""
     transcriber = FakeTranscriber(segs)
     pipe = TranslationPipeline(
@@ -113,6 +114,7 @@ async def run_pipeline(segs, provider, tts, langs, tts_timeout_s=15.0):
         voices=VOICES2,
         tts_fn=tts,
         tts_timeout_s=tts_timeout_s,
+        translate_timeout_s=translate_timeout_s,
     )
     await pipe.start()
     await pipe.close()
@@ -123,7 +125,7 @@ async def run_pipeline(segs, provider, tts, langs, tts_timeout_s=15.0):
         async for ev in pipe.events():
             events.append(ev)
 
-    await asyncio.wait_for(collect(), timeout=5)
+    await asyncio.wait_for(collect(), timeout=8)
     return pipe, transcriber, events
 
 
@@ -216,8 +218,8 @@ async def test_tts_error_isolated_per_lang():
 
 @pytest.mark.anyio
 async def test_hanging_tts_times_out_pipeline_continues():
-    """挂死的 TTS（无视 timeout_s）由管线级 wait_for 收割 → PipelineErrorEvent(stage=tts)；
-    其他语言、后续段不受影响。"""
+    """挂死的 TTS（无视 timeout_s）由管线级兜底（tts_timeout_s + 2s）收割 →
+    PipelineErrorEvent(stage=tts)；其他语言、后续段不受影响。"""
     tts = FakeTTS(hang_voices=("v-ja",))
     pipe, _, events = await run_pipeline(
         [SEG1, SEG2], FakeProvider(), tts, langs=("en", "ja"), tts_timeout_s=0.2
@@ -251,6 +253,9 @@ async def test_feed_audio_passthrough_and_close_terminates():
     events = await asyncio.wait_for(task, timeout=2)
     assert events == []
     assert transcriber.closed
+    # close() 之后 feed_audio 静默丢弃（不抛、不透传）
+    pipe.feed_audio(b"\x03\x04", 16000)
+    assert transcriber.fed == [(b"\x01\x02", 16000)]
 
 
 @pytest.mark.anyio
@@ -287,3 +292,103 @@ async def test_stats():
         "tts_ok": 1,
         "errors": 0,
     }
+
+
+@pytest.mark.anyio
+async def test_missing_voice_fails_fast_at_construction():
+    """tts_langs 里有 voices 未配置的语言 → 构造期 ValueError（不拖到运行期 KeyError）。"""
+    with pytest.raises(ValueError, match="fr"):
+        TranslationPipeline(
+            FakeTranscriber([]),
+            FakeProvider(),
+            tts_langs=("en", "fr"),
+            voices=VOICES2,
+            tts_fn=FakeTTS(),
+        )
+
+
+class HangingProvider(FakeProvider):
+    """指定语言挂死（模拟不守 never-hang 契约的实现）。"""
+
+    def __init__(self, hang_langs):
+        super().__init__()
+        self.hang_langs = set(hang_langs)
+
+    async def translate(self, text, target_lang):
+        if target_lang in self.hang_langs:
+            await asyncio.sleep(600)
+        return await super().translate(text, target_lang)
+
+
+@pytest.mark.anyio
+async def test_hanging_provider_times_out_pipeline_continues():
+    """挂死的 provider 由 wait_for(translate_timeout_s) 收割 →
+    PipelineErrorEvent(stage=translate)；其他语言不受影响。"""
+    provider = HangingProvider(hang_langs=("ja",))
+    pipe, _, events = await run_pipeline(
+        [SEG1], provider, FakeTTS(), langs=("en", "ja"), translate_timeout_s=0.3
+    )
+
+    [err] = [e for e in events if isinstance(e, PipelineErrorEvent)]
+    assert (err.segment_id, err.lang, err.stage) == (1, "ja", "translate")
+    assert "timeout" in err.detail
+    # ja 没有 TranslationEvent（结果从未到手）；en 全链路照常
+    assert [e.lang for e in events if isinstance(e, TranslationEvent)] == ["en"]
+    assert [e.lang for e in events if isinstance(e, TTSReadyEvent)] == ["en"]
+    assert pipe.stats()["errors"] == 1
+
+
+class RaisingProvider(FakeProvider):
+    """指定语言直接抛异常（违反 never-raises 契约）。"""
+
+    async def translate(self, text, target_lang):
+        if target_lang == "ja":
+            raise RuntimeError("contract breach")
+        return await super().translate(text, target_lang)
+
+
+@pytest.mark.anyio
+async def test_provider_raises_isolated():
+    """provider 违约抛异常 → PipelineErrorEvent(stage=translate)；其他语言不受影响。"""
+    pipe, _, events = await run_pipeline(
+        [SEG1], RaisingProvider(), FakeTTS(), langs=("en", "ja")
+    )
+
+    [err] = [e for e in events if isinstance(e, PipelineErrorEvent)]
+    assert (err.segment_id, err.lang, err.stage) == (1, "ja", "translate")
+    assert "contract breach" in err.detail
+    assert [e.lang for e in events if isinstance(e, TranslationEvent)] == ["en"]
+    assert [e.lang for e in events if isinstance(e, TTSReadyEvent)] == ["en"]
+    assert pipe.stats()["errors"] == 1
+
+
+@pytest.mark.anyio
+async def test_close_drain_cancels_straggler():
+    """close() 收尾窗口内没跑完的任务被 cancel 并补发 PipelineErrorEvent(stage=close)。"""
+    tts = FakeTTS(hang_voices=("v-en",))
+    transcriber = FakeTranscriber([SEG1])
+    pipe = TranslationPipeline(
+        transcriber,
+        FakeProvider(),
+        tts_langs=("en",),
+        voices=VOICES2,
+        tts_fn=tts,
+        tts_timeout_s=30.0,  # 兜底 32s：任务真的会一直挂到 close
+    )
+    pipe._drain_timeout_s = 0.1  # 回归测试压小收尾窗口
+    await pipe.start()
+    await asyncio.sleep(0.05)  # 让 consumer 消费段并 spawn 到挂死任务
+    await pipe.close()
+
+    events = []
+
+    async def collect():
+        async for ev in pipe.events():
+            events.append(ev)
+
+    await asyncio.wait_for(collect(), timeout=2)
+    [err] = [e for e in events if isinstance(e, PipelineErrorEvent)]
+    assert (err.segment_id, err.lang, err.stage) == (1, "en", "close")
+    assert "cancel" in err.detail
+    assert pipe.stats()["errors"] == 1
+    assert not [e for e in events if isinstance(e, TTSReadyEvent)]
