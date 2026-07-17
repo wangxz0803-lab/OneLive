@@ -6,12 +6,11 @@ WS 连接只是数据的进出口——多个 /out 订阅者共享同一路渲�
 """
 
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import cv2
-import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
@@ -50,19 +49,34 @@ def create_app(pipeline) -> FastAPI:
 
     @app.websocket("/ingest")
     async def ingest(ws: WebSocket) -> None:
+        # 手动 ws.receive() 分发：二进制帧 = 视频帧（JPEG 原样交给 worker，
+        # 解码在 worker 线程内做，事件循环不再为注定被 latest-wins 丢弃的帧付
+        # 解码成本）；文本帧 = JSON 控制消息（protocol.py 的协议约定），坏
+        # JSON / 未知类型只记日志忽略——任何一类坏输入都不得杀死连接。
         await ws.accept()
         try:
             while True:
-                blob = await ws.receive_bytes()
-                try:
-                    header, payload = unpack_frame(blob)
-                    frame = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
-                    if frame is None:
-                        raise ValueError("jpeg decode failed")
-                except ValueError as e:
-                    log.warning("ingest: bad frame dropped: %s", e)
-                    continue
-                worker.submit(frame, seq=header.seq, ts_ms=header.ts_ms)
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    log.info("ingest disconnected")
+                    break
+                if msg.get("bytes") is not None:
+                    try:
+                        header, payload = unpack_frame(msg["bytes"])
+                    except ValueError as e:
+                        log.warning("ingest: bad frame dropped: %s", e)
+                        continue
+                    worker.submit(payload, seq=header.seq, ts_ms=header.ts_ms)
+                elif msg.get("text") is not None:
+                    try:
+                        ctrl = json.loads(msg["text"])
+                    except json.JSONDecodeError as e:
+                        log.warning("ingest: bad control JSON ignored: %s", e)
+                        continue
+                    if isinstance(ctrl, dict) and ctrl.get("type") == "ping":
+                        await ws.send_text(json.dumps({"type": "pong"}))
+                    else:
+                        log.warning("ingest: unknown control message ignored: %r", ctrl)
         except WebSocketDisconnect:
             log.info("ingest disconnected")
 

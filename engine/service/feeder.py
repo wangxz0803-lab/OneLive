@@ -4,8 +4,9 @@
 按目标 fps 节拍发送（绝对时钟防漂移）；服务端 latest-wins 自然适配慢推理。
 
 --log-sends <path>：把每帧 "seq,ts_ms"（发送时刻 epoch 毫秒，与帧头 ts_ms 同值）
-写入文件。当前 /out 帧头 ts_ms 尚未透传（M1b 待办），外部探针按 seq 匹配此日志
-即可诚实测出端到端延迟（同机时钟直接相减）。
+写入文件。/out 帧头已原样透传 /ingest 的 ts_ms，端到端延迟的主路径是
+`out_probe --latency-from-header`（直接用帧头时间戳相减）；--log-sends 保留
+作为交叉验证手段（探针按 seq 匹配此日志，独立复核帧头口径）。
 """
 
 import argparse

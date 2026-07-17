@@ -69,3 +69,27 @@ def test_bad_frame_does_not_kill_ingest():
             in_ws.send_bytes(pack_frame(FrameHeader(seq=1, ts_ms=1, channel=0), _jpeg(3)))
             blob = out_ws.receive_bytes()
     assert unpack_frame(blob)[0].seq == 1
+
+
+def test_ingest_text_ping_gets_pong():
+    """协议约定控制消息走 JSON 文本帧：ping → pong，连接不死。"""
+    app = create_app(pipeline=EchoPipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as in_ws:
+        in_ws.send_text('{"type": "ping"}')
+        assert in_ws.receive_json() == {"type": "pong"}
+
+
+def test_ingest_garbage_text_survives():
+    """坏 JSON / 未知类型的文本帧只记日志忽略，之后的二进制帧照常流转。"""
+    app = create_app(pipeline=EchoPipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/out") as out_ws:
+        with client.websocket_connect("/ingest") as in_ws:
+            in_ws.send_text("this is not json {{{")           # 坏 JSON → 忽略
+            in_ws.send_text('{"type": "warp-drive"}')         # 未知类型 → 忽略
+            in_ws.send_bytes(pack_frame(FrameHeader(seq=3, ts_ms=33, channel=0), _jpeg(5)))
+            blob = out_ws.receive_bytes()
+    header, _ = unpack_frame(blob)
+    assert header.seq == 3
+    assert header.ts_ms == 33

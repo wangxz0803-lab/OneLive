@@ -1,20 +1,24 @@
 import threading
 import time
 
+import cv2
 import numpy as np
 
 from service.worker import ChannelWorker
 
 
 class FakePipeline:
-    """可控耗时的假管线：返回输入帧的副本并记录调用序号。"""
+    """可控耗时的假管线：返回输入帧的副本并记录调用序号与输入形状。"""
 
     def __init__(self, cost_s: float = 0.0):
         self.cost_s = cost_s
         self.calls: list[int] = []
+        self.shapes: list[tuple] = []
 
     def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+        assert isinstance(frame_bgr, np.ndarray)  # worker 内解码后必须是 ndarray
         self.calls.append(seq)
+        self.shapes.append(frame_bgr.shape)
         if self.cost_s:
             time.sleep(self.cost_s)
         return frame_bgr.copy()
@@ -60,8 +64,11 @@ class NonePipeline:
         return None
 
 
-def _frame(v: int) -> np.ndarray:
-    return np.full((8, 8, 3), v, np.uint8)
+def _jpeg(v: int) -> bytes:
+    """编码一张 8x8 纯色小图为真实 JPEG bytes（worker 现在收 JPEG，解码在其线程内）。"""
+    ok, jpg = cv2.imencode(".jpg", np.full((8, 8, 3), v, np.uint8))
+    assert ok
+    return jpg.tobytes()
 
 
 def test_latest_wins_drops_stale_frames():
@@ -70,7 +77,7 @@ def test_latest_wins_drops_stale_frames():
     w.start()
     try:
         for i in range(10):  # 提交快于消费，中间帧应被丢弃
-            w.submit(_frame(i), seq=i, ts_ms=1000 + i)
+            w.submit(_jpeg(i), seq=i, ts_ms=1000 + i)
             time.sleep(0.01)
         deadline = time.time() + 2.0
         while time.time() < deadline and (not fake.calls or fake.calls[-1] != 9):
@@ -89,13 +96,14 @@ def test_subscribers_receive_rendered_frames():
     unsub = w.subscribe(lambda seq, ts_ms, jpeg: got.append((seq, ts_ms)))
     w.start()
     try:
-        w.submit(_frame(1), seq=1, ts_ms=1234)
+        w.submit(_jpeg(1), seq=1, ts_ms=1234)
         deadline = time.time() + 2.0
         while time.time() < deadline and not got:
             time.sleep(0.01)
         assert got == [(1, 1234)]           # 回调收到的 ts_ms 必须等于提交时的值
+        assert fake.shapes == [(8, 8, 3)]   # JPEG → 解码 ndarray 的形状经 roundtrip 保持
         unsub()
-        w.submit(_frame(2), seq=2, ts_ms=5678)
+        w.submit(_jpeg(2), seq=2, ts_ms=5678)
         time.sleep(0.2)
         assert got == [(1, 1234)]           # 退订后不再收到
     finally:
@@ -108,7 +116,7 @@ def test_stats_report_processed_and_dropped():
     w.start()
     try:
         for i in range(6):
-            w.submit(_frame(i), seq=i, ts_ms=2000 + i)
+            w.submit(_jpeg(i), seq=i, ts_ms=2000 + i)
         time.sleep(0.5)
         s = w.stats()
         assert s["processed"] >= 1
@@ -123,10 +131,10 @@ def test_single_slot_keeps_only_latest_deterministic():
     w = ChannelWorker(pipeline=fake, name="t")
     w.start()
     try:
-        w.submit(_frame(0), seq=0, ts_ms=3000)
+        w.submit(_jpeg(0), seq=0, ts_ms=3000)
         assert fake.started.wait(timeout=2)  # worker 已取走 frame 0 并阻塞在 infer 中
         for i in range(1, 10):               # 阻塞期间提交 1..9，槽内只留 9
-            w.submit(_frame(i), seq=i, ts_ms=3000 + i)
+            w.submit(_jpeg(i), seq=i, ts_ms=3000 + i)
         fake.gate.set()
         deadline = time.time() + 2.0
         while time.time() < deadline and len(fake.calls) < 2:
@@ -144,11 +152,11 @@ def test_worker_survives_pipeline_exception():
     w.subscribe(lambda seq, ts_ms, jpeg: got.append((seq, ts_ms)))
     w.start()
     try:
-        w.submit(_frame(1), seq=1, ts_ms=41)  # 第一次 infer 抛异常
+        w.submit(_jpeg(1), seq=1, ts_ms=41)  # 第一次 infer 抛异常
         deadline = time.time() + 2.0
         while time.time() < deadline and not fake.calls:
             time.sleep(0.01)
-        w.submit(_frame(2), seq=2, ts_ms=42)  # 线程必须存活并继续处理
+        w.submit(_jpeg(2), seq=2, ts_ms=42)  # 线程必须存活并继续处理
         deadline = time.time() + 2.0
         while time.time() < deadline and not got:
             time.sleep(0.01)
@@ -160,6 +168,30 @@ def test_worker_survives_pipeline_exception():
         w.stop()
 
 
+def test_garbage_jpeg_counts_error_and_thread_survives():
+    """解码失败（垃圾 bytes）计入 errors，不进 infer，线程存活并继续处理好帧。"""
+    fake = FakePipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    got: list[tuple[int, int]] = []
+    w.subscribe(lambda seq, ts_ms, jpeg: got.append((seq, ts_ms)))
+    w.start()
+    try:
+        w.submit(b"not a jpeg at all", seq=1, ts_ms=10)
+        deadline = time.time() + 2.0
+        while time.time() < deadline and w.stats()["errors"] < 1:
+            time.sleep(0.01)
+        assert w.stats()["errors"] == 1
+        assert fake.calls == []              # 解码失败的帧不得进入 infer
+        w.submit(_jpeg(2), seq=2, ts_ms=20)  # 下一好帧必须正常处理
+        deadline = time.time() + 2.0
+        while time.time() < deadline and not got:
+            time.sleep(0.01)
+        assert got == [(2, 20)]
+        assert w.stats()["processed"] == 1
+    finally:
+        w.stop()
+
+
 def test_none_return_counts_skipped_without_delivery():
     fake = NonePipeline()
     w = ChannelWorker(pipeline=fake, name="t")
@@ -167,7 +199,7 @@ def test_none_return_counts_skipped_without_delivery():
     w.subscribe(lambda seq, ts_ms, jpeg: got.append((seq, ts_ms)))
     w.start()
     try:
-        w.submit(_frame(1), seq=1, ts_ms=7)
+        w.submit(_jpeg(1), seq=1, ts_ms=7)
         deadline = time.time() + 2.0
         while time.time() < deadline and w.stats()["skipped"] < 1:
             time.sleep(0.01)
