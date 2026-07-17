@@ -1,6 +1,12 @@
 """本地启动引擎服务（Arc 慢速链路）。用法：
   <m0-venv-python> -m service.run_local [--port 8900] [--source <img>] [--channels N]
                                         [--https] [--host H] [--cfg onnx_infer.yaml]
+                                        [--translate]
+
+--translate：启用翻译链路（/audio 上行 + /events 广播）。真实组件：
+faster-whisper small ASR + from_env() 翻译 Provider（AI_API_URL/AI_API_KEY/
+AI_MODEL 环境变量；未配 key 时 Provider 诚实 unavailable——字幕照出、
+翻译事件 status="unavailable"、不做 TTS，绝不伪造译文）+ edge-tts 英文配音。
 
 需从本 worktree 的 engine/ 目录运行（-m 方式）；M0 资产路径通过
 环境变量 ONELIVE_M0_ENGINE 指定（默认 .worktrees/v2-m0-spike/engine）。
@@ -38,7 +44,23 @@ if __name__ == "__main__":
                     help="TLS 服务（证书取 <repo-root>/certs/onelive-{cert,key}.pem）")
     ap.add_argument("--host", default=None,
                     help="监听地址（默认 127.0.0.1；--https 时默认 0.0.0.0）")
+    ap.add_argument("--translate", action="store_true",
+                    help="启用翻译链路（whisper ASR + from_env() Provider + en TTS）")
     args = ap.parse_args()
+
+    translation_pipeline = None
+    if args.translate:
+        from translate.asr import SegmentTranscriber
+        from translate.pipeline import TranslationPipeline
+        from translate.providers import from_env
+        provider = from_env()
+        if not provider.available:
+            print("[run_local] translate: AI_API_KEY/AI_API_URL 未配置，"
+                  "Provider unavailable——字幕照常，翻译事件 status=unavailable，无 TTS")
+        translation_pipeline = TranslationPipeline(
+            transcriber=SegmentTranscriber(),
+            provider=provider,
+            tts_langs=("en",))
 
     ssl_kwargs = {}
     if args.https:
@@ -67,7 +89,8 @@ if __name__ == "__main__":
     channels = tuple(range(args.channels))
     app = create_app(
         lambda ch: LivePortraitPipeline(source_image=source, cfg_name=args.cfg),
-        channels=channels)
+        channels=channels,
+        translation_pipeline=translation_pipeline)
     for ch in channels:
         print(f"[run_local] channel {ch}: "
               f"{scheme_ws}://{show_host}:{args.port}/out?channel={ch}"
