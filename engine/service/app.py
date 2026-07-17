@@ -8,10 +8,14 @@ WS 连接只是数据的进出口——多个 /out 订阅者共享同一路渲�
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import cv2
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+
+_VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
 
 from service.protocol import FrameHeader, pack_frame, unpack_frame
 from service.worker import ChannelWorker
@@ -32,6 +36,10 @@ def create_app(pipeline) -> FastAPI:
         worker.stop()
 
     app = FastAPI(lifespan=lifespan)
+
+    @app.get("/")
+    async def index() -> HTMLResponse:
+        return HTMLResponse(_VIEWER_HTML.read_text(encoding="utf-8"))
 
     @app.get("/status")
     async def status() -> dict:

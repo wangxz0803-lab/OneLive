@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLive engine viewer</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font-family: Consolas, monospace;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  canvas { background: #000; max-width: 100%; border: 1px solid #333; }
+  #stats { font-size: 14px; color: #8f8; }
+  #conn { font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<h1>OneLive engine viewer</h1>
+<canvas id="c" width="512" height="512"></canvas>
+<div id="stats">frames: 0 | seq: - | fps (last 10): -</div>
+<div id="conn">connecting...</div>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const statsEl = document.getElementById("stats");
+const connEl = document.getElementById("conn");
+
+let frames = 0;
+let fpsText = "-";
+let winStart = performance.now();
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/out`);
+  ws.binaryType = "arraybuffer";  // 需要 DataView 读 20 字节协议头
+  ws.onopen = () => { connEl.textContent = "connected"; };
+  ws.onmessage = async (ev) => {
+    // 帧 = 20 字节头（magic u16 | ver u8 | ch u8 | seq u64 | ts_ms u64，LE）+ JPEG
+    const seq = new DataView(ev.data).getBigUint64(4, true);
+    const jpeg = new Blob([ev.data.slice(20)], { type: "image/jpeg" });
+    const bmp = await createImageBitmap(jpeg);
+    if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+    }
+    ctx.drawImage(bmp, 0, 0);
+    bmp.close();
+    frames += 1;
+    // 本地慢速链路 ~1.9fps：fps 每 10 帧结算一次，帧计数/seq 每帧更新以示存活
+    if (frames % 10 === 0) {
+      const now = performance.now();
+      fpsText = (10000 / (now - winStart)).toFixed(2);
+      winStart = now;
+    }
+    statsEl.textContent = `frames: ${frames} | seq: ${seq} | fps (last 10): ${fpsText}`;
+  };
+  ws.onclose = () => {
+    connEl.textContent = "disconnected, retrying in 1s...";
+    setTimeout(connect, 1000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+connect();
+</script>
+</body>
+</html>
