@@ -197,6 +197,11 @@ def create_app(pipeline_factory: Callable[[int], object],
                 {"type": "casting_ack", "ok": False, "channel": ch,
                  "source": source, "detail": detail}, ensure_ascii=False))
 
+        # channel 必须是真 int（bool 是 int 子类，也拒）：list/dict 等不可哈希
+        # 类型直接进 workers.get 会抛 TypeError 杀死 /ingest 接收循环
+        if not isinstance(ch, int) or isinstance(ch, bool):
+            await nack("invalid channel")
+            return
         worker = workers.get(ch)
         if worker is None:
             await nack(f"unknown channel: {ch!r}")

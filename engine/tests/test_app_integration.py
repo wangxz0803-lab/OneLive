@@ -267,6 +267,25 @@ def test_casting_rejects_bad_source_names(tmp_path, monkeypatch):
             assert ws.receive_json() == {"type": "pong"}  # 连接活着且 nack 未乱序
 
 
+def test_casting_non_int_channel_nacked_connection_survives(tmp_path, monkeypatch):
+    """channel 非 int（list/dict 等不可哈希类型直接进 workers.get 会 TypeError
+    杀死接收循环）：必须 nack "invalid channel"，连接活着（尾随 ping 有 pong）。"""
+    (tmp_path / "s1.jpg").write_bytes(b"x")
+    monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))
+    app = create_app(lambda ch: CastablePipeline())
+    client = TestClient(app)
+    bad_channels = [[0], {"ch": 0}, "0", 1.5, True, None]
+    with client.websocket_connect("/ingest") as ws:
+        for ch in bad_channels:
+            ws.send_text(_casting(ch, "s1.jpg"))
+            ack = ws.receive_json()
+            assert ack["type"] == "casting_ack", f"channel={ch!r}: got {ack}"
+            assert ack["ok"] is False
+            assert ack["detail"] == "invalid channel"
+            ws.send_text('{"type": "ping"}')
+            assert ws.receive_json() == {"type": "pong"}  # 接收循环没死
+
+
 def test_casting_unknown_channel_nacked(tmp_path, monkeypatch):
     (tmp_path / "s1.jpg").write_bytes(b"x")
     monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))

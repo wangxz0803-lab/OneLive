@@ -282,6 +282,66 @@ def test_post_command_exception_counts_error_and_worker_survives():
         w.stop()
 
 
+def test_stop_drains_pending_commands_with_runtime_error():
+    """stop() 后仍未执行的命令不得静默消失：on_done 收 RuntimeError("worker stopped")。
+
+    构造：worker 阻塞在 frame 0 的 infer 里 → 投递命令（进队列但不执行）→
+    stop()（先置 _stop 再等线程退出）→ 0.2s 后放行 infer，线程回到循环头
+    发现 _stop 直接退出（不再清命令队列）→ stop() 的 drain 必须通知该命令。"""
+    fake = BlockingPipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    w.start()
+    ran: list = []
+    done: list = []
+    w.submit(_jpeg(0), seq=0, ts_ms=1)
+    assert fake.started.wait(timeout=2)   # worker 已阻塞在 infer 中
+    w.post_command(lambda p: ran.append(p), on_done=done.append)
+    t = threading.Timer(0.2, fake.gate.set)  # stop() 置位后再放行 infer
+    t.start()
+    try:
+        w.stop()
+    finally:
+        t.cancel()
+        fake.gate.set()
+    assert ran == []                      # 命令从未执行
+    assert len(done) == 1
+    assert isinstance(done[0], RuntimeError)
+    assert str(done[0]) == "worker stopped"
+
+
+def test_post_command_overflow_rejects_ninth_with_runtime_error():
+    """队列有界（8）：第 1 条命令阻塞执行中，再投 8 条填满队列，第 9 条
+    立即（调用方线程）收 RuntimeError("command queue full")；放行后已受理
+    的 8 条全部执行并 on_done(None)——溢出拒绝不影响已受理命令。"""
+    fake = FakePipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    w.start()
+    gate = threading.Event()
+    executing = threading.Event()
+
+    def blocker(_p):
+        executing.set()
+        gate.wait(timeout=5)
+
+    accepted_done: list = []
+    rejected_done: list = []
+    try:
+        w.post_command(blocker)
+        assert executing.wait(timeout=2)  # 第 1 条已出队、阻塞执行中
+        for _ in range(8):                # 填满 8 槽队列
+            w.post_command(lambda p: None, on_done=accepted_done.append)
+        w.post_command(lambda p: None, on_done=rejected_done.append)  # 第 9 条
+        assert len(rejected_done) == 1    # 同步拒绝（调用方线程立即回调）
+        assert isinstance(rejected_done[0], RuntimeError)
+        assert str(rejected_done[0]) == "command queue full"
+        gate.set()
+        assert _wait_until(lambda: len(accepted_done) == 8)
+        assert all(exc is None for exc in accepted_done)
+    finally:
+        gate.set()
+        w.stop()
+
+
 def test_none_return_counts_skipped_without_delivery():
     fake = NonePipeline()
     w = ChannelWorker(pipeline=fake, name="t")

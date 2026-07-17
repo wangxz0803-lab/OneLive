@@ -49,11 +49,22 @@ class ChannelWorker:
         self._thread.start()
 
     def stop(self) -> None:
+        """停线程并 drain 未执行命令：每条 on_done 收 RuntimeError("worker stopped")
+        ——已受理的命令绝不静默消失（与溢出拒绝同一契约）。"""
         self._stop.set()
         with self._slot_lock:
             self._slot_lock.notify_all()
         if self._thread:
             self._thread.join(timeout=5)
+        with self._slot_lock:
+            pending = list(self._cmds)
+            self._cmds.clear()
+        for _fn, on_done in pending:  # 锁外回调，与 _run_pending_commands 同模式
+            if on_done is not None:
+                try:
+                    on_done(RuntimeError("worker stopped"))
+                except Exception:
+                    log.exception("worker %s: on_done failed during stop drain", self._name)
 
     def submit(self, jpeg_bytes: bytes, seq: int, ts_ms: int) -> None:
         """提交一帧 JPEG bytes 待解码+推理。ts_ms 为该帧的采集时间戳（epoch 毫秒），随帧透传给订阅者。
@@ -76,16 +87,22 @@ class ChannelWorker:
         on_done(exc_or_none)（若给出）在【worker 线程】回调——成功传 None，失败传
         异常对象；回调方要回事件循环必须自己 call_soon_threadsafe。
         队列有界（8）：溢出即拒绝，on_done 立即（在调用方线程）收 RuntimeError。
+        stop() 后仍在队列里的命令同样以 on_done(RuntimeError("worker stopped"))
+        通知——任何已受理命令都不会静默消失。
         """
         with self._slot_lock:
-            if len(self._cmds) >= self._cmds_max:
-                log.error("worker %s: command queue full (%d), command rejected",
-                          self._name, self._cmds_max)
-                if on_done is not None:
-                    on_done(RuntimeError("command queue full"))
+            if len(self._cmds) < self._cmds_max:
+                self._cmds.append((fn, on_done))
+                self._slot_lock.notify()
                 return
-            self._cmds.append((fn, on_done))
-            self._slot_lock.notify()
+        # 溢出拒绝：回调在锁外 + try/except，与 _run_pending_commands 同模式
+        log.error("worker %s: command queue full (%d), command rejected",
+                  self._name, self._cmds_max)
+        if on_done is not None:
+            try:
+                on_done(RuntimeError("command queue full"))
+            except Exception:
+                log.exception("worker %s: on_done failed on overflow reject", self._name)
 
     def subscribe(self, cb: Subscriber) -> Callable[[], None]:
         with self._subs_lock:
