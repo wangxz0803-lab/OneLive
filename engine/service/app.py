@@ -62,7 +62,7 @@ def create_app(pipeline) -> FastAPI:
                 except ValueError as e:
                     log.warning("ingest: bad frame dropped: %s", e)
                     continue
-                worker.submit(frame, seq=header.seq)
+                worker.submit(frame, seq=header.seq, ts_ms=header.ts_ms)
         except WebSocketDisconnect:
             log.info("ingest disconnected")
 
@@ -72,8 +72,9 @@ def create_app(pipeline) -> FastAPI:
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=4)
 
-        def on_frame(seq: int, jpeg: bytes) -> None:  # worker 线程回调 → 事件循环
-            blob = pack_frame(FrameHeader(seq=seq, ts_ms=0, channel=0), jpeg)
+        def on_frame(seq: int, ts_ms: int, jpeg: bytes) -> None:  # worker 线程回调 → 事件循环
+            # ts_ms 为 /ingest 帧头带来的采集时间戳，原样透传，/out 端可直接算 E2E 延迟
+            blob = pack_frame(FrameHeader(seq=seq, ts_ms=ts_ms, channel=0), jpeg)
 
             def _put() -> None:
                 if queue.full():

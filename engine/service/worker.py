@@ -2,7 +2,8 @@
 
 设计约束（来自 M0 结论）：推理 0.5-0.7s/帧且底层 split predictor 串行，
 排队旧帧只会放大延迟——slot 里永远只保留最新一帧，被覆盖即计 dropped。
-订阅者回调收到 (seq, jpeg_bytes)；回调在 worker 线程执行，必须非阻塞。
+订阅者回调收到 (seq, ts_ms, jpeg_bytes)，ts_ms 为提交时随帧传入的采集时间戳
+（epoch 毫秒），原样透传用于端到端延迟测量；回调在 worker 线程执行，必须非阻塞。
 """
 
 import logging
@@ -15,7 +16,7 @@ import numpy as np
 
 log = logging.getLogger("engine.worker")
 
-Subscriber = Callable[[int, bytes], None]
+Subscriber = Callable[[int, int, bytes], None]  # (seq, ts_ms, jpeg_bytes)
 
 
 class ChannelWorker:
@@ -25,7 +26,7 @@ class ChannelWorker:
         self._pipeline = pipeline
         self._name = name
         self._quality = jpeg_quality
-        self._slot: Optional[tuple[np.ndarray, int]] = None
+        self._slot: Optional[tuple[np.ndarray, int, int]] = None  # (frame, seq, ts_ms)
         self._slot_lock = threading.Condition()
         self._subs: dict[int, Subscriber] = {}
         self._subs_lock = threading.Lock()
@@ -46,11 +47,12 @@ class ChannelWorker:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def submit(self, frame_bgr: np.ndarray, seq: int) -> None:
+    def submit(self, frame_bgr: np.ndarray, seq: int, ts_ms: int) -> None:
+        """提交一帧待推理。ts_ms 为该帧的采集时间戳（epoch 毫秒），随帧透传给订阅者。"""
         with self._slot_lock:
             if self._slot is not None:
                 self._stats["dropped"] += 1
-            self._slot = (frame_bgr, seq)
+            self._slot = (frame_bgr, seq, ts_ms)
             self._slot_lock.notify()
 
     def subscribe(self, cb: Subscriber) -> Callable[[], None]:
@@ -75,7 +77,7 @@ class ChannelWorker:
                     self._slot_lock.wait(timeout=0.1)
                 if self._stop.is_set():
                     return
-                frame, seq = self._slot
+                frame, seq, ts_ms = self._slot
                 self._slot = None
             try:
                 t0 = time.perf_counter()
@@ -99,7 +101,7 @@ class ChannelWorker:
                 subs = list(self._subs.values())
             for cb in subs:
                 try:
-                    cb(seq, payload)
+                    cb(seq, ts_ms, payload)
                 except Exception:
                     log.exception("worker %s: subscriber callback failed on seq=%d", self._name, seq)
                     self._stats["errors"] += 1

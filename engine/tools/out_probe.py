@@ -1,7 +1,9 @@
 """/out 探针：收协议帧，测到达 fps 与（可选）端到端延迟。用法（engine/ 目录）：
   python -m tools.out_probe --url ws://127.0.0.1:8900/out [--count 30] [--timeout 10]
-      [--save-dir out/probe] [--sends-csv sends.csv]
+      [--save-dir out/probe] [--sends-csv sends.csv] [--latency-from-header]
 --sends-csv 为 feeder --log-sends 输出（seq,发送epoch毫秒），按 seq 匹配算同机 E2E 延迟。
+--latency-from-header 直接用 /out 帧头透传的 ts_ms 算 now - header.ts_ms 延迟
+（仅统计 ts_ms > 0 的帧；同机时钟才有意义），无需 CSV 侧信道。
 --save-dir 存收到的首/中/末帧 PNG 作目检证据。收满 count 或 timeout 秒无帧即结束。
 """
 
@@ -25,6 +27,7 @@ async def probe(args: argparse.Namespace) -> None:
         with open(args.sends_csv, newline="", encoding="utf-8") as f:
             sends = {int(r[0]): int(r[1]) for r in csv.reader(f) if r}
     frames: list[tuple[int, float, bytes]] = []  # (seq, recv_epoch_ms, jpeg)
+    header_lats: list[float] = []  # now - header.ts_ms（仅 ts_ms > 0 的帧）
     async with websockets.connect(args.url, max_size=None) as ws:
         while len(frames) < args.count:
             try:
@@ -33,7 +36,10 @@ async def probe(args: argparse.Namespace) -> None:
                 print(f"[probe] no frame for {args.timeout}s, stopping")
                 break
             header, jpeg = unpack_frame(blob)
-            frames.append((header.seq, time.time() * 1000, jpeg))
+            recv_ms = time.time() * 1000
+            if args.latency_from_header and header.ts_ms > 0:
+                header_lats.append(recv_ms - header.ts_ms)
+            frames.append((header.seq, recv_ms, jpeg))
     if not frames:
         print("[probe] no frames received")
         return
@@ -44,6 +50,14 @@ async def probe(args: argparse.Namespace) -> None:
           f" -> arrival fps = {fps:.2f}")
     print(f"[probe] jpeg bytes: avg={sum(sizes)//len(sizes)} min={min(sizes)} max={max(sizes)}")
     print(f"[probe] received seqs: {[s for s, _, _ in frames]}")
+    if args.latency_from_header:
+        if header_lats:
+            print(f"[probe] e2e latency (header ts_ms -> probe recv, {len(header_lats)}"
+                  f" frames): mean={statistics.mean(header_lats):.0f}ms"
+                  f" median={statistics.median(header_lats):.0f}ms"
+                  f" min={min(header_lats):.0f}ms max={max(header_lats):.0f}ms")
+        else:
+            print("[probe] --latency-from-header: no frames with ts_ms > 0")
     lats = [(s, r - sends[s]) for s, r, _ in frames if s in sends]
     if lats:
         v = [l for _, l in lats]
@@ -68,4 +82,6 @@ if __name__ == "__main__":
     ap.add_argument("--timeout", type=float, default=10.0)
     ap.add_argument("--save-dir", default=None)
     ap.add_argument("--sends-csv", default=None)
+    ap.add_argument("--latency-from-header", action="store_true",
+                    help="用 /out 帧头 ts_ms 直接算 now - ts_ms 端到端延迟（同机时钟）")
     asyncio.run(probe(ap.parse_args()))

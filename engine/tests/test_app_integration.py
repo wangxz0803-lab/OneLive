@@ -28,6 +28,7 @@ def test_ingest_to_out_roundtrip():
             blob = out_ws.receive_bytes()
     header, payload = unpack_frame(blob)
     assert header.seq == 7
+    assert header.ts_ms == 123              # /out 帧头透传 /ingest 的真实 ts_ms
     img = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
     assert img.shape == (16, 16, 3)
 
