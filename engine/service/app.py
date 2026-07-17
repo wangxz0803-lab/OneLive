@@ -123,11 +123,19 @@ def create_app(pipeline) -> FastAPI:
         except WebSocketDisconnect:
             pass
         finally:
+            # 清理必须全同步、零 await：外部取消（如 TestClient 退出时 portal
+            # cancel）会在 finally 的任意 await 点重投 CancelledError——之前版本
+            # 在此 await gather，偶发（~2%）把 finally 拦腰打断：unsubscribe 被
+            # 跳过、端点 future 以 CANCELLED 收场令 TestClient teardown 抛错。
+            # unsubscribe 最先执行（同步、廉价），保证任何路径都不会漏。
+            unsubscribe()
+            # 只 cancel 不 await：任务绑在本事件循环上，取消后由循环自行回收。
+            # done_callback 兜底取回可能已挂在任务上的异常（如断开后 receive
+            # 的 RuntimeError），避免 "Task exception was never retrieved" 告警；
+            # 已取消的任务不能调 exception()，先判 cancelled()。
             for task in (queue_task, recv_task):
                 task.cancel()
-            # return_exceptions=True 吞掉 CancelledError 及已完成任务上挂着的
-            # 其他异常（如断开后 receive 的 RuntimeError），清理路径绝不再抛。
-            await asyncio.gather(queue_task, recv_task, return_exceptions=True)
-            unsubscribe()
+                task.add_done_callback(
+                    lambda t: None if t.cancelled() else t.exception())
 
     return app
