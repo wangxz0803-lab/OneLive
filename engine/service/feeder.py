@@ -11,6 +11,7 @@
 import argparse
 import asyncio
 import time
+from pathlib import Path
 from typing import IO, Optional
 
 import cv2
@@ -20,7 +21,8 @@ from service.protocol import FrameHeader, pack_frame
 
 
 async def run(url: str, cap: cv2.VideoCapture, fps: float,
-              max_frames: int | None, log_file: Optional[IO[str]] = None) -> None:
+              max_frames: int | None, log_file: Optional[IO[str]] = None,
+              save_raw: Optional[str] = None) -> None:
     async with websockets.connect(url, max_size=None) as ws:
         seq = 0
         fails = 0  # 连续读取失败计数：摄像头拔出/占用时干净退出而非 100% CPU 空转
@@ -36,6 +38,9 @@ async def run(url: str, cap: cv2.VideoCapture, fps: float,
                 await asyncio.sleep(0.1)
                 continue
             fails = 0
+            if save_raw is not None and seq % 200 == 0:  # 每 200 帧存一张输入证据
+                Path(save_raw).mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(Path(save_raw) / f"raw_seq{seq}.png"), frame)
             ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ok:
                 ts_ms = int(time.time() * 1000)
@@ -57,13 +62,15 @@ def main() -> None:
     ap.add_argument("--max-frames", type=int, default=None)
     ap.add_argument("--log-sends", default=None,
                     help="把每帧 seq,发送时刻(epoch ms) 写入此文件供延迟测量")
+    ap.add_argument("--save-raw", default=None,
+                    help="每 200 帧把原始驱动帧 PNG 存入此目录（输入侧目检证据）")
     args = ap.parse_args()
     assert (args.video is None) != (args.camera is None), "指定 --video 或 --camera 之一"
     cap = cv2.VideoCapture(args.video if args.video else args.camera)
     assert cap.isOpened(), "驱动源打开失败"
     log_file = open(args.log_sends, "w", encoding="utf-8") if args.log_sends else None
     try:
-        asyncio.run(run(args.url, cap, args.fps, args.max_frames, log_file))
+        asyncio.run(run(args.url, cap, args.fps, args.max_frames, log_file, args.save_raw))
     finally:
         if log_file is not None:
             log_file.close()

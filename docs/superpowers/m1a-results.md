@@ -53,6 +53,50 @@
 
 （协议 4 + worker 6 + app 集成 4 + M0 audio_lip 2；warning 为 starlette testclient 弃用提示，与本项目无关。）
 
+## 摄像头 E2E（Task 6）
+
+**结论先行：摄像头链路全程打通且行为符合设计，但本机摄像头物理隐私挡板处于关闭状态，驱动帧是驱动程序的占位图（无人脸），因此"真人动作复刻"未能在本环境验证——留待项目 owner 验收时开挡板复测（OWNER-VALIDATION-REQUIRED）。**
+
+### 摄像头可用性
+
+- index 0：`cap.isOpened()=True`，读帧成功，640×480×3。**但画面是驱动层隐私挡板占位图**（灰色笔记本插画 + 划线相机图标），非真实场景——本机（含 GameViewer/MuMu/Oray 等虚拟显示适配器环境）的物理摄像头隐私开关处于遮挡位。
+- index 1、2：打不开（`Camera index out of range`）。
+
+### 实测拓扑与命令（2026-07-17）
+
+1. 服务：`python -m service.run_local --port 8905`（M0 venv，source=s10.jpg 默认）
+2. feeder：`python -m service.feeder --url ws://127.0.0.1:8905/ingest --camera 0 --fps 10 --max-frames 600 --log-sends out/task6/sends.csv --save-raw out/task6/raw`（60 秒，正常跑完 600 帧，exit 0）
+3. 探针：`python -m tools.out_probe --url ws://127.0.0.1:8905/out --count 120 --timeout 75 --save-dir out/task6/probe --sends-csv out/task6/sends.csv`
+
+### 实际观察到的行为
+
+- 探针原文：`[probe] no frame for 75.0s, stopping` / `[probe] no frames received`——**/out 全程 0 帧输出**。
+- 运行结束 `GET /status`（原文）：
+
+```
+{"engine":"ok","channel":{"processed":0,"dropped":115,"skipped":485,"errors":0,"last_infer_ms":144.86939999915194}}
+```
+
+- 口径核算：485 skipped + 115 dropped = 600，全部核算清。**skipped=485**——每一帧被 worker 取走推理，人脸检测（约 145ms/帧，见 last_infer_ms）找不到脸，管线返回 None 计 skipped；**没有垃圾输出、没有 errors、没有冻结帧**。dropped=115 是 latest-wins 正常覆盖（10fps 输入 vs ~6.9fps 的检测-only 处理速度）。
+- 这正是适配器 docstring 承诺的"首次检测到人脸之前无脸→None→skipped"路径的大规模实测：600 帧无一进入生成阶段，下游订阅者干净地收到 0 帧而非坏帧。
+- 已知局限"已跟踪后中途丢脸"路径本次未触发（全程无脸，从未进入跟踪态）。
+
+### 证据文件（gitignore 的 engine/out/，不入库）
+
+- `engine/out/task6/camcheck_idx0.png`、`engine/out/task6/raw/raw_seq{0,200,400}.png`：输入侧——4 张目检均为同一隐私挡板占位图，确认全程无人脸（`--save-raw` 为本次给 feeder 新增的输入证据参数）。
+- `engine/out/task6/sends.csv`：600 行发送日志；`engine/out/task6/{feeder,service}.log`。
+- `engine/out/task6/probe/`：空（0 输出帧，无可存）。
+
+### feeder 摄像头韧性修复验证（Part A 回归）
+
+用 duck-typed 永久失败 cap 调 `service.feeder.run()`：5.5 秒后干净退出 `SystemExit: driving source read failed repeatedly (50 consecutive failures)`——不再 100% CPU 空转（旧代码会在 `cap.set(POS_FRAMES,0)` no-op 上死循环）。
+
+### 遗留验证项（验收时）
+
+1. 打开摄像头物理隐私挡板，真人入镜复跑上述命令，目检 avatar 姿态是否跟随真人头部动作（首次真人验证）。
+2. 浏览器打开 `http://127.0.0.1:<port>/` 目检 viewer 页面（本环境无浏览器，Task 5/6 均只做了 GET / 内容验证）。
+3. 中途丢脸（真人离镜再回来）的跟踪恢复行为（M1b 待办 #8）。
+
 ## M1b 待办（评审累积）
 
 1. **/out 空闲断连清理**：handler 阻塞在 `queue.get()`，不并发 `ws.receive()`，客户端断开后要等到下一次 `send_bytes` 失败才能感知；死订阅者在无帧输出期间永不清理。本次实测已复现：探针超时退出后服务端未记录 connection closed。

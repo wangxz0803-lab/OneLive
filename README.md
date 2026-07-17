@@ -205,6 +205,22 @@ macOS / Linux 示例：
 
 演示主链路不依赖外部 AI。切换到预置台词和 Demo Translation Provider，确认界面标记为 EMULATED。
 
+## 数字人引擎服务（V2 M1a）
+
+LivePortrait 实时驱动的数字人引擎服务原型：WebSocket `/ingest` 收驱动帧（摄像头/视频），常驻 worker 以 latest-wins 策略推理，`/out` 扇出渲染帧给多个订阅者，`/status` 报统计。运行需要 M0 spike 的引擎资产（模型 + patched FasterLivePortrait clone）：
+
+```bash
+# 服务（在 engine/ 目录，用 M0 venv 的 python）
+export ONELIVE_M0_ENGINE=<repo>/.worktrees/v2-m0-spike/engine   # 默认即此路径
+<m0-venv-python> -m service.run_local --port 8900 [--source <肖像图>]
+
+# 驱动源（另开终端）：摄像头或视频文件
+<m0-venv-python> -m service.feeder --url ws://127.0.0.1:8900/ingest --camera 0 --fps 10
+# 浏览器打开 http://127.0.0.1:8900/ 实时目检；量化测量用 tools/out_probe.py
+```
+
+当前性能（本地 Arc，DML）：~1.9fps / E2E 延迟中位 566ms，高帧率输入靠 latest-wins 丢帧适配（by design）。边缘 GPU 部署与生产化见 M1b 计划。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)；实现计划：[M1a plan](docs/superpowers/plans/2026-07-17-onelive-v2-m1a-engine-service.md)。
+
 ## 文档
 
 - [产品规格](docs/PRODUCT_SPEC.md)
