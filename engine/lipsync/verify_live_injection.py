@@ -22,10 +22,13 @@ close-ratio 曲线接管（clone 补丁：run() kwargs.pop("lip_ratio_override")
    同样重复帧的抖动基线。这才是"注入本身改变了嘴型"的干净证明。
 
 用法：
-    <m0-venv-python> engine/lipsync/verify_live_injection.py
+    <m0-venv-python> engine/lipsync/verify_live_injection.py [--gate-only]
+--gate-only：跳过 76 帧正弦注入 + 对照组（约 2 分钟），只跑退出判据的
+静止头姿门（~15s + 模型加载），作为补丁回归检查的快速通道。
 输出：engine/out/lip_live/ 下的 peak/trough PNG（注入组 + 对照组）。
 """
 
+import argparse
 import os
 import sys
 import time
@@ -98,9 +101,11 @@ def mean_abs_diff(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.mean(np.abs(a.astype(np.float32) - b.astype(np.float32))))
 
 
-def main() -> int:
+def main(gate_only: bool = False) -> int:
     os.makedirs(OUT_DIR, exist_ok=True)
-    frames = load_frames(N_FRAMES)
+    frames = load_frames(1 if gate_only else N_FRAMES)
+    if gate_only:
+        return run_gate(frames)
 
     # ---- 注入组：全 76 帧 live run()，override = 正弦 close-ratio ----
     pipe = build_pipe()
@@ -161,6 +166,14 @@ def main() -> int:
           f"ratio={inj_mean / max(ctrl_mean, 1e-6):.2f}x (head-motion confounded, informational)")
 
     # ---- 退出判据：静止驱动帧上切换 override，剔除头动混淆 ----
+    return run_gate(frames)
+
+
+def run_gate(frames) -> int:
+    """静止头姿门（退出判据）：重复喂 d14 第 0 帧，override 在闭合/张开间切换，
+    嘴部区域平均绝对差须 >= 2x 无 override 抖动基线，且 >= 1.0 绝对下限
+    （防基线塌缩到 ~0 时比值虚高——比值判据在近零基线下毫无区分力）。"""
+
     def run_static(pipe_s, overrides):
         """重复喂 d14 第 0 帧；overrides: 每帧的 override 值（None=不注入）。
         返回最后一帧输出。"""
@@ -190,13 +203,20 @@ def main() -> int:
     print(f"[gate] static-head mouth-region mean abs diff: "
           f"override 0.18-vs-0.001 = {inj_static:.2f}, "
           f"no-override jitter baseline = {ctrl_static:.2f}, "
-          f"ratio = {inj_static / max(ctrl_static, 1e-6):.2f}x (require >=2x)")
+          f"ratio = {inj_static / max(ctrl_static, 1e-6):.2f}x "
+          f"(require >=2x and absolute >=1.0)")
     if inj_static < 2.0 * ctrl_static:
         print("FAIL: static-head override diff < 2x no-override jitter")
+        return 1
+    if inj_static < 1.0:
+        print("FAIL: static-head override diff below absolute floor 1.0")
         return 1
     print("PASS")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--gate-only", action="store_true",
+                    help="只跑静止头姿门（快速回归检查，跳过 76 帧正弦注入）")
+    sys.exit(main(gate_only=ap.parse_args().gate_only))

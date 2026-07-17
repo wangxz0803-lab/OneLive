@@ -1,7 +1,7 @@
 """本地启动引擎服务（Arc 慢速链路）。用法：
   <m0-venv-python> -m service.run_local [--port 8900] [--source <img>] [--channels N]
                                         [--https] [--host H] [--cfg onnx_infer.yaml]
-                                        [--translate] [--no-lip]
+                                        [--translate | --translate-stub] [--no-lip]
 
 --no-lip：关闭嘴型驱动（M2b）。enable_lip=True 会在管线构造前打开
 flag_lip_retargeting + flag_lip_retarget_keep_motion，即使无语音也改变
@@ -12,6 +12,11 @@ flag_lip_retargeting + flag_lip_retarget_keep_motion，即使无语音也改变
 faster-whisper small ASR + from_env() 翻译 Provider（AI_API_URL/AI_API_KEY/
 AI_MODEL 环境变量；未配 key 时 Provider 诚实 unavailable——字幕照出、
 翻译事件 status="unavailable"、不做 TTS，绝不伪造译文）+ edge-tts 英文配音。
+
+--translate-stub：【测试脚手架，绝非默认】同 --translate，但翻译 Provider
+换成 StubTranslateProvider（"EN: "+原文 假装翻译成功）——唯一用途是在
+无 API key 环境跑通 翻译ok→TTS→嘴型 全链路（E2E lip_e2e / 联调）。
+与 --translate 互斥；事件 detail 自我声明 stub，谁也别拿它当真翻译。
 
 需从本 worktree 的 engine/ 目录运行（-m 方式）；M0 资产路径通过
 环境变量 ONELIVE_M0_ENGINE 指定（默认 .worktrees/v2-m0-spike/engine）。
@@ -36,6 +41,24 @@ import uvicorn
 from service.app import create_app
 from service.liveportrait_pipeline import LivePortraitPipeline
 
+
+class StubTranslateProvider:
+    """【测试脚手架】--translate-stub 专用假翻译 Provider——不是翻译。
+
+    对任何输入返回 status="ok" + "EN: "+原文，让 翻译ok→TTS→嘴型 链路在
+    无 API key 环境可端到端验证（e2e/lip_e2e.py）。providers.py 的诚实契约
+    （无 key 绝不伪造译文）依然成立：本类只在显式 --translate-stub 下构造，
+    detail 自我声明 stub，绝不能成为默认 Provider 或进入演示/生产路径。
+    """
+
+    available = True
+
+    async def translate(self, text: str, target_lang: str):
+        from translate.providers import TranslateResult
+        return TranslateResult(ok=True, text=f"EN: {text}", status="ok",
+                               detail="stub provider (--translate-stub, test-only)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8900)
@@ -50,6 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="监听地址（默认 127.0.0.1；--https 时默认 0.0.0.0）")
     ap.add_argument("--translate", action="store_true",
                     help="启用翻译链路（whisper ASR + from_env() Provider + en TTS）")
+    ap.add_argument("--translate-stub", action="store_true",
+                    help="【测试脚手架】翻译链路 + stub Provider（'EN: '+原文假装"
+                         "翻译 ok，走真 TTS/嘴型）——仅供 E2E 链路验证，非真翻译")
     ap.add_argument("--no-lip", action="store_true",
                     help="关闭嘴型驱动（渲染路径与 M1a 基线逐字节等价的逃生开关）")
     return ap
@@ -59,15 +85,22 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     args = build_parser().parse_args()
 
+    if args.translate and args.translate_stub:
+        sys.exit("[run_local] --translate 与 --translate-stub 互斥，二选一")
     translation_pipeline = None
-    if args.translate:
+    if args.translate or args.translate_stub:
         from translate.asr import SegmentTranscriber
         from translate.pipeline import TranslationPipeline
-        from translate.providers import from_env
-        provider = from_env()
-        if not provider.available:
-            print("[run_local] translate: AI_API_KEY/AI_API_URL 未配置，"
-                  "Provider unavailable——字幕照常，翻译事件 status=unavailable，无 TTS")
+        if args.translate_stub:
+            provider = StubTranslateProvider()
+            print("[run_local] translate: STUB Provider（测试脚手架——'EN: '+原文"
+                  "假装翻译 ok 直送真 TTS；仅供 E2E 链路验证，不是翻译）")
+        else:
+            from translate.providers import from_env
+            provider = from_env()
+            if not provider.available:
+                print("[run_local] translate: AI_API_KEY/AI_API_URL 未配置，"
+                      "Provider unavailable——字幕照常，翻译事件 status=unavailable，无 TTS")
         translation_pipeline = TranslationPipeline(
             transcriber=SegmentTranscriber(),
             provider=provider,

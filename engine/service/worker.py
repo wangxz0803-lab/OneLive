@@ -134,7 +134,11 @@ class ChannelWorker:
             return len(self._subs)
 
     def stats(self) -> dict:
-        return dict(self._stats)
+        # "speech" 块来自口型调度器（queued/played/dropped）——/status 借此
+        # 每频道透出语音播报进度；speech 可被测试替换，约定必须实现 stats()。
+        s = dict(self._stats)
+        s["speech"] = self.speech.stats()
+        return s
 
     def _run_pending_commands(self) -> None:
         """清空积压命令。逐条在锁外执行——命令（如 prepare_source ~1-2s）不能

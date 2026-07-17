@@ -361,7 +361,7 @@ index 8eb55b6..65c42fa 100644
          return OnnxRuntimePredictorSingleton(**kwargs)
      elif predict_type == "trt":
 diff --git a/src/pipelines/faster_live_portrait_pipeline.py b/src/pipelines/faster_live_portrait_pipeline.py
-index 9031fc3..c29c78c 100644
+index 9031fc3..a4f4303 100644
 --- a/src/pipelines/faster_live_portrait_pipeline.py
 +++ b/src/pipelines/faster_live_portrait_pipeline.py
 @@ -423,6 +423,13 @@ class FasterLivePortraitPipeline:
@@ -404,14 +404,16 @@ index 9031fc3..c29c78c 100644
          if self.cfg.infer_params.flag_crop_driving_video:
              if self.src_lmk_pre is None:
                  src_face = self.model_dict["face_analysis"].predict(img_bgr)
-@@ -535,6 +552,12 @@ class FasterLivePortraitPipeline:
+@@ -535,6 +552,14 @@ class FasterLivePortraitPipeline:
  
          input_eye_ratio = calc_eye_close_ratio(lmk_crop[None])
          input_lip_ratio = calc_lip_close_ratio(lmk_crop[None])
 +        # OneLive M2b: substitute the externally supplied lip close-ratio for the
 +        # driving frame's own ratio. Same shape/dtype (1x1) as calc_lip_close_ratio
 +        # output; consumed downstream by calc_combined_lip_ratio -> retarget_lip
-+        # (gated by infer_params.flag_lip_retargeting).
++        # (gated by infer_params.flag_lip_retargeting). Note: the substituted ratio
++        # lands in the recorded dri_motion_info as well, so a pkl recorded while an
++        # override was active replays the injected mouth, not the driving video's.
 +        if lip_ratio_override is not None:
 +            input_lip_ratio = np.full_like(input_lip_ratio, lip_ratio_override)
          pitch, yaw, roll, t, exp, scale, kp = self.model_dict["motion_extractor"].predict(img_crop)

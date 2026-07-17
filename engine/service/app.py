@@ -19,6 +19,14 @@ TTS tee（M2b）：广播任务在 TTSReadyEvent 上分流——lang_channels �
 （驱动数字人嘴型），并把音频以二进制帧广播给 /speech 订阅者
 （[u8 channel][u32 LE segment_id][u32 LE sr][pcm16]，viewer 端播放）；
 未映射语言只走 /events 元数据，与之前行为一致。
+
+A/V 同步契约（M2b，机制正确性即达标，精确对齐留给 M3）：
+- 音频：viewer 收到 /speech 帧即以 FIFO 链式排播（AudioContext.currentTime
+  上把每段接在上一段之后，镜像 SpeechSchedule 的 FIFO 语义，不并行混播）；
+- 嘴型：曲线在 worker 下一次渲染轮询时才开始消费——最多晚一个渲染周期
+  （本地慢速链路 ~1.7-1.9fps 即 ~500ms），且 25fps 曲线被渲染帧率欠采样；
+- 已知分歧源：/speech 订阅队列 Queue(8) 丢最旧 vs SpeechSchedule maxlen=16
+  ——严重积压时两端各自丢段，嘴型可能"念"到 viewer 没听到的段（反之亦然）。
 """
 
 import asyncio
@@ -91,7 +99,7 @@ def event_to_wire(ev) -> dict:
 async def _ws_subscriber_loop(ws: WebSocket, queue: asyncio.Queue,
                               send, unsubscribe: Callable[[], None],
                               tag: str) -> None:
-    """订阅端点共享的竞速循环（/out //events //speech 同一模式，第三处出现时
+    """订阅端点共享的竞速循环（/out /events /speech 同一模式，第三处出现时
     按三振规则抽取）。queue.get() 与 ws.receive() 二选一竞速：只 await queue
     永远感知不到无数据流动时的客户端断开（M1a E2E 僵尸订阅者 bug），哪边先
     完成处理哪边，各自完成后各自重新武装——任意时刻每种任务最多一个。
@@ -165,7 +173,7 @@ def create_app(pipeline_factory: Callable[[int], object],
         w.start()
         workers[ch] = w
 
-    # /events //speech 订阅队列。广播任务与所有订阅端点都跑在同一事件循环，
+    # /events /speech 订阅队列。广播任务与所有订阅端点都跑在同一事件循环，
     # add/discard/put 全是循环内同步操作，无需 /out 那样的 call_soon_threadsafe 桥。
     events_subs: set[asyncio.Queue] = set()
     speech_subs: dict[int, set[asyncio.Queue]] = {ch: set() for ch in channels}
@@ -185,11 +193,18 @@ def create_app(pipeline_factory: Callable[[int], object],
         except Exception:
             log.exception("tts tee: clip rejected, lip skipped (segment=%d lang=%s)",
                           ev.segment_id, ev.lang)
-        frame = struct.pack("<BII", ch, ev.segment_id, r.sr) + r.audio_pcm16
-        for q in list(speech_subs[ch]):
-            if q.full():
-                q.get_nowait()  # 订阅端 latest-wins 丢最旧，同 /out //events
-            q.put_nowait(frame)
+        # 音频广播独立 try：坏曲线不挡音频（viewer 仍可放声），反过来
+        # struct.pack 失败（如上游给出越界 segment_id/sr）也绝不能杀死
+        # 广播任务——两个半区各自兜底。
+        try:
+            frame = struct.pack("<BII", ch, ev.segment_id, r.sr) + r.audio_pcm16
+            for q in list(speech_subs[ch]):
+                if q.full():
+                    q.get_nowait()  # 订阅端 latest-wins 丢最旧，同 /out /events
+                q.put_nowait(frame)
+        except Exception:
+            log.exception("tts tee: speech broadcast failed (segment=%d lang=%s)",
+                          ev.segment_id, ev.lang)
 
     async def _broadcast_events() -> None:
         # 管线 events() 的唯一消费者（单消费者契约），向所有 /events 订阅者
@@ -484,6 +499,10 @@ def create_app(pipeline_factory: Callable[[int], object],
         # TTS 音频下行订阅端（帧格式见模块 docstring）。按 ?channel= 过滤，
         # 只收本频道数字人的语音；竞速循环同 _ws_subscriber_loop。队列浅
         # （8 段）+ 丢最旧：直播场景积压的旧语音早已过时，同 SpeechSchedule。
+        # A/V 同步契约（详见模块 docstring）：音频 = viewer 收到即 FIFO 链式
+        # 排播；嘴型 = worker 下一次渲染轮询才开始（≤1 渲染周期，本地 ~500ms）；
+        # 本队列 (8) 与 SpeechSchedule maxlen (16) 不同——积压时两端各自丢段，
+        # 嘴型与听到的音频可能对不上段；精确 A/V 对齐是 M3 范畴。
         await ws.accept()
         if translation_pipeline is None:
             log.warning("speech: no translation pipeline configured, closing 4404")

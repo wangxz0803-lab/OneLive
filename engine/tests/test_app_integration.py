@@ -58,6 +58,8 @@ def test_status_endpoint():
     assert {"processed", "dropped", "last_infer_ms"} <= set(body["channel"])
     assert "skipped" in body["channel"]
     assert "errors" in body["channel"]
+    # 每频道 speech 块（M2b）：口型调度器进度透出到 /status
+    assert body["channel"]["speech"] == {"queued": 0, "played": 0, "dropped": 0}
     assert body["engine"] == "ok"
 
 
@@ -403,10 +405,12 @@ class FakeTranslationPipeline:
 
 
 def _tts_ready() -> TTSReadyEvent:
+    # duration_s 必须与 len(lip_curve)/25fps 一致（8 帧 → 0.32s）：早期写 0.5
+    # 会让 SpeechClip 构造 raise，凡经过 tee 的用例全走了异常路径而非快乐路径
     result = TTSResult(audio_pcm16=b"\x01\x02" * 160, sr=16000,
-                       lip_curve=np.zeros(8, np.float32), duration_s=0.5, synth_ms=42)
+                       lip_curve=np.zeros(8, np.float32), duration_s=0.32, synth_ms=42)
     return TTSReadyEvent(segment_id=1, lang="en", voice="en-US-JennyNeural",
-                         duration_s=0.5, synth_ms=42, result=result)
+                         duration_s=0.32, synth_ms=42, result=result)
 
 
 def _audio_chunk(sr: int, pcm: bytes) -> bytes:
@@ -441,7 +445,7 @@ def test_event_to_wire_tts_ready_metadata_only():
     （asdict 会在这俩上爆 JSON 序列化），存在性用 has_audio 标记。"""
     w = event_to_wire(_tts_ready())
     assert w == {"type": "tts_ready", "segment_id": 1, "lang": "en",
-                 "voice": "en-US-JennyNeural", "duration_s": 0.5, "synth_ms": 42,
+                 "voice": "en-US-JennyNeural", "duration_s": 0.32, "synth_ms": 42,
                  "has_audio": True}
     json.dumps(w)  # 必须整体可 JSON 序列化
 
@@ -584,7 +588,8 @@ def test_capture_page_has_audio_uplink():
 
 
 class RecordingSchedule:
-    """替身 SpeechSchedule：只记录 enqueue 到的 clip（渲染侧 lip_at 返回 None）。"""
+    """替身 SpeechSchedule：只记录 enqueue 到的 clip（渲染侧 lip_at 返回 None）。
+    stats() 必须实现——worker.stats() 的 speech 块对替身同样生效。"""
 
     def __init__(self):
         self.clips = []
@@ -594,6 +599,9 @@ class RecordingSchedule:
 
     def lip_at(self, now):
         return None
+
+    def stats(self) -> dict:
+        return {"queued": len(self.clips), "played": 0, "dropped": 0}
 
 
 def _tts_ready_ev(segment_id=1, lang="en", pcm=b"\x01\x02" * 160, sr=16000,
@@ -699,6 +707,20 @@ def test_speech_channel_filtering():
                 b1 = sp1.receive_bytes()
     assert _parse_speech_frame(b0)[:2] == (0, 10)
     assert _parse_speech_frame(b1)[:2] == (1, 11)
+
+
+def test_status_speech_stats_reflect_tee():
+    """tee 入队后 /status 的每频道 speech 块反映排队进度（无渲染帧流动时
+    queued=1：clip 已入队但渲染循环未消费）。"""
+    tp = FakeTranslationPipeline([_tts_ready_ev(segment_id=3, lang="en")])
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with client.websocket_connect("/audio") as au_ws:
+            au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+            sched = app.state.workers[0].speech
+            assert _wait(lambda: sched.stats()["queued"] == 1), "clip 未入队"
+        body = client.get("/status").json()
+    assert body["channels"]["0"]["speech"] == {"queued": 1, "played": 0, "dropped": 0}
 
 
 def test_speech_without_pipeline_closes_4404():

@@ -406,6 +406,17 @@ def test_worker_passes_speech_lip_to_pipeline():
         w.stop()
 
 
+def test_stats_include_speech_block():
+    """worker.stats() 带 speech 块（调度器 queued/played/dropped），供 /status 透出。"""
+    w = ChannelWorker(pipeline=FakePipeline(), name="t")
+    s = w.stats()
+    assert s["speech"] == {"queued": 0, "played": 0, "dropped": 0}
+    w.speech.enqueue(SpeechClip(segment_id=1, lang="en",
+                                curve=np.array([0.5], np.float32),
+                                fps=25.0, duration_s=0.04))
+    assert w.stats()["speech"]["queued"] == 1
+
+
 def test_worker_empty_schedule_passes_none():
     """无语音内容时每帧 lip_ratio=None（管线走原样 legacy 路径）；
     worker 默认自带一个 SpeechSchedule。"""
