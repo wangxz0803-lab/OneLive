@@ -3,15 +3,21 @@
 与 M0 preview server 的关键区别：推理由常驻 ChannelWorker 驱动，
 WS 连接只是数据的进出口——多个 /out 订阅者共享同一路渲染结果，
 新订阅者不会触发新推理，/ingest 断开重连不重置管线状态。
+
+多频道（M2 三市场铺垫）：create_app 收 pipeline_factory + channels，每个
+频道一个 ChannelWorker（管线互相独立，帧路由靠协议头 channel 字节）。
+/ingest 单连接可混发多频道帧；/out 用 ?channel=N 选订哪一路。
 """
 
 import asyncio
 import json
 import logging
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Callable
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
@@ -22,20 +28,29 @@ from service.worker import ChannelWorker
 log = logging.getLogger("engine.service")
 
 
-def create_app(pipeline) -> FastAPI:
-    worker = ChannelWorker(pipeline=pipeline, name="ch0")
-    worker.start()
+def create_app(pipeline_factory: Callable[[int], object],
+               channels: Iterable[int] = (0,)) -> FastAPI:
+    """pipeline_factory(ch) 为每个频道构造一条独立管线（协议头 channel 为 u8，
+    合法频道号 0-255）。不做单管线兼容 shim——所有调用点统一工厂形式。"""
+    workers: dict[int, ChannelWorker] = {}
+    for ch in channels:
+        w = ChannelWorker(pipeline=pipeline_factory(ch), name=f"ch{ch}")
+        w.start()
+        workers[ch] = w
 
     # 计划里用的 @app.on_event("shutdown") 在当前 FastAPI (0.139) 已弃用并发
     # DeprecationWarning，改用 lifespan。worker 在 create_app 时启动（TestClient
-    # 不进 lifespan startup 也能工作），lifespan 退出时停止。
+    # 不进 lifespan startup 也能工作），lifespan 退出时全部停止。
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         yield
-        worker.stop()
+        for w in workers.values():
+            w.stop()
 
     app = FastAPI(lifespan=lifespan)
-    app.state.worker = worker  # 暴露给测试（标准 FastAPI 模式），生产代码不依赖
+    app.state.workers = workers
+    # 频道 0 的 worker 单独暴露，兼容既有测试/工具的 app.state.worker 访问习惯
+    app.state.worker = workers.get(0)
 
     @app.get("/")
     async def index() -> HTMLResponse:
@@ -43,10 +58,14 @@ def create_app(pipeline) -> FastAPI:
 
     @app.get("/status")
     async def status() -> dict:
-        # channel 统计口径：last_infer_ms = 最近一次“跑到计时代码”的 infer 耗时
+        # 统计口径：last_infer_ms = 最近一次“跑到计时代码”的 infer 耗时
         # （无脸帧也会刷新；infer 抛异常则不更新）；errors 聚合解码失败 +
         # 管线异常 + JPEG 编码失败 + 订阅者回调异常四类。
-        return {"engine": "ok", "channel": worker.stats()}
+        body = {"engine": "ok",
+                "channels": {str(ch): w.stats() for ch, w in workers.items()}}
+        if 0 in workers:  # 顶层 "channel" 别名 = 频道 0，兼容既有测试/工具
+            body["channel"] = body["channels"]["0"]
+        return body
 
     @app.websocket("/ingest")
     async def ingest(ws: WebSocket) -> None:
@@ -67,7 +86,12 @@ def create_app(pipeline) -> FastAPI:
                     except ValueError as e:
                         log.warning("ingest: bad frame dropped: %s", e)
                         continue
-                    worker.submit(payload, seq=header.seq, ts_ms=header.ts_ms)
+                    target = workers.get(header.channel)
+                    if target is None:  # 未知频道：只记日志忽略，连接不死、计数不动
+                        log.warning("ingest: frame for unknown channel %d dropped (seq=%d)",
+                                    header.channel, header.seq)
+                        continue
+                    target.submit(payload, seq=header.seq, ts_ms=header.ts_ms)
                 elif msg.get("text") is not None:
                     try:
                         ctrl = json.loads(msg["text"])
@@ -82,14 +106,20 @@ def create_app(pipeline) -> FastAPI:
             log.info("ingest disconnected")
 
     @app.websocket("/out")
-    async def out(ws: WebSocket) -> None:
+    async def out(ws: WebSocket, channel: int = Query(0)) -> None:
         await ws.accept()
+        worker = workers.get(channel)
+        if worker is None:
+            # 未知频道：accept 后再 close(4400)，客户端能读到明确的应用层关闭码
+            log.warning("out: unknown channel %d, closing 4400", channel)
+            await ws.close(code=4400)
+            return
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=4)
 
         def on_frame(seq: int, ts_ms: int, jpeg: bytes) -> None:  # worker 线程回调 → 事件循环
             # ts_ms 为 /ingest 帧头带来的采集时间戳，原样透传，/out 端可直接算 E2E 延迟
-            blob = pack_frame(FrameHeader(seq=seq, ts_ms=ts_ms, channel=0), jpeg)
+            blob = pack_frame(FrameHeader(seq=seq, ts_ms=ts_ms, channel=channel), jpeg)
 
             def _put() -> None:
                 if queue.full():

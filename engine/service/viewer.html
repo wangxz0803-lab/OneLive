@@ -14,7 +14,7 @@
 </style>
 </head>
 <body>
-<h1>OneLive engine viewer</h1>
+<h1 id="title">OneLive engine viewer</h1>
 <canvas id="c" width="512" height="512"></canvas>
 <div id="stats">frames: 0 | seq: - | fps (last 10): -</div>
 <div id="conn">connecting...</div>
@@ -24,13 +24,17 @@ const ctx = canvas.getContext("2d");
 const statsEl = document.getElementById("stats");
 const connEl = document.getElementById("conn");
 
+// ?channel=N 选订哪一路（默认 0），原样透传给 /out
+const channel = new URLSearchParams(location.search).get("channel") ?? "0";
+document.getElementById("title").textContent = `OneLive engine viewer — channel ${channel}`;
+
 let frames = 0;
 let fpsText = "-";
 let winStart = performance.now();
 let lastDrawnSeq = -1n;  // 乱序到达防护：createImageBitmap 异步，慢帧可能晚于新帧完成
 
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/out`);
+  const ws = new WebSocket(`ws://${location.host}/out?channel=${encodeURIComponent(channel)}`);
   ws.binaryType = "arraybuffer";  // 需要 DataView 读 20 字节协议头
   ws.onopen = () => { connEl.textContent = "connected"; lastDrawnSeq = -1n; };
   ws.onmessage = async (ev) => {

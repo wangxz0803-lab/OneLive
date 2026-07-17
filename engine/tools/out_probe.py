@@ -28,7 +28,10 @@ async def probe(args: argparse.Namespace) -> None:
             sends = {int(r[0]): int(r[1]) for r in csv.reader(f) if r}
     frames: list[tuple[int, float, bytes]] = []  # (seq, recv_epoch_ms, jpeg)
     header_lats: list[float] = []  # now - header.ts_ms（仅 ts_ms > 0 的帧）
-    async with websockets.connect(args.url, max_size=None) as ws:
+    url = args.url
+    if args.channel is not None:
+        url += ("&" if "?" in url else "?") + f"channel={args.channel}"
+    async with websockets.connect(url, max_size=None) as ws:
         while len(frames) < args.count:
             try:
                 blob = await asyncio.wait_for(ws.recv(), timeout=args.timeout)
@@ -78,6 +81,8 @@ async def probe(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", required=True)
+    ap.add_argument("--channel", type=int, default=None,
+                    help="订阅的频道号，追加为 /out 的 ?channel= 查询参数（默认不加=频道 0）")
     ap.add_argument("--count", type=int, default=30)
     ap.add_argument("--timeout", type=float, default=10.0)
     ap.add_argument("--save-dir", default=None)
