@@ -17,6 +17,8 @@ chromium 假摄像头 (d14.y4m，真人脸驱动视频)
 - 驱动源：`ffmpeg -i d14.mp4 -pix_fmt yuv420p -t 18 engine/out/d14.y4m`（536 帧 / 17.86s / 30fps，**210,767,052 字节 ≈ 201MB**，位于 gitignore 的 `engine/out/`，保留以便复跑；重新生成仅需上述一条命令）。chromium 对 y4m 假设备自动循环播放，60s 运行覆盖 ≈3.3 遍。
 - 浏览器：Playwright 1.61.1 chromium（headless），flags：`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-video-capture=<d14.y4m>`。假摄像头 headless 下工作正常。
 - **Node/Playwright 解析方案（记录备查）**：本 worktree 无 node_modules，但 worktree 目录位于主 checkout 内（`OneLive\.worktrees\v2-m1c`），Node ESM 从脚本目录逐级向上找 node_modules 天然命中 `OneLive\node_modules`（含 @playwright/test 与已装好的 chromium-1228）。因此 `node engine/e2e/capture-e2e.mjs` 直接可跑，无需 NODE_PATH / npm install。脚本：`engine/e2e/capture-e2e.mjs`（入库）。
+- **脚本已自断言（Task 7 补强，本次实测时尚无）**：结束时拉 `GET /status` 自判 `errors==0 && processed>0` 且 viewer 帧数递增（首采样 < 末采样），打印 PASS/FAIL；FAIL 退出码 1，前置不满足（y4m 缺失 / 服务不可达，起浏览器前有可达性预检）退出码 2。复跑无需人工读日志判结果。
+- **后台标签页节流（有意为之）**：标签页被隐藏时浏览器把定时器节流到 ~1 次/s，capture 页发帧率随之降到 ~1fps 但帧持续流动、链路不断；回前台后 visibilitychange 重置节拍基线（t0/n），恢复目标 fps 且无追赶突发（commit ad4ebe1）。headless E2E 双页面均"可见"，不触发此路径。
 
 ### out_probe 输出（原文）
 
@@ -83,7 +85,7 @@ chromium 假摄像头 (d14.y4m，真人脸驱动视频)
 | 2 | **JPEG 解码入 worker + 文本控制帧** | 单测 `test_ingest_text_ping_gets_pong`、`test_ingest_garbage_text_survives`、`test_garbage_jpeg_counts_error_and_thread_survives`；本 E2E：/ingest 事件循环只透传 bytes，503 帧被覆盖丢弃的解码全部省掉，errors=0 |
 | 3 | **/out 空闲断连清理** | 单测 `test_out_idle_disconnect_unsubscribes_immediately`；本 E2E：out_probe 收满 60 帧断开后，viewer 页继续正常收帧至 96，服务无泄漏订阅 |
 | 4 | **多频道 worker 注册表** | 单测 `test_two_channels_route_independently`、`test_out_unknown_channel_closes_4400`、`test_ingest_unknown_channel_frame_ignored`、`test_create_app_rejects_*`；本 E2E 经注册表频道 0 全链路跑通 |
-| 5 | **capture 页 + HTTPS** | 单测 `test_capture_page_served`；本 E2E 用真实 getUserMedia（假设备）驱动 /capture 页跑满 60s；wss 跟随页面协议已在 capture/viewer 两页落地（commit ad4ebe1），`run_local --https` 代码路径就绪，真机 HTTPS 见下方 OWNER 项 |
+| 5 | **capture 页 + HTTPS** | 单测 `test_capture_page_served`；本 E2E 用真实 getUserMedia（假设备）驱动 /capture 页跑满 60s；wss 跟随页面协议：capture.html 自带（commit d438997），viewer.html 由 ad4ebe1 补齐；`run_local --https` 代码路径就绪，真机 HTTPS 见下方 OWNER 项 |
 
 ## 遗留 OWNER 项（验收时，需真机/真人）
 
@@ -113,12 +115,19 @@ M1c 已关闭：~~/out 空闲断连清理~~（Task 3）、~~解码移出事件�
 ## 复现命令（全部入库可复跑）
 
 ```bash
-# 1. y4m（仅首次）
+# M0 venv 绝对路径（下文 $PY）：
+PY="C:/Users/76475/Documents/OneLive/.worktrees/v2-m0-spike/engine/.venv/Scripts/python.exe"
+
+# 1. y4m（仅首次）。d14.mp4 在 M0 clone 的驱动示例目录：
+#    <ONELIVE_M0_ENGINE>/FasterLivePortrait/assets/examples/driving/d14.mp4
+#    （ONELIVE_M0_ENGINE 默认 .worktrees/v2-m0-spike/engine）
+#    ffmpeg 不在 PATH 上，用 winget 装的绝对路径调用（见 spike-results.md 环境备注）
 ffmpeg -i <d14.mp4> -pix_fmt yuv420p -t 18 engine/out/d14.y4m
-# 2. 服务（worktree engine/，M0 venv）
-python -m service.run_local --port 8910
-# 3. E2E（依赖主 checkout node_modules，见上文解析方案说明）
+# 2. 服务（worktree engine/ 目录下运行）
+$PY -m service.run_local --port 8910
+# 3. E2E（依赖主 checkout node_modules，见上文解析方案说明；跑满 60s）
 node engine/e2e/capture-e2e.mjs        # E2E_PORT/E2E_Y4M/E2E_DURATION_S 可覆盖
-# 4. 并行探针
-python -m tools.out_probe --url ws://127.0.0.1:8910/out --channel 0 --count 60 --timeout 120 --latency-from-header --save-dir out/e2e_m1c
+# 4. 并行探针 —— 第二个终端，在步骤 3 启动后 ~5s 内跟上（探针要在 60s 采集窗口内收满
+#    --count 60 帧，~1.6fps 下约需 37s，起晚了窗口不够）
+$PY -m tools.out_probe --url ws://127.0.0.1:8910/out --channel 0 --count 60 --timeout 120 --latency-from-header --save-dir out/e2e_m1c
 ```

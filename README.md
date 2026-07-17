@@ -205,21 +205,35 @@ macOS / Linux 示例：
 
 演示主链路不依赖外部 AI。切换到预置台词和 Demo Translation Provider，确认界面标记为 EMULATED。
 
-## 数字人引擎服务（V2 M1a）
+## 数字人引擎服务（V2 M1a/M1c）
 
-LivePortrait 实时驱动的数字人引擎服务原型：WebSocket `/ingest` 收驱动帧（摄像头/视频），常驻 worker 以 latest-wins 策略推理，`/out` 扇出渲染帧给多个订阅者，`/status` 报统计。运行需要 M0 spike 的引擎资产（模型 + patched FasterLivePortrait clone）：
+LivePortrait 实时驱动的数字人引擎服务原型：WebSocket `/ingest` 收驱动帧（摄像头/视频/浏览器采集页），每频道一个常驻 worker 以 latest-wins 策略推理，`/out` 按频道扇出渲染帧给多个订阅者，`/status` 报统计。运行需要 M0 spike 的引擎资产（模型 + patched FasterLivePortrait clone）：
 
 ```bash
 # 服务（在 engine/ 目录，用 M0 venv 的 python）
 export ONELIVE_M0_ENGINE=<repo>/.worktrees/v2-m0-spike/engine   # 默认即此路径
-<m0-venv-python> -m service.run_local --port 8900 [--source <肖像图>]
-
-# 驱动源（另开终端）：摄像头或视频文件
-<m0-venv-python> -m service.feeder --url ws://127.0.0.1:8900/ingest --camera 0 --fps 10
-# 浏览器打开 http://127.0.0.1:8900/ 实时目检；量化测量用 tools/out_probe.py
+<m0-venv-python> -m service.run_local --port 8900 [--source <肖像图>] \
+    [--channels N] [--https] [--host H] [--cfg onnx_infer.yaml]
 ```
 
-当前性能（本地 Arc，DML）：~1.9fps / E2E 延迟中位 566ms，高帧率输入靠 latest-wins 丢帧适配（by design）。边缘 GPU 部署与生产化见 M1b 计划。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)；实现计划：[M1a plan](docs/superpowers/plans/2026-07-17-onelive-v2-m1a-engine-service.md)。
+- `--channels N`：起 N 个频道（0..N-1），每频道一条独立管线（ONNX 权重单例缓存共享）；本地 Arc 上多频道均分 ~1.9fps 推理算力，仅作功能验证。
+- `--https`：TLS 服务，证书取 `<repo-root>/certs/onelive-{cert,key}.pem`（缺证书时带生成指引退出）；`--https` 时 `--host` 默认 `0.0.0.0`。
+- `--cfg`：LivePortrait 配置名（clone `configs/` 下的 yaml）。
+
+**驱动源**（任选其一，另开终端）：
+
+```bash
+# A. 浏览器采集页（推荐）：桌面 Chrome/Edge 打开
+#    http://127.0.0.1:8900/capture?fps=10&channel=0 ，点 Start 授权摄像头
+# B. Python feeder：摄像头或视频文件
+<m0-venv-python> -m service.feeder --url ws://127.0.0.1:8900/ingest --camera 0 --fps 10
+```
+
+手机采集：手机 getUserMedia 需要安全上下文，用 `--https` 启动后手机浏览器访问 `https://<电脑局域网IP>:8900/capture`；首次会遇到自签证书警告，处理步骤同上文「手机首次连接与自签 HTTPS」一节（证书同为 `certs/` 下自签，wss 自动跟随页面协议）。
+
+**观看**：浏览器打开 `http://127.0.0.1:8900/?channel=0` 实时目检（viewer 页，`?channel=` 选频道）；量化测量用 `tools/out_probe.py`。
+
+当前性能（本地 Arc，DML，512 crop）：空载 ~1.9fps / 单帧推理 ~534ms / E2E 延迟中位 566ms（M1a，Python feeder）；浏览器同机全链路（假摄像头 E2E，chromium 双页面同机争抢）1.63fps / E2E 延迟 mean 678ms。高帧率输入靠 latest-wins 丢帧适配（by design）。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)、[M1c 实测结果（浏览器采集桥 + 全链路 E2E）](docs/superpowers/m1c-results.md)。
 
 ## 文档
 

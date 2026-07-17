@@ -12,6 +12,8 @@
 //
 // 前置：engine 服务已在 E2E_PORT（默认 8910）监听；y4m 已生成（默认 engine/out/d14.y4m）。
 // 输出：stderr 打人类可读进度，stdout 最后打一份 JSON 汇总（便于重定向收集）。
+// 判定：结束时拉 GET /status 自断言（errors==0 && processed>0 && viewer 帧数递增），
+//   PASS 退出码 0；FAIL 退出码 1；前置不满足（y4m 缺失/服务不可达）退出码 2。
 
 import { chromium } from "@playwright/test";
 import { fileURLToPath } from "node:url";
@@ -31,6 +33,16 @@ if (!fs.existsSync(Y4M)) {
   process.exit(2);
 }
 fs.mkdirSync(SHOT_DIR, { recursive: true });
+
+// 服务可达性预检：起浏览器（~秒级开销）之前先确认 engine 在监听
+try {
+  const r = await fetch(`${BASE}/status`);
+  if (!r.ok) throw new Error(`GET /status -> HTTP ${r.status}`);
+} catch (e) {
+  console.error(`[e2e] engine service unreachable at ${BASE} (${e.message ?? e})`);
+  console.error(`[e2e] start it first: <m0-venv-python> -m service.run_local --port ${PORT}`);
+  process.exit(2);
+}
 
 const browser = await chromium.launch({
   headless: true, // 假摄像头 headless 下可用
@@ -81,7 +93,30 @@ await pageA.screenshot({ path: path.join(SHOT_DIR, "pageA_capture.png") });
 await pageB.screenshot({ path: path.join(SHOT_DIR, "pageB_viewer.png") });
 await browser.close();
 
+// 自断言：/status 的频道统计 + viewer 帧计数进展（无需人工读日志判 PASS/FAIL）
+const status = await (await fetch(`${BASE}/status`)).json();
+const chStats = status.channels?.["0"] ?? status.channel ?? {};
+const framesOf = (s) => Number(/frames:\s*(\d+)/.exec(s.pageB.stats)?.[1] ?? NaN);
+const firstFrames = framesOf(samples[0]);
+const lastFrames = framesOf(samples[samples.length - 1]);
+
+const checks = {
+  "status.errors == 0": chStats.errors === 0,
+  "status.processed > 0": chStats.processed > 0,
+  "viewer frames progressed (last > first)":
+    Number.isFinite(firstFrames) && Number.isFinite(lastFrames) && lastFrames > firstFrames,
+};
+const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name);
+
 console.log(JSON.stringify({
   base: BASE, y4m: Y4M, duration_s: DURATION_S, started_at: startedAt,
-  finished_at: new Date().toISOString(), samples,
+  finished_at: new Date().toISOString(), samples, status, checks,
+  result: failed.length === 0 ? "PASS" : "FAIL",
 }, null, 2));
+
+if (failed.length === 0) {
+  console.error(`[e2e] PASS — processed=${chStats.processed}, errors=${chStats.errors}, viewer frames ${firstFrames} -> ${lastFrames}`);
+} else {
+  console.error(`[e2e] FAIL — ${failed.join("; ")} (processed=${chStats.processed}, errors=${chStats.errors}, viewer frames ${firstFrames} -> ${lastFrames})`);
+  process.exit(1);
+}
