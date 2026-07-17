@@ -20,6 +20,46 @@ class FakePipeline:
         return frame_bgr.copy()
 
 
+class BlockingPipeline:
+    """首帧 infer 阻塞在 gate 上，用于确定性验证单槽 latest-wins。"""
+
+    def __init__(self):
+        self.gate = threading.Event()
+        self.started = threading.Event()
+        self.calls: list[int] = []
+
+    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+        self.calls.append(seq)
+        self.started.set()
+        self.gate.wait(timeout=5)
+        return frame_bgr.copy()
+
+
+class RaisingPipeline:
+    """第一次 infer 抛异常，之后正常返回。"""
+
+    def __init__(self):
+        self.calls: list[int] = []
+
+    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+        self.calls.append(seq)
+        if len(self.calls) == 1:
+            raise RuntimeError("boom")
+        return frame_bgr.copy()
+
+
+class NonePipeline:
+    """总是返回 None（如无脸帧），带少量耗时以便断言 last_infer_ms。"""
+
+    def __init__(self):
+        self.calls: list[int] = []
+
+    def infer(self, frame_bgr: np.ndarray, seq: int):
+        self.calls.append(seq)
+        time.sleep(0.02)
+        return None
+
+
 def _frame(v: int) -> np.ndarray:
     return np.full((8, 8, 3), v, np.uint8)
 
@@ -74,5 +114,68 @@ def test_stats_report_processed_and_dropped():
         assert s["processed"] >= 1
         assert s["processed"] + s["dropped"] == 6
         assert s["last_infer_ms"] >= 40
+    finally:
+        w.stop()
+
+
+def test_single_slot_keeps_only_latest_deterministic():
+    fake = BlockingPipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    w.start()
+    try:
+        w.submit(_frame(0), seq=0)
+        assert fake.started.wait(timeout=2)  # worker 已取走 frame 0 并阻塞在 infer 中
+        for i in range(1, 10):               # 阻塞期间提交 1..9，槽内只留 9
+            w.submit(_frame(i), seq=i)
+        fake.gate.set()
+        deadline = time.time() + 2.0
+        while time.time() < deadline and len(fake.calls) < 2:
+            time.sleep(0.01)
+        assert fake.calls == [0, 9]          # 单槽 latest-wins 的确定性契约
+        assert w.stats()["dropped"] == 8     # 2..9 各覆盖一次前帧
+    finally:
+        w.stop()
+
+
+def test_worker_survives_pipeline_exception():
+    fake = RaisingPipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    got: list[int] = []
+    w.subscribe(lambda seq, jpeg: got.append(seq))
+    w.start()
+    try:
+        w.submit(_frame(1), seq=1)           # 第一次 infer 抛异常
+        deadline = time.time() + 2.0
+        while time.time() < deadline and not fake.calls:
+            time.sleep(0.01)
+        w.submit(_frame(2), seq=2)           # 线程必须存活并继续处理
+        deadline = time.time() + 2.0
+        while time.time() < deadline and not got:
+            time.sleep(0.01)
+        assert got == [2]
+        s = w.stats()
+        assert s["errors"] >= 1
+        assert s["processed"] == 1
+    finally:
+        w.stop()
+
+
+def test_none_return_counts_skipped_without_delivery():
+    fake = NonePipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    got: list[int] = []
+    w.subscribe(lambda seq, jpeg: got.append(seq))
+    w.start()
+    try:
+        w.submit(_frame(1), seq=1)
+        deadline = time.time() + 2.0
+        while time.time() < deadline and w.stats()["skipped"] < 1:
+            time.sleep(0.01)
+        s = w.stats()
+        assert s["skipped"] == 1
+        assert s["processed"] == 0
+        assert s["errors"] == 0
+        assert s["last_infer_ms"] >= 10      # None 返回也要更新 last_infer_ms
+        assert got == []                     # 无输出帧不做扇出
     finally:
         w.stop()

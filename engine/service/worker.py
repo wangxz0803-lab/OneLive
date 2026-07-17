@@ -5,6 +5,7 @@
 订阅者回调收到 (seq, jpeg_bytes)；回调在 worker 线程执行，必须非阻塞。
 """
 
+import logging
 import threading
 import time
 from typing import Callable, Optional
@@ -12,10 +13,14 @@ from typing import Callable, Optional
 import cv2
 import numpy as np
 
+log = logging.getLogger("engine.worker")
+
 Subscriber = Callable[[int, bytes], None]
 
 
 class ChannelWorker:
+    """一次性生命周期：start/stop 各调一次，不可重启；submit() 借用帧引用，提交后调用方不得再修改该 ndarray。"""
+
     def __init__(self, pipeline, name: str = "ch0", jpeg_quality: int = 80):
         self._pipeline = pipeline
         self._name = name
@@ -27,7 +32,8 @@ class ChannelWorker:
         self._next_sub_id = 0
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self._stats = {"processed": 0, "dropped": 0, "last_infer_ms": 0.0}
+        self._stats = {"processed": 0, "dropped": 0, "skipped": 0, "errors": 0,
+                       "last_infer_ms": 0.0}
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._loop, name=f"worker-{self._name}", daemon=True)
@@ -71,17 +77,29 @@ class ChannelWorker:
                     return
                 frame, seq = self._slot
                 self._slot = None
-            t0 = time.perf_counter()
-            out_bgr = self._pipeline.infer(frame, seq)
-            self._stats["last_infer_ms"] = (time.perf_counter() - t0) * 1000
-            if out_bgr is None:  # 管线可返回 None 表示本帧无输出（如无脸）
+            try:
+                t0 = time.perf_counter()
+                out_bgr = self._pipeline.infer(frame, seq)
+                self._stats["last_infer_ms"] = (time.perf_counter() - t0) * 1000
+                if out_bgr is None:  # 管线返回 None 表示本帧无输出（如无脸）
+                    self._stats["skipped"] += 1
+                    continue
+                ok, jpg = cv2.imencode(".jpg", out_bgr, [cv2.IMWRITE_JPEG_QUALITY, self._quality])
+                if not ok:
+                    log.error("worker %s: jpeg encode failed on seq=%d", self._name, seq)
+                    self._stats["errors"] += 1
+                    continue
+                payload = jpg.tobytes()
+            except Exception:
+                log.exception("worker %s: pipeline/encode failed on seq=%d", self._name, seq)
+                self._stats["errors"] += 1
                 continue
             self._stats["processed"] += 1
-            ok, jpg = cv2.imencode(".jpg", out_bgr, [cv2.IMWRITE_JPEG_QUALITY, self._quality])
-            if not ok:
-                continue
-            payload = jpg.tobytes()
             with self._subs_lock:
                 subs = list(self._subs.values())
             for cb in subs:
-                cb(seq, payload)
+                try:
+                    cb(seq, payload)
+                except Exception:
+                    log.exception("worker %s: subscriber callback failed on seq=%d", self._name, seq)
+                    self._stats["errors"] += 1
