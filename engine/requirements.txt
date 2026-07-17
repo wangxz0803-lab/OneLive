@@ -9,3 +9,5 @@ websockets
 pytest
 huggingface_hub
 omegaconf
+httpx
+faster-whisper

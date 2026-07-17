@@ -12,6 +12,13 @@ from typing import Protocol, runtime_checkable
 
 import httpx
 
+# 语言代码 → 提示词里用的语言名。translate() 的 target_lang 支持代码或直接给名字。
+LANG_NAMES = {
+    "en": "English",
+    "ja": "Japanese",
+    "es": "Spanish (Latin America)",
+}
+
 _SYSTEM_PROMPT_TEMPLATE = (
     "You are a professional live-commerce interpreter. "
     "Translate the user's message into {target_lang} for a live shopping "
@@ -72,23 +79,29 @@ class OpenAICompatProvider:
         return f"{self.base_url}/chat/completions"
 
     async def translate(self, text: str, target_lang: str) -> TranslateResult:
+        """把 text 翻译为 target_lang（接受语言代码如 "ja"，或直接给语言名）。"""
         if not self.available:
             return TranslateResult(
                 ok=False,
                 text=None,
                 status="unavailable",
-                detail="no API key configured (set AI_API_KEY); refusing to fake translations",
+                detail=(
+                    "not configured (set AI_API_KEY and AI_API_URL); "
+                    "refusing to fake translations"
+                ),
             )
 
+        lang_name = LANG_NAMES.get(target_lang, target_lang)
         payload = {
             "model": self.model,
             "messages": [
                 {
                     "role": "system",
-                    "content": _SYSTEM_PROMPT_TEMPLATE.format(target_lang=target_lang),
+                    "content": _SYSTEM_PROMPT_TEMPLATE.format(target_lang=lang_name),
                 },
                 {"role": "user", "content": text},
             ],
+            "temperature": 0.3,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

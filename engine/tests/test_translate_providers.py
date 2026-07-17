@@ -61,8 +61,26 @@ async def test_success_parses_content():
     assert request.headers["authorization"] == "Bearer sk-test"
     payload = json.loads(request.content)
     assert payload["model"] == "gpt-x"
+    assert payload["temperature"] == 0.3
     assert payload["messages"][-1] == {"role": "user", "content": "你好世界"}
     assert "English" in payload["messages"][0]["content"]
+
+
+@pytest.mark.anyio
+async def test_lang_code_mapped_to_name_in_prompt():
+    handler = CountingHandler(lambda req: _chat_response("こんにちは"))
+    provider = OpenAICompatProvider(
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        model="gpt-x",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await provider.translate("你好", target_lang="ja")
+    assert result.ok is True
+    payload = json.loads(handler.requests[0].content)
+    system_prompt = payload["messages"][0]["content"]
+    assert "Japanese" in system_prompt
+    assert "ja " not in system_prompt  # 不应把裸代码塞进提示词
 
 
 @pytest.mark.anyio
@@ -167,6 +185,8 @@ async def test_no_key_unavailable_and_no_http_call():
     assert result.ok is False
     assert result.status == "unavailable"
     assert result.text is None
+    assert "AI_API_KEY" in (result.detail or "")
+    assert "AI_API_URL" in (result.detail or "")
     assert handler.calls == 0
 
 
