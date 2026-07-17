@@ -4,6 +4,7 @@
 import asyncio
 import json
 import struct
+import threading
 import time
 
 import numpy as np
@@ -223,6 +224,116 @@ def test_ingest_garbage_text_survives():
     header, _ = unpack_frame(blob)
     assert header.seq == 3
     assert header.ts_ms == 33
+
+
+# ---------------------------------------------------------------- casting 控制
+
+
+class CastablePipeline(EchoPipeline):
+    """EchoPipeline + set_source 记录器（记录路径与执行线程）。"""
+
+    def __init__(self):
+        self.cast_calls: list[tuple[str, int]] = []
+
+    def set_source(self, image_path: str) -> None:
+        self.cast_calls.append((image_path, threading.get_ident()))
+
+
+class CastFailPipeline(EchoPipeline):
+    def set_source(self, image_path: str) -> None:
+        raise ValueError("no face detected")
+
+
+def _casting(ch, source) -> str:
+    return json.dumps({"type": "casting", "channel": ch, "source": source})
+
+
+def test_casting_rejects_bad_source_names(tmp_path, monkeypatch):
+    """白名单：路径穿越 / 绝对路径 / 分隔符 / 非法扩展名 / 非字符串 一律 ok=false，
+    连接不死。nack 是同步发出的，必须先于后续 ping 的 pong 到达。"""
+    monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))
+    app = create_app(lambda ch: CastablePipeline())
+    client = TestClient(app)
+    bad = ["../evil.jpg", "..\\evil.jpg", "sub/dir.jpg", "sub\\dir.jpg",
+           "C:\\evil.jpg", "/etc/passwd.jpg", "evil.exe", "no_ext", "", None, 42]
+    with client.websocket_connect("/ingest") as ws:
+        for src in bad:
+            ws.send_text(_casting(0, src))
+            ws.send_text('{"type": "ping"}')
+            ack = ws.receive_json()
+            assert ack["type"] == "casting_ack", f"source={src!r}: got {ack}"
+            assert ack["ok"] is False
+            assert ack["detail"]
+            assert ws.receive_json() == {"type": "pong"}  # 连接活着且 nack 未乱序
+
+
+def test_casting_unknown_channel_nacked(tmp_path, monkeypatch):
+    (tmp_path / "s1.jpg").write_bytes(b"x")
+    monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))
+    app = create_app(lambda ch: CastablePipeline())  # 只有频道 0
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as ws:
+        ws.send_text(_casting(7, "s1.jpg"))
+        ack = ws.receive_json()
+    assert ack["type"] == "casting_ack"
+    assert ack["ok"] is False
+    assert "channel" in ack["detail"]
+
+
+def test_casting_missing_file_nacked(tmp_path, monkeypatch):
+    monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))
+    app = create_app(lambda ch: CastablePipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as ws:
+        ws.send_text(_casting(0, "nope.jpg"))  # 名字合法但文件不存在
+        ack = ws.receive_json()
+    assert ack["ok"] is False
+    assert "not found" in ack["detail"]
+
+
+def test_casting_ok_calls_set_source_and_acks_with_ms(tmp_path, monkeypatch):
+    """合法请求：set_source 在 worker 线程收到解析后的绝对路径，完成后
+    ack ok=true 携带耗时 ms；接收循环不被阻塞（casting 期间 ping 照常回）。"""
+    (tmp_path / "s1.jpg").write_bytes(b"x")
+    monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))
+    pipes: dict[int, CastablePipeline] = {}
+
+    def factory(ch):
+        pipes[ch] = CastablePipeline()
+        return pipes[ch]
+
+    app = create_app(factory)
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as ws:
+        ws.send_text(_casting(0, "s1.jpg"))
+        ack = ws.receive_json()
+    assert ack["type"] == "casting_ack"
+    assert ack["ok"] is True
+    assert ack["channel"] == 0
+    assert ack["source"] == "s1.jpg"
+    assert isinstance(ack["ms"], (int, float)) and ack["ms"] >= 0
+    assert len(pipes[0].cast_calls) == 1
+    called_path, tid = pipes[0].cast_calls[0]
+    assert called_path == str(tmp_path / "s1.jpg")  # 白名单解析后的绝对路径
+    assert tid != threading.get_ident()             # 在 worker 线程执行，非测试线程
+
+
+def test_casting_set_source_failure_nacked_with_detail(tmp_path, monkeypatch):
+    """set_source 抛异常（如无脸）：ack ok=false 带异常详情，worker/连接都活着。"""
+    (tmp_path / "s1.jpg").write_bytes(b"x")
+    monkeypatch.setenv("ONELIVE_AVATAR_DIR", str(tmp_path))
+    app = create_app(lambda ch: CastFailPipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/out") as out_ws:
+        with client.websocket_connect("/ingest") as ws:
+            ws.send_text(_casting(0, "s1.jpg"))
+            ack = ws.receive_json()
+            assert ack["ok"] is False
+            assert "no face detected" in ack["detail"]
+            # 失败后帧路径不受影响
+            ws.send_bytes(pack_frame(FrameHeader(seq=8, ts_ms=88, channel=0), _jpeg(3)))
+            blob = out_ws.receive_bytes()
+    assert unpack_frame(blob)[0].seq == 8
 
 
 # ---------------------------------------------------------------- 翻译服务集成

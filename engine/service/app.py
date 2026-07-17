@@ -18,6 +18,9 @@ WS 连接只是数据的进出口——多个 /out 订阅者共享同一路渲�
 import asyncio
 import json
 import logging
+import os
+import re
+import time
 from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -39,6 +42,20 @@ from translate.pipeline import (
 )
 
 log = logging.getLogger("engine.service")
+
+# casting 底图白名单：纯文件名（字母数字下划线连字符 + jpg/jpeg/png 扩展名）。
+# 任何路径分隔符 / 盘符 / ".." 都过不了字符类——不给路径穿越留任何解析歧义。
+_AVATAR_NAME_RE = re.compile(r"^[\w-]+\.(jpg|jpeg|png)$")
+
+
+def _avatar_dir() -> Path:
+    """casting 底图目录。ONELIVE_AVATAR_DIR 显式指定优先；默认引用 M0 资产
+    （ONELIVE_M0_ENGINE 下的 LivePortrait 示例源图，不往仓库提交二进制）。"""
+    explicit = os.environ.get("ONELIVE_AVATAR_DIR")
+    if explicit:
+        return Path(explicit)
+    from service.liveportrait_pipeline import _CLONE  # 与管线适配器同一份 M0 路径逻辑
+    return _CLONE / "assets" / "examples" / "source"
 
 
 def event_to_wire(ev) -> dict:
@@ -166,13 +183,75 @@ def create_app(pipeline_factory: Callable[[int], object],
             body["translation"] = translation_pipeline.stats()
         return body
 
+    async def _handle_casting(ws: WebSocket, ctrl: dict,
+                              pending: set[asyncio.Task]) -> None:
+        """casting 控制帧：校验（同步 nack）→ post_command 到频道 worker →
+        完成后异步 ack。ack 等待放在独立 task 里——prepare_source 真管线要
+        1-2s，/ingest 接收循环不能为它停摆（驱动帧还得继续进）。"""
+        ch = ctrl.get("channel", 0)
+        source = ctrl.get("source")
+
+        async def nack(detail: str) -> None:
+            log.warning("casting rejected (channel=%r source=%r): %s", ch, source, detail)
+            await ws.send_text(json.dumps(
+                {"type": "casting_ack", "ok": False, "channel": ch,
+                 "source": source, "detail": detail}, ensure_ascii=False))
+
+        worker = workers.get(ch)
+        if worker is None:
+            await nack(f"unknown channel: {ch!r}")
+            return
+        # 白名单：正则本身就容不下 / \ .. 等字符，前置显式检查纯属纵深防御
+        if (not isinstance(source, str) or "/" in source or "\\" in source
+                or ".." in source or not _AVATAR_NAME_RE.fullmatch(source)):
+            await nack(f"source rejected by whitelist: {source!r}")
+            return
+        path = _avatar_dir() / source
+        if not path.is_file():
+            await nack(f"source not found: {path}")
+            return
+
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future = loop.create_future()
+        t0 = time.perf_counter()
+
+        def on_done(exc) -> None:  # worker 线程回调 → 桥回事件循环
+            loop.call_soon_threadsafe(
+                lambda: None if fut.cancelled() else fut.set_result(exc))
+
+        worker.post_command(lambda p: p.set_source(str(path)), on_done=on_done)
+
+        async def _ack() -> None:
+            try:
+                exc = await asyncio.wait_for(fut, timeout=60)
+            except asyncio.TimeoutError:  # wait_for 超时已顺带 cancel fut
+                exc = TimeoutError("casting timed out after 60s")
+            ms = round((time.perf_counter() - t0) * 1000, 1)
+            if exc is None:
+                body = {"type": "casting_ack", "ok": True, "channel": ch,
+                        "source": source, "ms": ms}
+            else:
+                body = {"type": "casting_ack", "ok": False, "channel": ch,
+                        "source": source, "ms": ms,
+                        "detail": str(exc) or type(exc).__name__}
+            try:
+                await ws.send_text(json.dumps(body, ensure_ascii=False))
+            except Exception:  # 客户端等 ack 期间断开：尽力而为
+                log.info("casting ack not delivered (client gone): %s", body)
+
+        task = asyncio.create_task(_ack())
+        pending.add(task)  # 持强引用防 GC；完成自摘
+        task.add_done_callback(pending.discard)
+
     @app.websocket("/ingest")
     async def ingest(ws: WebSocket) -> None:
         # 手动 ws.receive() 分发：二进制帧 = 视频帧（JPEG 原样交给 worker，
         # 解码在 worker 线程内做，事件循环不再为注定被 latest-wins 丢弃的帧付
         # 解码成本）；文本帧 = JSON 控制消息（protocol.py 的协议约定），坏
         # JSON / 未知类型只记日志忽略——任何一类坏输入都不得杀死连接。
+        # casting 控制帧走 _handle_casting（校验同步、执行与 ack 异步）。
         await ws.accept()
+        casting_tasks: set[asyncio.Task] = set()
         try:
             while True:
                 msg = await ws.receive()
@@ -199,6 +278,8 @@ def create_app(pipeline_factory: Callable[[int], object],
                         continue
                     if isinstance(ctrl, dict) and ctrl.get("type") == "ping":
                         await ws.send_text(json.dumps({"type": "pong"}))
+                    elif isinstance(ctrl, dict) and ctrl.get("type") == "casting":
+                        await _handle_casting(ws, ctrl, casting_tasks)
                     else:
                         log.warning("ingest: unknown control message ignored: %r", ctrl)
         except WebSocketDisconnect:

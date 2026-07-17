@@ -192,6 +192,96 @@ def test_garbage_jpeg_counts_error_and_thread_survives():
         w.stop()
 
 
+class OrderedPipeline:
+    """记录 infer 事件顺序与线程 id；首帧阻塞在 gate 上以便在推理中途投递命令。"""
+
+    def __init__(self):
+        self.gate = threading.Event()
+        self.started = threading.Event()
+        self.events: list[tuple] = []
+
+    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+        self.events.append(("frame", seq, threading.get_ident()))
+        self.started.set()
+        self.gate.wait(timeout=5)
+        return frame_bgr.copy()
+
+
+def _wait_until(cond, timeout: float = 2.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if cond():
+            return True
+        time.sleep(0.01)
+    return cond()
+
+
+def test_post_command_executes_between_frames_on_worker_thread():
+    """命令在 worker 推理线程执行、fn 收到 pipeline 对象、且排在两帧之间
+    （每轮取帧前先清空命令队列）。"""
+    fake = OrderedPipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    w.start()
+    try:
+        w.submit(_jpeg(0), seq=0, ts_ms=1)
+        assert fake.started.wait(timeout=2)   # worker 阻塞在 frame 0 的 infer 中
+        w.post_command(lambda p: p.events.append(("cmd", None, threading.get_ident())))
+        w.submit(_jpeg(1), seq=1, ts_ms=2)    # 阻塞期间投递：命令必须先于 frame 1
+        fake.gate.set()
+        assert _wait_until(lambda: len(fake.events) == 3)
+        kinds = [(k, s) for k, s, _ in fake.events]
+        assert kinds == [("frame", 0), ("cmd", None), ("frame", 1)]
+        tids = {t for _, _, t in fake.events}
+        assert len(tids) == 1                 # 命令与推理同一 worker 线程（串行契约）
+    finally:
+        w.stop()
+
+
+def test_post_command_runs_without_frames():
+    """无帧流动时命令也要被执行（casting 可发生在开播前）；on_done(None) 表示成功，
+    且在 worker 线程回调。"""
+    fake = FakePipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    w.start()
+    try:
+        ran: list[tuple] = []
+        done: list = []
+        w.post_command(lambda p: ran.append((p, threading.get_ident())),
+                       on_done=lambda exc: done.append((exc, threading.get_ident())))
+        assert _wait_until(lambda: len(done) == 1)
+        assert ran[0][0] is fake              # fn 收到的就是构造时传入的 pipeline
+        assert done[0][0] is None             # 成功 → on_done(None)
+        assert ran[0][1] == done[0][1]        # on_done 也在 worker 线程回调
+        assert ran[0][1] != threading.get_ident()
+        assert w.stats()["errors"] == 0
+    finally:
+        w.stop()
+
+
+def test_post_command_exception_counts_error_and_worker_survives():
+    """命令抛异常：errors++、on_done 收到该异常、线程存活并继续处理后续帧。"""
+    def boom(_p):
+        raise RuntimeError("cast boom")
+
+    fake = FakePipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    got: list[tuple[int, int]] = []
+    w.subscribe(lambda seq, ts_ms, jpeg: got.append((seq, ts_ms)))
+    w.start()
+    try:
+        done: list = []
+        w.post_command(boom, on_done=done.append)
+        assert _wait_until(lambda: len(done) == 1)
+        assert isinstance(done[0], RuntimeError)
+        assert str(done[0]) == "cast boom"
+        assert w.stats()["errors"] == 1
+        w.submit(_jpeg(2), seq=2, ts_ms=20)   # 命令炸了不影响帧路径
+        assert _wait_until(lambda: got == [(2, 20)])
+        assert w.stats()["processed"] == 1
+    finally:
+        w.stop()
+
+
 def test_none_return_counts_skipped_without_delivery():
     fake = NonePipeline()
     w = ChannelWorker(pipeline=fake, name="t")

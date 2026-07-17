@@ -47,6 +47,22 @@ class LivePortraitPipeline:
         self._src_info = self._pipe.src_infos[0]
         self._initialized = False  # 首次成功推理前保持 first_frame=True
 
+    def set_source(self, image_path: str) -> None:
+        """热切换底图（casting）。失败（文件缺失/无脸）raise，此时旧底图快照
+        （self._img_src/_src_info 持有的引用）不受影响，infer 继续用旧底图。
+
+        线程契约：必须在 worker 推理线程上执行（经 ChannelWorker.post_command
+        调度，调用方负责）——prepare_source 会清掉底层 pipe 的 src_imgs/src_infos
+        再重建，与并发 infer 不串行会读到半旧半新状态。
+        prepare_source 后立即快照（M0 API 地图铁律）；成功后重置 _initialized，
+        下一驱动帧以 first_frame=True 对新底图重锚定驱动基准。"""
+        ok = self._pipe.prepare_source(image_path, realtime=True)
+        if not ok:
+            raise ValueError(f"prepare_source failed (no face?): {image_path}")
+        self._img_src = self._pipe.src_imgs[0]
+        self._src_info = self._pipe.src_infos[0]
+        self._initialized = False
+
     def infer(self, frame_bgr, seq: int):
         ret = self._pipe.run(frame_bgr, self._img_src, self._src_info,
                              first_frame=not self._initialized)

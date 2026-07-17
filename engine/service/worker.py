@@ -11,6 +11,7 @@ submit() 收 JPEG bytes，解码（cv2.imdecode）在 worker 线程内、取槽�
 import logging
 import threading
 import time
+from collections import deque
 from typing import Callable, Optional
 
 import cv2
@@ -34,6 +35,11 @@ class ChannelWorker:
         self._subs_lock = threading.Lock()
         self._next_sub_id = 0
         self._stop = threading.Event()
+        # 命令队列（casting 等控制操作）：与帧槽分离——命令不能 latest-wins 覆盖
+        # （每条都要执行且 on_done 都要回），用小有界 deque；溢出即拒绝（回调收
+        # RuntimeError），绝不静默丢弃已受理的命令。
+        self._cmds: deque[tuple[Callable[[object], None], Optional[Callable]]] = deque()
+        self._cmds_max = 8
         self._thread: Optional[threading.Thread] = None
         self._stats = {"processed": 0, "dropped": 0, "skipped": 0, "errors": 0,
                        "last_infer_ms": 0.0}
@@ -60,6 +66,27 @@ class ChannelWorker:
             self._slot = (jpeg_bytes, seq, ts_ms)
             self._slot_lock.notify()
 
+    def post_command(self, fn: Callable[[object], None],
+                     on_done: Optional[Callable[[Optional[BaseException]], None]] = None) -> None:
+        """投递一条在 worker 推理线程上执行的命令 fn(pipeline)。
+
+        执行时机：_loop 每轮取帧之前清空全部积压命令（槽锁之外执行）——与 infer
+        天然串行，pipeline 状态操作（如 set_source 的 prepare+快照）无需自带锁。
+        fn 抛异常：log + errors++，异常经 on_done 转交调用方。
+        on_done(exc_or_none)（若给出）在【worker 线程】回调——成功传 None，失败传
+        异常对象；回调方要回事件循环必须自己 call_soon_threadsafe。
+        队列有界（8）：溢出即拒绝，on_done 立即（在调用方线程）收 RuntimeError。
+        """
+        with self._slot_lock:
+            if len(self._cmds) >= self._cmds_max:
+                log.error("worker %s: command queue full (%d), command rejected",
+                          self._name, self._cmds_max)
+                if on_done is not None:
+                    on_done(RuntimeError("command queue full"))
+                return
+            self._cmds.append((fn, on_done))
+            self._slot_lock.notify()
+
     def subscribe(self, cb: Subscriber) -> Callable[[], None]:
         with self._subs_lock:
             sid = self._next_sub_id
@@ -79,13 +106,37 @@ class ChannelWorker:
     def stats(self) -> dict:
         return dict(self._stats)
 
+    def _run_pending_commands(self) -> None:
+        """清空积压命令。逐条在锁外执行——命令（如 prepare_source ~1-2s）不能
+        占着槽锁把 submit()/post_command() 卡死。"""
+        while True:
+            with self._slot_lock:
+                if not self._cmds:
+                    return
+                fn, on_done = self._cmds.popleft()
+            exc: Optional[BaseException] = None
+            try:
+                fn(self._pipeline)
+            except Exception as e:
+                log.exception("worker %s: command failed", self._name)
+                self._stats["errors"] += 1
+                exc = e
+            if on_done is not None:
+                try:
+                    on_done(exc)  # worker 线程回调（契约见 post_command docstring）
+                except Exception:
+                    log.exception("worker %s: command on_done callback failed", self._name)
+
     def _loop(self) -> None:
         while not self._stop.is_set():
+            self._run_pending_commands()  # 每轮取帧前先清空命令（casting 不等下一帧）
             with self._slot_lock:
-                while self._slot is None and not self._stop.is_set():
+                while self._slot is None and not self._cmds and not self._stop.is_set():
                     self._slot_lock.wait(timeout=0.1)
                 if self._stop.is_set():
                     return
+                if self._slot is None:
+                    continue  # 被命令唤醒：回到循环头执行命令
                 jpeg, seq, ts_ms = self._slot
                 self._slot = None
             try:
