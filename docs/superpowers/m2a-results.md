@@ -147,3 +147,14 @@ TTSReadyEvent: {'segment_id': 1, 'lang': 'en', 'voice': 'en-US-JennyNeural', 'du
 - **/events 满队丢最旧**（Task 5 记录）：事件不可再生，M3 控制台需 wire seq 或快照/重放。
 - **whisper 降延迟旋钮**（风险 2）：beam_size 5→1、small→base；字幕已达标，配音链达标后再动。
 - **麦克风自适应静音阈值**（风险 4）：前 N 秒噪声 RMS 的 k 倍；移交 OWNER 真机数据标定。
+- **/audio 奇数字节帧误诊为 4409**（终审记录）：`feed_audio` 路径的
+  `except ValueError` 会同时捕获 `np.frombuffer` 对奇数长度 payload 抛的
+  ValueError——本应按"坏帧丢弃、连接存活"处理的输入被误当 sr-conflict
+  关闭（4409）并停止重连。官方客户端整样本发送不会触发；M2b 在 /audio
+  入口加 `len(pcm) % 2` 丢弃守卫。
+- **M2b 数字人嘴型集成点**（终审记录）：`TranslationPipeline.events()` 是
+  单消费者契约，当前唯一消费者是 `app._broadcast_events`（wire 映射后即
+  丢弃 TTSResult 进程内的 pcm + 嘴型曲线）。M2b 集成必须**扩展这个消费者
+  做 tee**（把音频/曲线注入 worker 驱动路径），不能开第二个 events()
+  迭代器（会互相抢事件）；且 worker 命令队列 bounded-8 是按 casting 频率
+  定的，per-segment 嘴型注入若走命令队列需重估容量。
