@@ -238,12 +238,19 @@ class FakeTranslationPipeline:
         self.started = False
         self.closed = False
         self.fed: list[tuple[bytes, int]] = []
+        self._sr: int | None = None
         self._q: asyncio.Queue = asyncio.Queue()
 
     async def start(self):
         self.started = True
 
     def feed_audio(self, pcm16: bytes, sr: int) -> None:
+        # 复刻真实链路契约：SegmentTranscriber.feed 对采样率中途变化 raise
+        # ValueError（asr.py），pipeline.feed_audio 不捕获、原样上抛
+        if self._sr is None:
+            self._sr = sr
+        elif sr != self._sr:
+            raise ValueError(f"sample rate changed: {self._sr} -> {sr}")
         self.fed.append((pcm16, sr))
         for ev in self.scripted:
             self._q.put_nowait(ev)
@@ -384,6 +391,26 @@ def test_events_consumer_survives_bad_event():
                 au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
                 msgs = [ev_ws.receive_json() for _ in range(2)]
     assert [m["type"] for m in msgs] == ["subtitle", "translation"]
+
+
+def test_audio_sample_rate_change_closes_4409():
+    """sr 中途变化：转写器契约是 raise ValueError（asr.feed）。/audio 不得以
+    裸异常炸掉连接（否则 capture 端 1s 重连风暴）——发一条一次性 error 文本
+    说明后以专用码 4409 关闭，客户端据码停止自动重连。"""
+    tp = FakeTranslationPipeline()
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/audio") as ws:
+                ws.send_bytes(_audio_chunk(16000, b"\x00\x01"))
+                ws.send_bytes(_audio_chunk(48000, b"\x00\x01"))
+                warn = ws.receive_json()          # 关闭前的一次性说明帧
+                assert warn["type"] == "error"
+                assert warn["code"] == 4409
+                assert "sample rate" in warn["detail"]
+                ws.receive_text()                 # 下一次 receive 感知服务端 close
+        assert exc.value.code == 4409
+    assert tp.fed == [(b"\x00\x01", 16000)]  # 第二块被拒，未入管线
 
 
 def test_audio_without_pipeline_closes_4404():

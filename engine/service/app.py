@@ -113,7 +113,14 @@ def create_app(pipeline_factory: Callable[[int], object],
     async def lifespan(_app: FastAPI):
         consumer: asyncio.Task | None = None
         if translation_pipeline is not None:
-            await translation_pipeline.start()
+            try:
+                await translation_pipeline.start()
+            except BaseException:
+                # startup 失败时 finally 不会跑（yield 未到）：worker 是
+                # create_app 时启动的，这里必须亲手停掉，不留孤儿线程
+                for w in workers.values():
+                    w.stop()
+                raise
             consumer = asyncio.create_task(_broadcast_events())
         try:
             yield
@@ -286,7 +293,22 @@ def create_app(pipeline_factory: Callable[[int], object],
                     if sr == 0:
                         log.warning("audio: frame with sr=0 dropped")
                         continue
-                    translation_pipeline.feed_audio(data[4:], sr)
+                    try:
+                        translation_pipeline.feed_audio(data[4:], sr)
+                    except ValueError as e:
+                        # 转写器对采样率中途变化的契约是 raise（asr.feed）——
+                        # 这是会话级配置冲突而非单帧坏输入，重试无意义：发一次
+                        # 性说明后以专用码 4409 关闭，客户端据码停止自动重连
+                        # （裸异常关闭会触发 capture 端 1s 重连风暴）。
+                        log.warning("audio: feed rejected, closing 4409: %s", e)
+                        try:
+                            await ws.send_text(json.dumps(
+                                {"type": "error", "code": 4409, "detail": str(e)},
+                                ensure_ascii=False))
+                        except Exception:  # 客户端恰好已断开：说明帧尽力而为
+                            pass
+                        await ws.close(code=4409)
+                        return
                 elif msg.get("text") is not None:
                     log.warning("audio: unexpected text frame ignored: %r", msg["text"][:120])
         except WebSocketDisconnect:

@@ -211,9 +211,11 @@ function connectAudio() {   // 断线 1s 重连，与视频 /ingest 同策略
   audioWs.onopen = setAudioStatus;
   audioWs.onclose = (e) => {
     audioWs = null;
-    if (e.code === 4404) {  // 服务端没配翻译管线：明确报错，不再重连
+    if (e.code === 4404 || e.code === 4409) {  // 应用层致命码：停止重连并明示
       stopAudio();
-      aStatusEl.textContent = "audio: server has no translation pipeline (4404)";
+      aStatusEl.textContent = e.code === 4404
+        ? "audio: server has no translation pipeline (4404)"
+        : "audio: 采样率变化，请重新开启音频 (4409)";  // 服务端会话内要求恒定采样率
       return;
     }
     if (audioRunning) setTimeout(connectAudio, 1000);
@@ -240,8 +242,11 @@ function flushAudio() {
 async function startAudio() {
   audioBtn.disabled = true;
   try {
+    // 三件套显式声明（不赌浏览器默认）：回声消除 + 降噪 + 自动增益；
+    // 实际底噪表现的标定移交 Task 7 E2E 真机验证
     audioStream = await navigator.mediaDevices.getUserMedia(
-      { audio: { echoCancellation: true }, video: false });
+      { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false });
   } catch (err) {
     aStatusEl.textContent = `mic error: ${err}`;
     audioBtn.disabled = false;
