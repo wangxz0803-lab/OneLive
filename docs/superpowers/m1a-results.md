@@ -64,3 +64,5 @@
 7. **errors 口径拆分**：当前管线异常 / JPEG 编码失败 / 订阅者回调异常聚合成一个 errors 计数，排障需拆分（如 cb_errors 独立）。
 8. **无脸中途丢跟踪的适配器局限**：`liveportrait_pipeline.py` 的 `_initialized` 只保证首帧初始化；中途长时间无脸后跟踪状态的恢复行为未验证（docstring 已注明）。
 9. **无脸 4-tuple 返回形态需对未打补丁的上游 clone 复核**：当前"无脸返回 None（4-tuple out_crop=None）"的处理基于 M0 patched clone 实测，上游行为可能不同。
+10. **viewer 乱序绘制防护在高 fps 下需复核**：`createImageBitmap` 异步解码可能让旧帧晚于新帧完成绘制。viewer.html 已加 lastDrawnSeq（BigInt）守卫（Task 6 修复）；本地 ~1.9fps 下难以触发，M1b 高帧率部署后需确认守卫足够（必要时改单飞 decode 队列）。
+11. **探针入库**：Task 5 的临时 /out 探针已固化为 `engine/tools/out_probe.py`（--url/--count/--timeout/--save-dir/--sends-csv），本文档所有实测可从仓库直接复现（已完成，Task 6）。

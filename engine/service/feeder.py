@@ -23,12 +23,19 @@ async def run(url: str, cap: cv2.VideoCapture, fps: float,
               max_frames: int | None, log_file: Optional[IO[str]] = None) -> None:
     async with websockets.connect(url, max_size=None) as ws:
         seq = 0
+        fails = 0  # 连续读取失败计数：摄像头拔出/占用时干净退出而非 100% CPU 空转
         t0 = time.perf_counter()
         while max_frames is None or seq < max_frames:
             ok, frame = cap.read()
             if not ok:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 视频文件循环播放
+                fails += 1
+                if fails >= 50:
+                    raise SystemExit("driving source read failed repeatedly "
+                                     f"({fails} consecutive failures) — 摄像头断开或视频源损坏")
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 视频文件循环播放（摄像头为 no-op）
+                await asyncio.sleep(0.1)
                 continue
+            fails = 0
             ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ok:
                 ts_ms = int(time.time() * 1000)

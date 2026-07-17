@@ -27,30 +27,38 @@ const connEl = document.getElementById("conn");
 let frames = 0;
 let fpsText = "-";
 let winStart = performance.now();
+let lastDrawnSeq = -1n;  // 乱序到达防护：createImageBitmap 异步，慢帧可能晚于新帧完成
 
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/out`);
   ws.binaryType = "arraybuffer";  // 需要 DataView 读 20 字节协议头
   ws.onopen = () => { connEl.textContent = "connected"; };
   ws.onmessage = async (ev) => {
-    // 帧 = 20 字节头（magic u16 | ver u8 | ch u8 | seq u64 | ts_ms u64，LE）+ JPEG
-    const seq = new DataView(ev.data).getBigUint64(4, true);
-    const jpeg = new Blob([ev.data.slice(20)], { type: "image/jpeg" });
-    const bmp = await createImageBitmap(jpeg);
-    if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
-      canvas.width = bmp.width;
-      canvas.height = bmp.height;
+    try {
+      // 帧 = 20 字节头（magic u16 | ver u8 | ch u8 | seq u64 | ts_ms u64，LE）+ JPEG
+      const seq = new DataView(ev.data).getBigUint64(4, true);
+      const jpeg = new Blob([ev.data.slice(20)], { type: "image/jpeg" });
+      const bmp = await createImageBitmap(jpeg);
+      if (seq < lastDrawnSeq) { bmp.close(); return; }  // 旧帧迟到：不回退画面
+      lastDrawnSeq = seq;
+      if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+      }
+      ctx.drawImage(bmp, 0, 0);
+      bmp.close();
+      frames += 1;
+      // 本地慢速链路 ~1.9fps：fps 每 10 帧结算一次，帧计数/seq 每帧更新以示存活
+      if (frames % 10 === 0) {
+        const now = performance.now();
+        fpsText = (10000 / (now - winStart)).toFixed(2);
+        winStart = now;
+      }
+      statsEl.textContent = `frames: ${frames} | seq: ${seq} | fps (last 10): ${fpsText}`;
+    } catch (err) {
+      // 坏帧（如 JPEG 损坏）不应让页面停在 "connected" 却悄悄冻结
+      connEl.textContent = `frame error: ${err}`;
     }
-    ctx.drawImage(bmp, 0, 0);
-    bmp.close();
-    frames += 1;
-    // 本地慢速链路 ~1.9fps：fps 每 10 帧结算一次，帧计数/seq 每帧更新以示存活
-    if (frames % 10 === 0) {
-      const now = performance.now();
-      fpsText = (10000 / (now - winStart)).toFixed(2);
-      winStart = now;
-    }
-    statsEl.textContent = `frames: ${frames} | seq: ${seq} | fps (last 10): ${fpsText}`;
   };
   ws.onclose = () => {
     connEl.textContent = "disconnected, retrying in 1s...";
