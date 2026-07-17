@@ -12,7 +12,13 @@ WS 连接只是数据的进出口——多个 /out 订阅者共享同一路渲�
 （二进制帧 = 4 字节 LE u32 采样率前缀 + pcm16），/events 向订阅者广播
 管线事件的 JSON 元数据（wire 格式见 event_to_wire）。管线 events() 是
 单消费者契约——服务层起唯一一个广播任务扇出，多订阅者互不抢事件。
-未配管线时 /audio、/events 接受后立即 close(4404)。
+未配管线时 /audio、/events、/speech 接受后立即 close(4404)。
+
+TTS tee（M2b）：广播任务在 TTSReadyEvent 上分流——lang_channels 把语言映射
+到频道，映射命中时把口型曲线 enqueue 进该频道 worker 的 SpeechSchedule
+（驱动数字人嘴型），并把音频以二进制帧广播给 /speech 订阅者
+（[u8 channel][u32 LE segment_id][u32 LE sr][pcm16]，viewer 端播放）；
+未映射语言只走 /events 元数据，与之前行为一致。
 """
 
 import asyncio
@@ -20,6 +26,7 @@ import json
 import logging
 import os
 import re
+import struct
 import time
 from collections.abc import Iterable
 from contextlib import asynccontextmanager
@@ -33,7 +40,9 @@ _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
 _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 
 from service.protocol import FrameHeader, pack_frame, unpack_frame
+from service.speech import SpeechClip
 from service.worker import ChannelWorker
+from translate.tts import LIP_FPS  # TTS 口型曲线帧率（25fps），tee 入队时随 clip 传递
 from translate.pipeline import (
     PipelineErrorEvent,
     SubtitleEvent,
@@ -79,15 +88,61 @@ def event_to_wire(ev) -> dict:
     raise TypeError(f"unknown pipeline event type: {type(ev).__name__}")
 
 
+async def _ws_subscriber_loop(ws: WebSocket, queue: asyncio.Queue,
+                              send, unsubscribe: Callable[[], None],
+                              tag: str) -> None:
+    """订阅端点共享的竞速循环（/out //events //speech 同一模式，第三处出现时
+    按三振规则抽取）。queue.get() 与 ws.receive() 二选一竞速：只 await queue
+    永远感知不到无数据流动时的客户端断开（M1a E2E 僵尸订阅者 bug），哪边先
+    完成处理哪边，各自完成后各自重新武装——任意时刻每种任务最多一个。
+
+    send: async callable，把一个队列项发给客户端（send_bytes / send_text+json）。
+    unsubscribe: 同步零 await 的清理回调，finally 里最先执行。清理必须全同步：
+    外部取消（TestClient 退出时 portal cancel）会在 finally 的任意 await 点
+    重投 CancelledError，之前版本在此 await gather 偶发（~2%）拦腰打断 finally。
+    两个竞速任务只 cancel 不 await（绑在本循环上，取消后由循环回收），
+    done_callback 兜底取回可能已挂上的异常，避免 never-retrieved 告警。"""
+    queue_task: asyncio.Task = asyncio.ensure_future(queue.get())
+    recv_task: asyncio.Task = asyncio.ensure_future(ws.receive())
+    try:
+        while True:
+            done, _ = await asyncio.wait({queue_task, recv_task},
+                                         return_when=asyncio.FIRST_COMPLETED)
+            if recv_task in done:
+                msg = recv_task.result()  # ws.receive() 把断开作为消息返回
+                if msg["type"] == "websocket.disconnect":
+                    # 若此刻 queue_task 恰好也完成了，那一项随取消丢弃——
+                    # 客户端都断开了，为它保数据毫无意义，明确接受这个取舍。
+                    break
+                log.warning("%s: unexpected client message ignored: %r", tag, msg)
+                recv_task = asyncio.ensure_future(ws.receive())
+            if queue_task in done:
+                await send(queue_task.result())
+                queue_task = asyncio.ensure_future(queue.get())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        unsubscribe()
+        for task in (queue_task, recv_task):
+            task.cancel()
+            task.add_done_callback(
+                lambda t: None if t.cancelled() else t.exception())
+
+
 def create_app(pipeline_factory: Callable[[int], object],
                channels: Iterable[int] = (0,),
-               translation_pipeline=None) -> FastAPI:
+               translation_pipeline=None,
+               lang_channels: dict[str, int] | None = None) -> FastAPI:
     """pipeline_factory(ch) 为每个频道构造一条独立管线（协议头 channel 为 u8，
     合法频道号 0-255）。不做单管线兼容 shim——所有调用点统一工厂形式。
 
     translation_pipeline: 可选 TranslationPipeline。start() 是 async，在
     lifespan startup 里做（对比 worker 在 create_app 时启动——线程 start
-    是同步的，TestClient 不进 lifespan 也能用；翻译相关测试则必须进）。"""
+    是同步的，TestClient 不进 lifespan 也能用；翻译相关测试则必须进）。
+
+    lang_channels: TTS 语言 → 数字人频道映射（默认 {"en": 0}）。映射命中的
+    TTSReadyEvent 会 tee 进对应 worker 的 SpeechSchedule 并广播到 /speech；
+    未映射语言只发 /events 元数据。仅在配了翻译管线时校验/生效。"""
     # 先整体校验再启动 worker：校验中途 raise 不会留下已启动的孤儿线程
     channels = tuple(channels)
     seen: set[int] = set()
@@ -97,25 +152,60 @@ def create_app(pipeline_factory: Callable[[int], object],
         if ch in seen:
             raise ValueError(f"duplicate channel {ch}")
         seen.add(ch)
+    if lang_channels is None:
+        lang_channels = {"en": 0}
+    if translation_pipeline is not None:
+        for lang, ch in lang_channels.items():
+            if ch not in seen:
+                raise ValueError(
+                    f"lang_channels[{lang!r}] = {ch!r} is not a configured channel")
     workers: dict[int, ChannelWorker] = {}
     for ch in channels:
         w = ChannelWorker(pipeline=pipeline_factory(ch), name=f"ch{ch}")
         w.start()
         workers[ch] = w
 
-    # /events 订阅队列集合。广播任务与所有订阅端点都跑在同一事件循环，
+    # /events //speech 订阅队列。广播任务与所有订阅端点都跑在同一事件循环，
     # add/discard/put 全是循环内同步操作，无需 /out 那样的 call_soon_threadsafe 桥。
     events_subs: set[asyncio.Queue] = set()
+    speech_subs: dict[int, set[asyncio.Queue]] = {ch: set() for ch in channels}
+
+    def _tee_tts(ev: TTSReadyEvent, ch: int) -> None:
+        """TTSReadyEvent 分流到频道 ch：口型曲线入 SpeechSchedule + 音频广播
+        给该频道的 /speech 订阅者。坏曲线（NaN 等）SpeechClip 构造会 raise——
+        只记日志跳过入队，绝不能杀死广播任务；音频帧照常广播（音频本身
+        与曲线无关，viewer 仍可放声）。"""
+        r = ev.result
+        try:
+            # fps=LIP_FPS：曲线由 translate.tts 以 25fps 生成，帧率随 clip
+            # 传给调度器——两端耦合在这一个常量上，改帧率只动 translate.tts。
+            workers[ch].speech.enqueue(SpeechClip(
+                segment_id=ev.segment_id, lang=ev.lang, curve=r.lip_curve,
+                fps=float(LIP_FPS), duration_s=r.duration_s))
+        except Exception:
+            log.exception("tts tee: clip rejected, lip skipped (segment=%d lang=%s)",
+                          ev.segment_id, ev.lang)
+        frame = struct.pack("<BII", ch, ev.segment_id, r.sr) + r.audio_pcm16
+        for q in list(speech_subs[ch]):
+            if q.full():
+                q.get_nowait()  # 订阅端 latest-wins 丢最旧，同 /out //events
+            q.put_nowait(frame)
 
     async def _broadcast_events() -> None:
         # 管线 events() 的唯一消费者（单消费者契约），向所有 /events 订阅者
-        # 扇出 wire JSON。坏事件映射失败只记日志跳过——广播任务绝不能死。
+        # 扇出 wire JSON；TTSReadyEvent 额外 tee 进语音调度 + /speech 广播。
+        # 坏事件映射失败只记日志跳过——广播任务绝不能死。
         async for ev in translation_pipeline.events():
             try:
                 wire = event_to_wire(ev)
             except Exception:
                 log.exception("events: unmappable event skipped (%s)", type(ev).__name__)
                 continue
+            if isinstance(ev, TTSReadyEvent):
+                ch = lang_channels.get(ev.lang)
+                wire["channel"] = ch  # int 或 null：告诉订阅者这段去了哪个数字人
+                if ch is not None:
+                    _tee_tts(ev, ch)  # 映射频道已在 create_app 校验存在
             for q in list(events_subs):
                 if q.full():
                     q.get_nowait()  # 订阅端 latest-wins 丢最旧，同 /out
@@ -313,45 +403,10 @@ def create_app(pipeline_factory: Callable[[int], object],
 
             loop.call_soon_threadsafe(_put)
 
-        # 空闲断连清理（M1a E2E 复现的 bug）：只 await queue.get() 永远感知不到
-        # 无帧流动时的客户端断开，僵尸订阅者要等下一帧 send_bytes 抛错才清掉。
-        # 修复：queue.get() 与 ws.receive() 二选一竞速，哪边先完成处理哪边，
-        # 各自完成后各自重新武装——任意时刻每种任务最多存在一个，不会无限增殖。
+        # 竞速循环 + 全同步 finally 抽在 _ws_subscriber_loop（空闲断连清理
+        # bug 的教训见其 docstring）。unsubscribe 同步廉价，任何路径不漏。
         unsubscribe = worker.subscribe(on_frame)
-        queue_task: asyncio.Task = asyncio.ensure_future(queue.get())
-        recv_task: asyncio.Task = asyncio.ensure_future(ws.receive())
-        try:
-            while True:
-                done, _ = await asyncio.wait({queue_task, recv_task},
-                                             return_when=asyncio.FIRST_COMPLETED)
-                if recv_task in done:
-                    msg = recv_task.result()  # ws.receive() 把断开作为消息返回
-                    if msg["type"] == "websocket.disconnect":
-                        # 若此刻 queue_task 恰好也完成了，那一帧随取消丢弃——
-                        # 客户端都断开了，为它保帧毫无意义，明确接受这个取舍。
-                        break
-                    log.warning("out: unexpected client message ignored: %r", msg)
-                    recv_task = asyncio.ensure_future(ws.receive())
-                if queue_task in done:
-                    await ws.send_bytes(queue_task.result())
-                    queue_task = asyncio.ensure_future(queue.get())
-        except WebSocketDisconnect:
-            pass
-        finally:
-            # 清理必须全同步、零 await：外部取消（如 TestClient 退出时 portal
-            # cancel）会在 finally 的任意 await 点重投 CancelledError——之前版本
-            # 在此 await gather，偶发（~2%）把 finally 拦腰打断：unsubscribe 被
-            # 跳过、端点 future 以 CANCELLED 收场令 TestClient teardown 抛错。
-            # unsubscribe 最先执行（同步、廉价），保证任何路径都不会漏。
-            unsubscribe()
-            # 只 cancel 不 await：任务绑在本事件循环上，取消后由循环自行回收。
-            # done_callback 兜底取回可能已挂在任务上的异常（如断开后 receive
-            # 的 RuntimeError），避免 "Task exception was never retrieved" 告警；
-            # 已取消的任务不能调 exception()，先判 cancelled()。
-            for task in (queue_task, recv_task):
-                task.cancel()
-                task.add_done_callback(
-                    lambda t: None if t.cancelled() else t.exception())
+        await _ws_subscriber_loop(ws, queue, ws.send_bytes, unsubscribe, "out")
 
     @app.websocket("/audio")
     async def audio(ws: WebSocket) -> None:
@@ -379,6 +434,12 @@ def create_app(pipeline_factory: Callable[[int], object],
                     if sr == 0:
                         log.warning("audio: frame with sr=0 dropped")
                         continue
+                    if (len(data) - 4) % 2:
+                        # pcm16 必须偶数字节：奇数说明发送端截断/错位，硬喂
+                        # 会让转写器在半个采样上出错，整帧丢弃（M2a backlog）
+                        log.warning("audio: odd pcm16 length (%d bytes) dropped",
+                                    len(data) - 4)
+                        continue
                     try:
                         translation_pipeline.feed_audio(data[4:], sr)
                     except ValueError as e:
@@ -402,9 +463,8 @@ def create_app(pipeline_factory: Callable[[int], object],
 
     @app.websocket("/events")
     async def events(ws: WebSocket) -> None:
-        # 广播订阅端。竞速循环 + 全同步 finally 与 /out 同模式（空闲断连
-        # 清理 bug 的教训见 /out 注释）；区别仅在数据源是本循环内的广播
-        # 队列而非 worker 线程回调，出帧是 JSON 文本而非二进制。
+        # 广播订阅端，竞速循环见 _ws_subscriber_loop；区别仅在数据源是本
+        # 循环内的广播队列而非 worker 线程回调，出帧是 JSON 文本而非二进制。
         await ws.accept()
         if translation_pipeline is None:
             log.warning("events: no translation pipeline configured, closing 4404")
@@ -412,29 +472,31 @@ def create_app(pipeline_factory: Callable[[int], object],
             return
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         events_subs.add(queue)
-        queue_task: asyncio.Task = asyncio.ensure_future(queue.get())
-        recv_task: asyncio.Task = asyncio.ensure_future(ws.receive())
-        try:
-            while True:
-                done, _ = await asyncio.wait({queue_task, recv_task},
-                                             return_when=asyncio.FIRST_COMPLETED)
-                if recv_task in done:
-                    msg = recv_task.result()
-                    if msg["type"] == "websocket.disconnect":
-                        break
-                    log.warning("events: unexpected client message ignored: %r", msg)
-                    recv_task = asyncio.ensure_future(ws.receive())
-                if queue_task in done:
-                    await ws.send_text(json.dumps(queue_task.result(), ensure_ascii=False))
-                    queue_task = asyncio.ensure_future(queue.get())
-        except WebSocketDisconnect:
-            pass
-        finally:
-            # 与 /out 同理：清理全同步零 await，先摘订阅再 cancel 两个任务
-            events_subs.discard(queue)
-            for task in (queue_task, recv_task):
-                task.cancel()
-                task.add_done_callback(
-                    lambda t: None if t.cancelled() else t.exception())
+
+        async def send_json(item) -> None:
+            await ws.send_text(json.dumps(item, ensure_ascii=False))
+
+        await _ws_subscriber_loop(ws, queue, send_json,
+                                  lambda: events_subs.discard(queue), "events")
+
+    @app.websocket("/speech")
+    async def speech(ws: WebSocket, channel: int = Query(0)) -> None:
+        # TTS 音频下行订阅端（帧格式见模块 docstring）。按 ?channel= 过滤，
+        # 只收本频道数字人的语音；竞速循环同 _ws_subscriber_loop。队列浅
+        # （8 段）+ 丢最旧：直播场景积压的旧语音早已过时，同 SpeechSchedule。
+        await ws.accept()
+        if translation_pipeline is None:
+            log.warning("speech: no translation pipeline configured, closing 4404")
+            await ws.close(code=4404)
+            return
+        subs = speech_subs.get(channel)
+        if subs is None:
+            log.warning("speech: unknown channel %d, closing 4400", channel)
+            await ws.close(code=4400)
+            return
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
+        subs.add(queue)
+        await _ws_subscriber_loop(ws, queue, ws.send_bytes,
+                                  lambda: subs.discard(queue), "speech")
 
     return app

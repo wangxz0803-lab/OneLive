@@ -578,3 +578,163 @@ def test_capture_page_has_audio_uplink():
     client = TestClient(app)
     r = client.get("/capture")
     assert "/audio" in r.text  # 采集页有音频上行路径
+
+
+# ---------------------------------------------------------- TTS tee + /speech
+
+
+class RecordingSchedule:
+    """替身 SpeechSchedule：只记录 enqueue 到的 clip（渲染侧 lip_at 返回 None）。"""
+
+    def __init__(self):
+        self.clips = []
+
+    def enqueue(self, clip) -> None:
+        self.clips.append(clip)
+
+    def lip_at(self, now):
+        return None
+
+
+def _tts_ready_ev(segment_id=1, lang="en", pcm=b"\x01\x02" * 160, sr=16000,
+                  curve=None, duration_s=0.5):
+    if curve is None:
+        curve = np.full(12, 0.5, np.float32)  # 12 帧 / 25fps ≈ 0.48s，与 0.5s 差半帧
+    result = TTSResult(audio_pcm16=pcm, sr=sr, lip_curve=curve,
+                       duration_s=duration_s, synth_ms=42)
+    return TTSReadyEvent(segment_id=segment_id, lang=lang, voice="v",
+                         duration_s=duration_s, synth_ms=42, result=result)
+
+
+def _parse_speech_frame(blob: bytes):
+    """/speech 二进制帧 [u8 channel][u32 LE segment_id][u32 LE sr][pcm16]。"""
+    ch, seg, sr = struct.unpack_from("<BII", blob)
+    return ch, seg, sr, blob[9:]
+
+
+def test_tts_tee_enqueues_clip_and_broadcasts_speech_frame():
+    """TTSReadyEvent（映射语言）→ worker.speech 收到 clip（字段一致），
+    /speech 订阅者收到帧格式正确的二进制（pcm 原样），wire 事件带 channel。"""
+    pcm = b"\xaa\xbb" * 100
+    ev = _tts_ready_ev(segment_id=7, lang="en", pcm=pcm, sr=24000)
+    tp = FakeTranslationPipeline([ev])
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    sched = RecordingSchedule()
+    app.state.workers[0].speech = sched
+    with TestClient(app) as client:
+        with client.websocket_connect("/speech") as sp_ws, \
+             client.websocket_connect("/events") as ev_ws:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+                wire = ev_ws.receive_json()
+                blob = sp_ws.receive_bytes()
+    assert wire["type"] == "tts_ready"
+    assert wire["channel"] == 0                      # wire 新增 channel 字段
+    ch, seg, sr, got_pcm = _parse_speech_frame(blob)
+    assert (ch, seg, sr) == (0, 7, 24000)
+    assert got_pcm == pcm                            # pcm 原样透传
+    assert _wait(lambda: len(sched.clips) == 1), "clip 未入队"
+    clip = sched.clips[0]
+    assert (clip.segment_id, clip.lang) == (7, "en")
+    assert clip.fps == 25.0                          # TTS 曲线帧率（LIP_FPS 耦合）
+    assert clip.duration_s == 0.5
+    assert np.allclose(clip.curve, 0.5)
+
+
+def test_tts_tee_unmapped_lang_events_only():
+    """未映射语言：不入队、/speech 无帧、不崩——wire channel 为 null，
+    随后映射语言的事件照常入队 + 广播（/speech 首帧必须是映射段）。"""
+    ja = _tts_ready_ev(segment_id=1, lang="ja")
+    en = _tts_ready_ev(segment_id=2, lang="en")
+    tp = FakeTranslationPipeline([ja, en])
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    sched = RecordingSchedule()
+    app.state.workers[0].speech = sched
+    with TestClient(app) as client:
+        with client.websocket_connect("/speech") as sp_ws, \
+             client.websocket_connect("/events") as ev_ws:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+                w_ja = ev_ws.receive_json()
+                w_en = ev_ws.receive_json()
+                blob = sp_ws.receive_bytes()
+    assert (w_ja["segment_id"], w_ja["channel"]) == (1, None)
+    assert (w_en["segment_id"], w_en["channel"]) == (2, 0)
+    assert _parse_speech_frame(blob)[1] == 2         # /speech 首帧就是映射段 2
+    assert [c.segment_id for c in sched.clips] == [2]  # ja 段未入队
+
+
+def test_tts_tee_bad_curve_consumer_survives():
+    """NaN 曲线：SpeechClip 构造 raise → 只记日志跳过入队，广播任务不死，
+    后续事件照常广播。"""
+    bad = _tts_ready_ev(segment_id=1, lang="en",
+                        curve=np.array([0.5, np.nan, 0.5], np.float32))
+    tp = FakeTranslationPipeline([
+        bad, SubtitleEvent(segment_id=2, text="still alive", t0=0.0, t1=0.5)])
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with client.websocket_connect("/events") as ev_ws:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+                msgs = [ev_ws.receive_json() for _ in range(2)]
+    assert [m["type"] for m in msgs] == ["tts_ready", "subtitle"]  # 消费者活着
+    sched = app.state.workers[0].speech
+    assert sched.stats()["queued"] == 0              # 坏曲线未入队
+
+
+def test_speech_channel_filtering():
+    """两频道两语言：帧只到对应 ?channel= 的订阅者。"""
+    en = _tts_ready_ev(segment_id=10, lang="en")
+    ja = _tts_ready_ev(segment_id=11, lang="ja")
+    tp = FakeTranslationPipeline([en, ja])
+    app = create_app(lambda ch: EchoPipeline(), channels=(0, 1),
+                     translation_pipeline=tp,
+                     lang_channels={"en": 0, "ja": 1})
+    with TestClient(app) as client:
+        with client.websocket_connect("/speech?channel=0") as sp0, \
+             client.websocket_connect("/speech?channel=1") as sp1:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+                b0 = sp0.receive_bytes()
+                b1 = sp1.receive_bytes()
+    assert _parse_speech_frame(b0)[:2] == (0, 10)
+    assert _parse_speech_frame(b1)[:2] == (1, 11)
+
+
+def test_speech_without_pipeline_closes_4404():
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/speech") as ws:
+            ws.receive_bytes()
+    assert exc.value.code == 4404
+
+
+def test_speech_unknown_channel_closes_4400():
+    tp = FakeTranslationPipeline()
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/speech?channel=7") as ws:
+                ws.receive_bytes()
+        assert exc.value.code == 4400
+
+
+def test_create_app_rejects_lang_channel_without_worker():
+    """lang_channels 指到不存在的频道：配了翻译管线时 create_app 即报错。"""
+    with pytest.raises(ValueError, match="lang_channels"):
+        create_app(lambda ch: EchoPipeline(), channels=(0,),
+                   translation_pipeline=FakeTranslationPipeline(),
+                   lang_channels={"en": 3})
+
+
+def test_audio_odd_byte_frame_dropped_connection_survives():
+    """pcm16 字节数为奇数的 /audio 帧：丢弃不进管线，连接活着。"""
+    tp = FakeTranslationPipeline()
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with client.websocket_connect("/audio") as ws:
+            ws.send_bytes(_audio_chunk(16000, b"\x01\x02\x03"))  # 奇数 → 丢弃
+            ws.send_bytes(_audio_chunk(16000, b"\x01\x02"))
+            assert _wait(lambda: len(tp.fed) == 1)
+    assert tp.fed == [(b"\x01\x02", 16000)]
