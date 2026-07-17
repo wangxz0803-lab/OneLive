@@ -25,7 +25,7 @@ from translate.tts import TTSResult
 
 
 class EchoPipeline:
-    def infer(self, frame_bgr, seq):
+    def infer(self, frame_bgr, seq, lip_ratio=None):
         return frame_bgr
 
 

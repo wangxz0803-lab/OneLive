@@ -6,6 +6,11 @@ submit() 收 JPEG bytes，解码（cv2.imdecode）在 worker 线程内、取槽�
 被 latest-wins 覆盖的帧根本不解码，事件循环也不再为注定丢弃的帧付解码成本。
 订阅者回调收到 (seq, ts_ms, jpeg_bytes)，ts_ms 为提交时随帧传入的采集时间戳
 （epoch 毫秒），原样透传用于端到端延迟测量；回调在 worker 线程执行，必须非阻塞。
+
+管线协议（M2b 起）：``infer(frame_bgr, seq, lip_ratio=None) -> ndarray | None``。
+worker 每帧渲染前用 ``clock()``（默认 time.monotonic）查询 ``self.speech``
+（SpeechSchedule）的当前口型值 0..1，以 ``lip_ratio`` kwarg 传给管线；
+无语音内容时传 None（管线走原样 legacy 路径）。
 """
 
 import logging
@@ -17,6 +22,8 @@ from typing import Callable, Optional
 import cv2
 import numpy as np
 
+from service.speech import SpeechSchedule
+
 log = logging.getLogger("engine.worker")
 
 Subscriber = Callable[[int, int, bytes], None]  # (seq, ts_ms, jpeg_bytes)
@@ -25,10 +32,16 @@ Subscriber = Callable[[int, int, bytes], None]  # (seq, ts_ms, jpeg_bytes)
 class ChannelWorker:
     """一次性生命周期：start/stop 各调一次，不可重启。submit() 收 JPEG bytes（不可变），无借用问题。"""
 
-    def __init__(self, pipeline, name: str = "ch0", jpeg_quality: int = 80):
+    def __init__(self, pipeline, name: str = "ch0", jpeg_quality: int = 80,
+                 speech: Optional[SpeechSchedule] = None,
+                 clock: Callable[[], float] = time.monotonic):
         self._pipeline = pipeline
         self._name = name
         self._quality = jpeg_quality
+        # 每个 worker 自带口型调度器（TTS 侧 enqueue，渲染循环消费）；
+        # clock 可注入以便测试确定性驱动时间线。
+        self.speech = speech if speech is not None else SpeechSchedule()
+        self._clock = clock
         self._slot: Optional[tuple[bytes, int, int]] = None  # (jpeg_bytes, seq, ts_ms)
         self._slot_lock = threading.Condition()
         self._subs: dict[int, Subscriber] = {}
@@ -163,8 +176,9 @@ class ChannelWorker:
                               self._name, seq, len(jpeg))
                     self._stats["errors"] += 1
                     continue
+                lip = self.speech.lip_at(self._clock())  # 无语音 → None
                 t0 = time.perf_counter()
-                out_bgr = self._pipeline.infer(frame, seq)
+                out_bgr = self._pipeline.infer(frame, seq, lip_ratio=lip)
                 self._stats["last_infer_ms"] = (time.perf_counter() - t0) * 1000
                 if out_bgr is None:  # 管线返回 None 表示本帧无输出（如无脸）
                     self._stats["skipped"] += 1

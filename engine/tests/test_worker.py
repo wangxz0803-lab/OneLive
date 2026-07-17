@@ -3,7 +3,9 @@ import time
 
 import cv2
 import numpy as np
+import pytest
 
+from service.speech import SpeechClip, SpeechSchedule
 from service.worker import ChannelWorker
 
 
@@ -15,7 +17,7 @@ class FakePipeline:
         self.calls: list[int] = []
         self.shapes: list[tuple] = []
 
-    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+    def infer(self, frame_bgr: np.ndarray, seq: int, lip_ratio=None) -> np.ndarray:
         assert isinstance(frame_bgr, np.ndarray)  # worker 内解码后必须是 ndarray
         self.calls.append(seq)
         self.shapes.append(frame_bgr.shape)
@@ -32,7 +34,7 @@ class BlockingPipeline:
         self.started = threading.Event()
         self.calls: list[int] = []
 
-    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+    def infer(self, frame_bgr: np.ndarray, seq: int, lip_ratio=None) -> np.ndarray:
         self.calls.append(seq)
         self.started.set()
         self.gate.wait(timeout=5)
@@ -45,7 +47,7 @@ class RaisingPipeline:
     def __init__(self):
         self.calls: list[int] = []
 
-    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+    def infer(self, frame_bgr: np.ndarray, seq: int, lip_ratio=None) -> np.ndarray:
         self.calls.append(seq)
         if len(self.calls) == 1:
             raise RuntimeError("boom")
@@ -58,7 +60,7 @@ class NonePipeline:
     def __init__(self):
         self.calls: list[int] = []
 
-    def infer(self, frame_bgr: np.ndarray, seq: int):
+    def infer(self, frame_bgr: np.ndarray, seq: int, lip_ratio=None):
         self.calls.append(seq)
         time.sleep(0.02)
         return None
@@ -200,7 +202,7 @@ class OrderedPipeline:
         self.started = threading.Event()
         self.events: list[tuple] = []
 
-    def infer(self, frame_bgr: np.ndarray, seq: int) -> np.ndarray:
+    def infer(self, frame_bgr: np.ndarray, seq: int, lip_ratio=None) -> np.ndarray:
         self.events.append(("frame", seq, threading.get_ident()))
         self.started.set()
         self.gate.wait(timeout=5)
@@ -359,5 +361,61 @@ def test_none_return_counts_skipped_without_delivery():
         assert s["errors"] == 0
         assert s["last_infer_ms"] >= 10      # None 返回也要更新 last_infer_ms
         assert got == []                     # 无输出帧不做扇出
+    finally:
+        w.stop()
+
+
+# ------------------------------------------------------------ speech/lip (M2b)
+
+
+class LipRecordingPipeline:
+    """记录每次 infer 收到的 lip_ratio（管线协议：infer(frame, seq, lip_ratio=None)）。"""
+
+    def __init__(self):
+        self.lips: list = []
+
+    def infer(self, frame_bgr: np.ndarray, seq: int, lip_ratio=None) -> np.ndarray:
+        self.lips.append(lip_ratio)
+        return frame_bgr.copy()
+
+
+def test_worker_passes_speech_lip_to_pipeline():
+    """注入假时钟（确定性）：worker 每帧用 clock() 查 speech.lip_at，
+    把曲线值原样以 lip_ratio kwarg 传给管线；片段播完传 None。"""
+    fake = LipRecordingPipeline()
+    now = [100.0]
+    w = ChannelWorker(pipeline=fake, name="t", clock=lambda: now[0])
+    w.speech.enqueue(SpeechClip(
+        segment_id=1, lang="en",
+        curve=np.array([0.2, 0.4, 0.6, 0.8], dtype=np.float32),
+        fps=25.0, duration_s=0.16,
+    ))
+    w.start()
+    try:
+        for i, t_off in enumerate([0.0, 0.04, 0.08, 0.12]):
+            now[0] = 100.0 + t_off
+            w.submit(_jpeg(i), seq=i, ts_ms=i)
+            assert _wait_until(lambda: len(fake.lips) == i + 1)
+        assert fake.lips == pytest.approx([0.2, 0.4, 0.6, 0.8])
+        now[0] = 105.0                        # 远超 duration → 片段播完
+        w.submit(_jpeg(9), seq=9, ts_ms=9)
+        assert _wait_until(lambda: len(fake.lips) == 5)
+        assert fake.lips[-1] is None
+        assert w.speech.stats()["played"] == 1
+    finally:
+        w.stop()
+
+
+def test_worker_empty_schedule_passes_none():
+    """无语音内容时每帧 lip_ratio=None（管线走原样 legacy 路径）；
+    worker 默认自带一个 SpeechSchedule。"""
+    fake = LipRecordingPipeline()
+    w = ChannelWorker(pipeline=fake, name="t")
+    assert isinstance(w.speech, SpeechSchedule)
+    w.start()
+    try:
+        w.submit(_jpeg(0), seq=0, ts_ms=0)
+        assert _wait_until(lambda: len(fake.lips) == 1)
+        assert fake.lips == [None]
     finally:
         w.stop()

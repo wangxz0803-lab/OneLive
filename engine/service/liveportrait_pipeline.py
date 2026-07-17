@@ -24,8 +24,18 @@ _M0 = Path(os.environ.get(
 _CLONE = _M0 / "FasterLivePortrait"
 
 
+def map_lip_ratio(lip: float, closed: float, open_: float) -> float:
+    """把调度器的归一化口型值 0..1 线性映射到 clone 的 close-ratio 单位。"""
+    return closed + lip * (open_ - closed)
+
+
 class LivePortraitPipeline:
-    def __init__(self, source_image: str | None = None, cfg_name: str = "onnx_infer.yaml"):
+    def __init__(self, source_image: str | None = None, cfg_name: str = "onnx_infer.yaml",
+                 enable_lip: bool = True, lip_closed: float = 0.001,
+                 # lip_open 上限依据 M2b spike 实测（spike-results）：d14 驱动视频
+                 # 观测到的 close-ratio 最大 0.216，0.18 对应中等张嘴幅度；
+                 # 调高该上限会加大嘴部开合幅度（更夸张的口型）。
+                 lip_open: float = 0.18):
         assert _CLONE.is_dir(), f"M0 engine assets not found: {_CLONE}"
         os.chdir(_CLONE)  # clone 内配置用相对路径（../models/...）引用模型
         sys.path.insert(0, str(_CLONE))
@@ -38,6 +48,14 @@ class LivePortraitPipeline:
         # _run()，会触发 "multiple values for argument 'realtime'"（上游 bug，
         # 实测复现）。M0 bench 同样用本 cfg 开关（bench_liveportrait.py:63）。
         cfg.infer_params.flag_pasteback = False
+        self._enable_lip = enable_lip
+        self._lip_closed = lip_closed
+        self._lip_open = lip_open
+        if enable_lip:
+            # 嘴型覆写（Task 1 补丁）所需的两个开关必须在管线构造前置好
+            # ——cfg 每帧从同一 OmegaConf 读取，但"构造前设置"是已验证的模式。
+            cfg.infer_params.flag_lip_retargeting = True
+            cfg.infer_params.flag_lip_retarget_keep_motion = True
         self._pipe = FasterLivePortraitPipeline(cfg=cfg)
         src = source_image or str(_CLONE / "assets/examples/source/s10.jpg")
         ok = self._pipe.prepare_source(src, realtime=True)
@@ -63,9 +81,16 @@ class LivePortraitPipeline:
         self._src_info = self._pipe.src_infos[0]
         self._initialized = False
 
-    def infer(self, frame_bgr, seq: int):
+    def infer(self, frame_bgr, seq: int, lip_ratio: float | None = None):
+        """lip_ratio: 归一化口型值 0..1（None = 不覆写）。有值且 enable_lip 时
+        映射为 close-ratio 后经 lip_ratio_override 传给 clone；None 或禁用时
+        完全不带该 kwarg——legacy 调用路径逐字节等价。"""
+        kwargs = {}
+        if lip_ratio is not None and self._enable_lip:
+            kwargs["lip_ratio_override"] = map_lip_ratio(
+                lip_ratio, self._lip_closed, self._lip_open)
         ret = self._pipe.run(frame_bgr, self._img_src, self._src_info,
-                             first_frame=not self._initialized)
+                             first_frame=not self._initialized, **kwargs)
         if ret is None:
             return None
         _, out_crop, _, _ = ret

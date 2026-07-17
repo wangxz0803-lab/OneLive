@@ -45,6 +45,9 @@ class SpeechClip:
         self.curve = np.asarray(self.curve, dtype=np.float32)
         if self.curve.ndim != 1 or len(self.curve) == 0:
             raise ValueError("curve must be a non-empty 1-D array")
+        if not np.all(np.isfinite(self.curve)):
+            raise ValueError("curve contains NaN/inf")  # 上游特征 bug，拒收
+        self.curve = np.clip(self.curve, 0.0, 1.0)  # 有限越界值 clip 进值域
         if not self.fps > 0:
             raise ValueError(f"fps must be > 0, got {self.fps}")
         if not self.duration_s > 0:

@@ -39,6 +39,20 @@ def test_clip_validation():
         SpeechClip(segment_id=1, lang="en", curve=np.array([0.5, 0.5]), fps=25.0, duration_s=5.0)
 
 
+def test_clip_rejects_nonfinite_and_clips_range():
+    """NaN/inf 直接拒绝（上游特征提取 bug 不能悄悄进渲染）；
+    有限但越界的值 clip 到 [0,1]（半开半闭噪声不至于炸掉整段）。"""
+    with pytest.raises(ValueError):
+        SpeechClip(segment_id=1, lang="en", curve=np.array([0.5, np.nan]),
+                   fps=25.0, duration_s=0.08)
+    with pytest.raises(ValueError):
+        SpeechClip(segment_id=1, lang="en", curve=np.array([np.inf, 0.5]),
+                   fps=25.0, duration_s=0.08)
+    c = SpeechClip(segment_id=1, lang="en", curve=np.array([-0.5, 1.5]),
+                   fps=25.0, duration_s=0.08)
+    assert c.curve.tolist() == [0.0, 1.0]
+
+
 # ------------------------------------------------------------------ timeline
 
 
