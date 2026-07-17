@@ -9,14 +9,19 @@ TTSError。理由：翻译失败还能退化显示原文，而 TTS 没有任何�
 部分结果——没有音频就没有嘴型曲线，返回半截结构体只会把失败往下游
 传得更隐蔽。由调用方（管线编排层）决定降级策略（如跳过该句配音）。
 
-ffmpeg 路径解析优先级：显式参数 > 环境变量 ONELIVE_FFMPEG > winget
-安装的默认全路径。
+ffmpeg 路径解析优先级：显式参数 > 环境变量 ONELIVE_FFMPEG > PATH 上的
+ffmpeg（shutil.which）> winget 安装的默认全路径。
+
+超时契约：整个 synthesize（网络收流 + ffmpeg 转码 + 曲线提取）在
+asyncio.wait_for(timeout_s) 之下，超时抛 TTSError —— 管线编排层只需
+面对单一异常类型。
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import time
 from dataclasses import dataclass
 
@@ -58,7 +63,12 @@ class TTSResult:
 
 
 def _resolve_ffmpeg(ffmpeg_path: str | None) -> str:
-    return ffmpeg_path or os.environ.get("ONELIVE_FFMPEG") or _DEFAULT_FFMPEG
+    return (
+        ffmpeg_path
+        or os.environ.get("ONELIVE_FFMPEG")
+        or shutil.which("ffmpeg")
+        or _DEFAULT_FFMPEG
+    )
 
 
 async def _collect_mp3(text: str, voice: str) -> bytes:
@@ -105,16 +115,17 @@ async def _mp3_to_pcm16(mp3: bytes, ffmpeg_path: str) -> bytes:
     return pcm
 
 
-async def synthesize(
-    text: str, voice: str, ffmpeg_path: str | None = None
+async def _synthesize_inner(
+    text: str, voice: str, ffmpeg_path: str | None, t0: float
 ) -> TTSResult:
-    """整句合成：text → mp3 → 16k pcm16 → 嘴型曲线。失败抛 TTSError（见模块 docstring）。"""
-    t0 = time.perf_counter()
     mp3 = await _collect_mp3(text, voice)
     pcm = await _mp3_to_pcm16(mp3, _resolve_ffmpeg(ffmpeg_path))
 
-    audio_f32 = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-    lip_curve = audio_to_lip_curve(audio_f32, TARGET_SR, fps=LIP_FPS)
+    try:
+        audio_f32 = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        lip_curve = audio_to_lip_curve(audio_f32, TARGET_SR, fps=LIP_FPS)
+    except Exception as e:
+        raise TTSError(f"lip curve extraction failed: {e!r}") from e
     duration_s = len(audio_f32) / TARGET_SR
     synth_ms = int((time.perf_counter() - t0) * 1000)
     return TTSResult(
@@ -124,3 +135,21 @@ async def synthesize(
         duration_s=duration_s,
         synth_ms=synth_ms,
     )
+
+
+async def synthesize(
+    text: str,
+    voice: str,
+    ffmpeg_path: str | None = None,
+    timeout_s: float = 20.0,
+) -> TTSResult:
+    """整句合成：text → mp3 → 16k pcm16 → 嘴型曲线。失败抛 TTSError（见模块 docstring）。"""
+    t0 = time.perf_counter()
+    try:
+        return await asyncio.wait_for(
+            _synthesize_inner(text, voice, ffmpeg_path, t0), timeout_s
+        )
+    except asyncio.TimeoutError:
+        raise TTSError(
+            f"timeout after {timeout_s}s (voice={voice}, text={text[:50]!r})"
+        ) from None

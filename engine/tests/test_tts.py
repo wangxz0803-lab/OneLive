@@ -1,5 +1,6 @@
 """流式 TTS 测试：edge-tts 真实合成（需网络）+ 嘴型曲线真实提取（不 mock audio_to_lip_curve）。"""
 
+import asyncio
 import time
 
 import pytest
@@ -55,3 +56,25 @@ async def test_unknown_voice_raises_tts_error():
 async def test_bad_ffmpeg_path_raises_tts_error():
     with pytest.raises(TTSError):
         await synthesize("hello", VOICES["en"], ffmpeg_path="C:/nonexistent/ffmpeg.exe")
+
+
+@pytest.mark.anyio
+async def test_timeout_raises_tts_error(monkeypatch):
+    """整个 synthesize 受 timeout_s 约束：慢流（不 mock 网络之外的任何环节）→ TTSError。"""
+    import edge_tts
+
+    class SlowCommunicate:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def stream(self):
+            await asyncio.sleep(30)
+            yield {"type": "audio", "data": b"never"}
+
+    monkeypatch.setattr(edge_tts, "Communicate", SlowCommunicate)
+
+    t0 = time.perf_counter()
+    with pytest.raises(TTSError, match="timeout"):
+        await synthesize("hello", VOICES["en"], timeout_s=0.5)
+    # 确认确实是超时截断，而不是等满 30s
+    assert time.perf_counter() - t0 < 5.0

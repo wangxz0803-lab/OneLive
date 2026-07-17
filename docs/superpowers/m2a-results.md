@@ -25,4 +25,12 @@
 3. **faster-whisper 依赖会顶掉 DirectML**：pip 解析 faster-whisper 依赖时会安装 plain `onnxruntime`，覆盖 `onnxruntime-directml` 的 DmlExecutionProvider（本次实测已发生一次，已修复）。处置：装完重执行 `pip uninstall -y onnxruntime onnxruntime-directml && pip install onnxruntime-directml` 并验证 providers；requirements.txt 已加注释。`pip check` 报 faster-whisper 缺 onnxruntime 为已知误报（directml 包提供同名模块）。
 4. **麦克风底噪 vs 固定 0.01 阈值**：静音检测阈值按 edge-tts 数字静音（真零）标定；真实麦克风有底噪/空调声/键盘声，固定归一化 RMS 0.01 可能永不静音（切不开段）或误切。构造器已支持 `rms_threshold` 等透传，**Task 5 接真实音频时需做底噪标定**（如取前 N 秒噪声 RMS 的 k 倍作自适应阈值）。
 
+## Backlog（Task 3 评审记录）
+
+- **TTS 流式首块可行**：当前 synthesize 整句离线（收全 mp3 → 转码 → 曲线），
+  首音频约 ~2.4s。管线中唯一非因果环节是嘴型曲线的峰值归一化（要看到全句
+  峰值才能归一），改为 running-max 或固定标定值即可流式化；事件结构需从
+  单个 TTSResult 改为 async generator 逐块产出。预期首音频可从 ~2.4s 降到
+  <1s。M2a 不做，延迟预算吃紧时（见 Task 2 风险 2）优先启用。
+
 ## Task 3+：待回填
