@@ -233,6 +233,23 @@ export ONELIVE_M0_ENGINE=<repo>/.worktrees/v2-m0-spike/engine   # 默认即此�
 
 **观看**：浏览器打开 `http://127.0.0.1:8900/?channel=0` 实时目检（viewer 页，`?channel=` 选频道）；量化测量用 `tools/out_probe.py`。
 
+### 翻译链路（V2 M2a）
+
+`--translate` 启用翻译链路：faster-whisper small 中文 ASR（首跑自动下载 ~460MB 到 `engine/models/whisper`）+ OpenAI 兼容翻译 Provider + edge-tts 英文配音（嘴型曲线随配音产出，进程内供 M2b 数字人消费）。
+
+```bash
+# 翻译 Provider 凭据（可选）。未配置时链路诚实降级：
+# 字幕照常产出，翻译事件 status="unavailable"，不做 TTS——绝不伪造译文。
+export AI_API_URL=https://<openai兼容端点>/v1  AI_API_KEY=sk-...  AI_MODEL=<模型名>
+<m0-venv-python> -m service.run_local --port 8900 --translate
+```
+
+- **`/audio` 音频上行**（WS 二进制帧）：`[4 字节 LE u32 采样率][pcm16 mono]`，~250ms/帧；采集页 Audio 开关即走此路。采样率会话内必须恒定（中途变化 → error 说明帧 + close 4409）。
+- **`/events` 事件广播**（WS JSON，多订阅者）：`subtitle{segment_id,text,t0,t1}` → `translation{segment_id,lang,status,text,detail}` → `tts_ready{segment_id,lang,voice,duration_s,synth_ms,has_audio}`（音频/嘴型曲线不上 wire）→ `pipeline_error{...}`。
+- **casting 换角**（`/ingest` 文本帧）：`{"type":"casting","channel":0,"source":"s1.jpg"}` → `casting_ack{ok,ms|detail}`；source 白名单限 `ONELIVE_AVATAR_DIR`（默认 M0 clone `assets/examples/source/`）下的纯文件名。
+- `/status` 增加 `translation` 节（segments/translated_ok/translations_unavailable/tts_ok/errors）。
+- E2E 复验：`<m0-venv-python> -m e2e.translate_e2e --leg all`（stub 腿进程内自足；server 腿需 8912 端口起 `--translate` 服务）。实测数据：[M2a 实测结果](docs/superpowers/m2a-results.md)。
+
 当前性能（本地 Arc，DML，512 crop）：空载 ~1.9fps / 单帧推理 ~534ms / E2E 延迟中位 566ms（M1a，Python feeder）；浏览器同机全链路（假摄像头 E2E，chromium 双页面同机争抢）1.63fps / E2E 延迟 mean 678ms。高帧率输入靠 latest-wins 丢帧适配（by design）。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)、[M1c 实测结果（浏览器采集桥 + 全链路 E2E）](docs/superpowers/m1c-results.md)。
 
 ## 文档
