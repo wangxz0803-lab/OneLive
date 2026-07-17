@@ -77,7 +77,7 @@
 {"engine":"ok","channel":{"processed":0,"dropped":115,"skipped":485,"errors":0,"last_infer_ms":144.86939999915194}}
 ```
 
-- 口径核算：485 skipped + 115 dropped = 600，全部核算清。**skipped=485**——每一帧被 worker 取走推理，人脸检测（约 145ms/帧，见 last_infer_ms）找不到脸，管线返回 None 计 skipped；**没有垃圾输出、没有 errors、没有冻结帧**。dropped=115 是 latest-wins 正常覆盖（10fps 输入 vs ~6.9fps 的检测-only 处理速度）。
+- 口径核算：485 skipped + 115 dropped = 600，全部核算清。**skipped=485**——每一帧被 worker 取走推理，人脸检测（约 145ms/帧，见 last_infer_ms）找不到脸，管线返回 None 计 skipped；**没有垃圾输出、没有 errors、没有冻结帧**。dropped=115 是 latest-wins 正常覆盖（10fps 输入 vs 实测 ~8.1fps 的检测-only 有效处理速率：485 帧 / 约 60s 运行期，对应 19.2% 丢帧；last_infer_ms 的 145ms 只是末帧单样本，不代表均值）。
 - 这正是适配器 docstring 承诺的"首次检测到人脸之前无脸→None→skipped"路径的大规模实测：600 帧无一进入生成阶段，下游订阅者干净地收到 0 帧而非坏帧。
 - 已知局限"已跟踪后中途丢脸"路径本次未触发（全程无脸，从未进入跟踪态）。
 
@@ -110,3 +110,4 @@
 9. **无脸 4-tuple 返回形态需对未打补丁的上游 clone 复核**：当前"无脸返回 None（4-tuple out_crop=None）"的处理基于 M0 patched clone 实测，上游行为可能不同。
 10. **viewer 乱序绘制防护在高 fps 下需复核**：`createImageBitmap` 异步解码可能让旧帧晚于新帧完成绘制。viewer.html 已加 lastDrawnSeq（BigInt）守卫（Task 6 修复）；本地 ~1.9fps 下难以触发，M1b 高帧率部署后需确认守卫足够（必要时改单飞 decode 队列）。
 11. **探针入库**：Task 5 的临时 /out 探针已固化为 `engine/tools/out_probe.py`（--url/--count/--timeout/--save-dir/--sends-csv），本文档所有实测可从仓库直接复现（已完成，Task 6）。
+12. **适配器 chdir 副作用**：`liveportrait_pipeline.py` 构造时 `os.chdir(_CLONE)`，此后进程内所有相对路径都相对 clone 目录解析（run_local 已对 --source 做 abspath 规避）；M1b 动 run_local 加 --host/--cfg 时一并移除 chdir（改为给 cfg 内相对路径显式加前缀）。

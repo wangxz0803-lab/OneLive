@@ -7,6 +7,7 @@
 
 import argparse
 import logging
+import os
 
 import uvicorn
 
@@ -19,5 +20,7 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=8900)
     ap.add_argument("--source", default=None)
     args = ap.parse_args()
-    app = create_app(pipeline=LivePortraitPipeline(source_image=args.source))
+    # 适配器构造时 os.chdir(_CLONE)，相对路径会错误地相对 clone 目录解析——先转绝对
+    source = os.path.abspath(args.source) if args.source else None
+    app = create_app(pipeline=LivePortraitPipeline(source_image=source))
     uvicorn.run(app, host="127.0.0.1", port=args.port)
