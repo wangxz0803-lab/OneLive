@@ -23,8 +23,10 @@
 <div id="controls">
   <button id="start">Start</button>
   <button id="stop" disabled>Stop</button>
+  <button id="audio">Audio</button>
 </div>
 <div id="status">idle</div>
+<div id="astatus">audio: off</div>
 <div id="conn">-</div>
 <script>
 // 摄像头采集页：getUserMedia → canvas（长边 ≤640）→ JPEG → 20 字节协议头 + payload
@@ -179,6 +181,119 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 setStatus();
+
+// ---- 音频上行（/audio，独立于视频 Start 的可选开关）----------------------
+// 二进制帧格式：[u32 LE 采样率][pcm16 s16le mono]，约每 250ms 发一块。
+// AudioContext 尽量开 16kHz（Chrome/Safari 支持构造参数；不支持就用默认率）；
+// 若实际采样率非 16k 不在前端重采样——帧头带实际值，服务端转写器只要求
+// 会话内采样率恒定（AudioContext 一经创建采样率不变，天然满足）。
+const audioBtn = document.getElementById("audio");
+const aStatusEl = document.getElementById("astatus");
+const AUDIO_CHUNK_S = 0.25;   // 累积 ~250ms 再发，避免高频小包
+let audioRunning = false;
+let audioWs = null, audioStream = null, audioCtx = null, audioSrc = null, audioProc = null;
+let audioChunks = 0;          // 已发送块数
+let pcmParts = [], pcmSamples = 0;
+
+function setAudioStatus() {
+  const c = audioWs == null ? "no ws"
+    : ["connecting", "connected", "closing", "closed"][audioWs.readyState];
+  aStatusEl.textContent = audioRunning
+    ? `audio: on @ ${audioCtx ? audioCtx.sampleRate : "?"}Hz | chunks: ${audioChunks} | ws: ${c}`
+    : "audio: off";
+}
+
+function connectAudio() {   // 断线 1s 重连，与视频 /ingest 同策略
+  if (!audioRunning) return;
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  audioWs = new WebSocket(`${scheme}://${location.host}/audio`);
+  audioWs.binaryType = "arraybuffer";
+  audioWs.onopen = setAudioStatus;
+  audioWs.onclose = (e) => {
+    audioWs = null;
+    if (e.code === 4404) {  // 服务端没配翻译管线：明确报错，不再重连
+      stopAudio();
+      aStatusEl.textContent = "audio: server has no translation pipeline (4404)";
+      return;
+    }
+    if (audioRunning) setTimeout(connectAudio, 1000);
+    setAudioStatus();
+  };
+  audioWs.onerror = () => { if (audioWs) audioWs.close(); };
+  setAudioStatus();
+}
+
+function flushAudio() {
+  const parts = pcmParts, total = pcmSamples;
+  pcmParts = []; pcmSamples = 0;
+  if (!total || !audioCtx) return;
+  if (!audioWs || audioWs.readyState !== WebSocket.OPEN) return; // 掉线期丢弃，不积压
+  const buf = new ArrayBuffer(4 + total * 2);
+  new DataView(buf).setUint32(0, audioCtx.sampleRate, true);
+  let off = 4;
+  for (const p of parts) { new Int16Array(buf, off, p.length).set(p); off += p.byteLength; }
+  audioWs.send(buf);
+  audioChunks += 1;
+  setAudioStatus();
+}
+
+async function startAudio() {
+  audioBtn.disabled = true;
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia(
+      { audio: { echoCancellation: true }, video: false });
+  } catch (err) {
+    aStatusEl.textContent = `mic error: ${err}`;
+    audioBtn.disabled = false;
+    return;
+  }
+  try { audioCtx = new AudioContext({ sampleRate: 16000 }); }
+  catch (_) { audioCtx = new AudioContext(); }  // 不支持指定采样率就用默认，帧头带实际值
+  audioSrc = audioCtx.createMediaStreamSource(audioStream);
+  // ScriptProcessorNode 已 deprecated 但兼容面最广；4096 样本/回调（16k 下 ~256ms）
+  audioProc = audioCtx.createScriptProcessor(4096, 1, 1);
+  audioProc.onaudioprocess = (e) => {
+    if (!audioRunning) return;
+    const f32 = e.inputBuffer.getChannelData(0);
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    pcmParts.push(i16);
+    pcmSamples += i16.length;
+    if (audioCtx && pcmSamples >= audioCtx.sampleRate * AUDIO_CHUNK_S) flushAudio();
+  };
+  audioSrc.connect(audioProc);
+  // 不接 destination 部分浏览器不触发回调；输出缓冲保持零值，不会回放麦克风
+  audioProc.connect(audioCtx.destination);
+  const track = audioStream.getAudioTracks()[0];
+  if (track) track.onended = () => {   // 设备被系统收回：走统一停止路径并明示
+    stopAudio();
+    aStatusEl.textContent = "mic lost — audio stopped";
+  };
+  audioRunning = true;
+  audioChunks = 0;
+  audioBtn.textContent = "Audio off";
+  audioBtn.disabled = false;
+  connectAudio();
+}
+
+function stopAudio() {
+  audioRunning = false;
+  if (audioProc) { audioProc.onaudioprocess = null; audioProc.disconnect(); audioProc = null; }
+  if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (audioStream) { audioStream.getTracks().forEach(t => t.stop()); audioStream = null; }
+  if (audioWs) { audioWs.onclose = null; audioWs.close(); audioWs = null; }  // 摘掉 onclose 防重连
+  pcmParts = []; pcmSamples = 0;
+  audioBtn.textContent = "Audio";
+  audioBtn.disabled = false;
+  setAudioStatus();
+}
+
+audioBtn.onclick = () => { audioRunning ? stopAudio() : startAudio(); };
+setAudioStatus();
 </script>
 </body>
 </html>

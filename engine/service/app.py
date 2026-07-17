@@ -7,6 +7,12 @@ WS 连接只是数据的进出口——多个 /out 订阅者共享同一路渲�
 多频道（M2 三市场铺垫）：create_app 收 pipeline_factory + channels，每个
 频道一个 ChannelWorker（管线互相独立，帧路由靠协议头 channel 字节）。
 /ingest 单连接可混发多频道帧；/out 用 ?channel=N 选订哪一路。
+
+翻译集成（M2a）：可选注入 TranslationPipeline。/audio 收音频上行
+（二进制帧 = 4 字节 LE u32 采样率前缀 + pcm16），/events 向订阅者广播
+管线事件的 JSON 元数据（wire 格式见 event_to_wire）。管线 events() 是
+单消费者契约——服务层起唯一一个广播任务扇出，多订阅者互不抢事件。
+未配管线时 /audio、/events 接受后立即 close(4404)。
 """
 
 import asyncio
@@ -25,14 +31,46 @@ _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 
 from service.protocol import FrameHeader, pack_frame, unpack_frame
 from service.worker import ChannelWorker
+from translate.pipeline import (
+    PipelineErrorEvent,
+    SubtitleEvent,
+    TranslationEvent,
+    TTSReadyEvent,
+)
 
 log = logging.getLogger("engine.service")
 
 
+def event_to_wire(ev) -> dict:
+    """管线事件 → /events 广播的 JSON 元数据。显式逐类映射，绝不 asdict：
+    TTSReadyEvent.result 带 pcm bytes + ndarray 嘴型曲线，asdict 会在 JSON
+    序列化时爆掉；音频/曲线只在进程内消费（M2b 数字人集成），wire 上仅以
+    has_audio 标记存在性。type 字符串与事件类名对应（snake_case 去 Event）。"""
+    if isinstance(ev, SubtitleEvent):
+        return {"type": "subtitle", "segment_id": ev.segment_id,
+                "text": ev.text, "t0": ev.t0, "t1": ev.t1}
+    if isinstance(ev, TranslationEvent):
+        return {"type": "translation", "segment_id": ev.segment_id, "lang": ev.lang,
+                "status": ev.status, "text": ev.text, "detail": ev.detail}
+    if isinstance(ev, TTSReadyEvent):
+        return {"type": "tts_ready", "segment_id": ev.segment_id, "lang": ev.lang,
+                "voice": ev.voice, "duration_s": ev.duration_s,
+                "synth_ms": ev.synth_ms, "has_audio": True}
+    if isinstance(ev, PipelineErrorEvent):
+        return {"type": "pipeline_error", "segment_id": ev.segment_id, "lang": ev.lang,
+                "stage": ev.stage, "detail": ev.detail}
+    raise TypeError(f"unknown pipeline event type: {type(ev).__name__}")
+
+
 def create_app(pipeline_factory: Callable[[int], object],
-               channels: Iterable[int] = (0,)) -> FastAPI:
+               channels: Iterable[int] = (0,),
+               translation_pipeline=None) -> FastAPI:
     """pipeline_factory(ch) 为每个频道构造一条独立管线（协议头 channel 为 u8，
-    合法频道号 0-255）。不做单管线兼容 shim——所有调用点统一工厂形式。"""
+    合法频道号 0-255）。不做单管线兼容 shim——所有调用点统一工厂形式。
+
+    translation_pipeline: 可选 TranslationPipeline。start() 是 async，在
+    lifespan startup 里做（对比 worker 在 create_app 时启动——线程 start
+    是同步的，TestClient 不进 lifespan 也能用；翻译相关测试则必须进）。"""
     # 先整体校验再启动 worker：校验中途 raise 不会留下已启动的孤儿线程
     channels = tuple(channels)
     seen: set[int] = set()
@@ -48,14 +86,52 @@ def create_app(pipeline_factory: Callable[[int], object],
         w.start()
         workers[ch] = w
 
+    # /events 订阅队列集合。广播任务与所有订阅端点都跑在同一事件循环，
+    # add/discard/put 全是循环内同步操作，无需 /out 那样的 call_soon_threadsafe 桥。
+    events_subs: set[asyncio.Queue] = set()
+
+    async def _broadcast_events() -> None:
+        # 管线 events() 的唯一消费者（单消费者契约），向所有 /events 订阅者
+        # 扇出 wire JSON。坏事件映射失败只记日志跳过——广播任务绝不能死。
+        async for ev in translation_pipeline.events():
+            try:
+                wire = event_to_wire(ev)
+            except Exception:
+                log.exception("events: unmappable event skipped (%s)", type(ev).__name__)
+                continue
+            for q in list(events_subs):
+                if q.full():
+                    q.get_nowait()  # 订阅端 latest-wins 丢最旧，同 /out
+                q.put_nowait(wire)
+
     # 计划里用的 @app.on_event("shutdown") 在当前 FastAPI (0.139) 已弃用并发
     # DeprecationWarning，改用 lifespan。worker 在 create_app 时启动（TestClient
     # 不进 lifespan startup 也能工作），lifespan 退出时全部停止。
+    # 翻译管线 start() 是 async，只能在 lifespan startup 做；shutdown 时
+    # wait_for 硬上限包裹 close()（其总时长不完全有界：whisper 线程池 drain）。
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        yield
-        for w in workers.values():
-            w.stop()
+        consumer: asyncio.Task | None = None
+        if translation_pipeline is not None:
+            await translation_pipeline.start()
+            consumer = asyncio.create_task(_broadcast_events())
+        try:
+            yield
+        finally:
+            if translation_pipeline is not None:
+                try:
+                    await asyncio.wait_for(translation_pipeline.close(), 30)
+                except Exception:
+                    log.exception("translation pipeline close failed or timed out")
+                if consumer is not None:
+                    try:
+                        # close() 保证发事件哨兵（finally 里），正常路径立即退出；
+                        # wait_for 超时会顺带 cancel 掉 consumer，不留孤儿任务
+                        await asyncio.wait_for(consumer, 5)
+                    except Exception:
+                        log.exception("events broadcast task did not exit cleanly")
+            for w in workers.values():
+                w.stop()
 
     app = FastAPI(lifespan=lifespan)
     app.state.workers = workers
@@ -79,6 +155,8 @@ def create_app(pipeline_factory: Callable[[int], object],
                 "channels": {str(ch): w.stats() for ch, w in workers.items()}}
         if 0 in workers:  # 顶层 "channel" 别名 = 频道 0，兼容既有测试/工具
             body["channel"] = body["channels"]["0"]
+        if translation_pipeline is not None:  # 没配翻译时键整体不存在
+            body["translation"] = translation_pipeline.stats()
         return body
 
     @app.websocket("/ingest")
@@ -177,6 +255,75 @@ def create_app(pipeline_factory: Callable[[int], object],
             # done_callback 兜底取回可能已挂在任务上的异常（如断开后 receive
             # 的 RuntimeError），避免 "Task exception was never retrieved" 告警；
             # 已取消的任务不能调 exception()，先判 cancelled()。
+            for task in (queue_task, recv_task):
+                task.cancel()
+                task.add_done_callback(
+                    lambda t: None if t.cancelled() else t.exception())
+
+    @app.websocket("/audio")
+    async def audio(ws: WebSocket) -> None:
+        # 音频上行：二进制帧 = 4 字节 LE u32 采样率前缀 + pcm16 → feed_audio。
+        # 采样率随帧走（前端 AudioContext 未必给到 16k），转写器自会校验恒定性。
+        # 坏帧（短于前缀 / sr=0）与文本帧只记日志忽略——坏输入不得杀死连接。
+        await ws.accept()
+        if translation_pipeline is None:
+            # accept 后再 close(4404)，客户端能读到明确的应用层关闭码（同 /out 4400 模式）
+            log.warning("audio: no translation pipeline configured, closing 4404")
+            await ws.close(code=4404)
+            return
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    log.info("audio disconnected")
+                    break
+                data = msg.get("bytes")
+                if data is not None:
+                    if len(data) < 4:
+                        log.warning("audio: short frame (%d bytes) dropped", len(data))
+                        continue
+                    sr = int.from_bytes(data[:4], "little")
+                    if sr == 0:
+                        log.warning("audio: frame with sr=0 dropped")
+                        continue
+                    translation_pipeline.feed_audio(data[4:], sr)
+                elif msg.get("text") is not None:
+                    log.warning("audio: unexpected text frame ignored: %r", msg["text"][:120])
+        except WebSocketDisconnect:
+            log.info("audio disconnected")
+
+    @app.websocket("/events")
+    async def events(ws: WebSocket) -> None:
+        # 广播订阅端。竞速循环 + 全同步 finally 与 /out 同模式（空闲断连
+        # 清理 bug 的教训见 /out 注释）；区别仅在数据源是本循环内的广播
+        # 队列而非 worker 线程回调，出帧是 JSON 文本而非二进制。
+        await ws.accept()
+        if translation_pipeline is None:
+            log.warning("events: no translation pipeline configured, closing 4404")
+            await ws.close(code=4404)
+            return
+        queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+        events_subs.add(queue)
+        queue_task: asyncio.Task = asyncio.ensure_future(queue.get())
+        recv_task: asyncio.Task = asyncio.ensure_future(ws.receive())
+        try:
+            while True:
+                done, _ = await asyncio.wait({queue_task, recv_task},
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if recv_task in done:
+                    msg = recv_task.result()
+                    if msg["type"] == "websocket.disconnect":
+                        break
+                    log.warning("events: unexpected client message ignored: %r", msg)
+                    recv_task = asyncio.ensure_future(ws.receive())
+                if queue_task in done:
+                    await ws.send_text(json.dumps(queue_task.result(), ensure_ascii=False))
+                    queue_task = asyncio.ensure_future(queue.get())
+        except WebSocketDisconnect:
+            pass
+        finally:
+            # 与 /out 同理：清理全同步零 await，先摘订阅再 cancel 两个任务
+            events_subs.discard(queue)
             for task in (queue_task, recv_task):
                 task.cancel()
                 task.add_done_callback(

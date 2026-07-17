@@ -1,6 +1,9 @@
-"""集成测试：fake 管线下 /ingest → worker → /out 全链路 + /status。"""
+"""集成测试：fake 管线下 /ingest → worker → /out 全链路 + /status，
+以及翻译服务集成（/audio 上行 + /events 广播 + /status.translation）。"""
 
 import asyncio
+import json
+import struct
 import time
 
 import numpy as np
@@ -9,8 +12,15 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from service.app import create_app
+from service.app import create_app, event_to_wire
 from service.protocol import FrameHeader, pack_frame, unpack_frame
+from translate.pipeline import (
+    PipelineErrorEvent,
+    SubtitleEvent,
+    TranslationEvent,
+    TTSReadyEvent,
+)
+from translate.tts import TTSResult
 
 
 class EchoPipeline:
@@ -213,3 +223,201 @@ def test_ingest_garbage_text_survives():
     header, _ = unpack_frame(blob)
     assert header.seq == 3
     assert header.ts_ms == 33
+
+
+# ---------------------------------------------------------------- 翻译服务集成
+
+
+class FakeTranslationPipeline:
+    """与 TranslationPipeline 同形的 fake：记录 start/close/feed_audio 调用；
+    scripted 事件在首次 feed_audio 时入队（测试先订 /events 再触发，避免
+    订阅前事件被广播丢失的竞态）。events() 与真管线同为单消费者 + 哨兵终结。"""
+
+    def __init__(self, scripted=()):
+        self.scripted = list(scripted)
+        self.started = False
+        self.closed = False
+        self.fed: list[tuple[bytes, int]] = []
+        self._q: asyncio.Queue = asyncio.Queue()
+
+    async def start(self):
+        self.started = True
+
+    def feed_audio(self, pcm16: bytes, sr: int) -> None:
+        self.fed.append((pcm16, sr))
+        for ev in self.scripted:
+            self._q.put_nowait(ev)
+        self.scripted = []
+
+    async def events(self):
+        while True:
+            item = await self._q.get()
+            if item is None:
+                return
+            yield item
+
+    async def close(self):
+        self.closed = True
+        self._q.put_nowait(None)
+
+    def stats(self) -> dict:
+        return {"segments": 3, "translated_ok": 2, "translations_unavailable": 0,
+                "tts_ok": 1, "errors": 1}
+
+
+def _tts_ready() -> TTSReadyEvent:
+    result = TTSResult(audio_pcm16=b"\x01\x02" * 160, sr=16000,
+                       lip_curve=np.zeros(8, np.float32), duration_s=0.5, synth_ms=42)
+    return TTSReadyEvent(segment_id=1, lang="en", voice="en-US-JennyNeural",
+                         duration_s=0.5, synth_ms=42, result=result)
+
+
+def _audio_chunk(sr: int, pcm: bytes) -> bytes:
+    """/audio 二进制帧：4 字节 LE u32 采样率前缀 + pcm16。"""
+    return struct.pack("<I", sr) + pcm
+
+
+def _wait(cond, timeout: float = 2.0) -> bool:
+    """测试线程侧轮询（服务端跑在 TestClient portal 线程的事件循环里）。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if cond():
+            return True
+        time.sleep(0.01)
+    return cond()
+
+
+def test_event_to_wire_subtitle():
+    w = event_to_wire(SubtitleEvent(segment_id=3, text="大家好", t0=0.0, t1=1.2))
+    assert w == {"type": "subtitle", "segment_id": 3, "text": "大家好", "t0": 0.0, "t1": 1.2}
+
+
+def test_event_to_wire_translation():
+    w = event_to_wire(TranslationEvent(segment_id=3, lang="en", status="ok",
+                                       text="hello", detail=None))
+    assert w == {"type": "translation", "segment_id": 3, "lang": "en",
+                 "status": "ok", "text": "hello", "detail": None}
+
+
+def test_event_to_wire_tts_ready_metadata_only():
+    """TTSReadyEvent 上 wire 只带元数据：不得出现 pcm bytes / lip_curve ndarray
+    （asdict 会在这俩上爆 JSON 序列化），存在性用 has_audio 标记。"""
+    w = event_to_wire(_tts_ready())
+    assert w == {"type": "tts_ready", "segment_id": 1, "lang": "en",
+                 "voice": "en-US-JennyNeural", "duration_s": 0.5, "synth_ms": 42,
+                 "has_audio": True}
+    json.dumps(w)  # 必须整体可 JSON 序列化
+
+
+def test_event_to_wire_pipeline_error():
+    w = event_to_wire(PipelineErrorEvent(segment_id=7, lang="ja", stage="tts", detail="boom"))
+    assert w == {"type": "pipeline_error", "segment_id": 7, "lang": "ja",
+                 "stage": "tts", "detail": "boom"}
+
+
+def test_event_to_wire_unknown_type_raises():
+    with pytest.raises(TypeError, match="unknown pipeline event"):
+        event_to_wire(object())
+
+
+def test_audio_uplink_feeds_pipeline():
+    """/audio 二进制帧 [u32 LE sr][pcm16] → feed_audio(pcm, sr) 解析无误。"""
+    tp = FakeTranslationPipeline()
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    pcm = b"\x00\x01" * 100
+    with TestClient(app) as client:
+        assert tp.started  # lifespan startup 已 await start()
+        with client.websocket_connect("/audio") as ws:
+            ws.send_bytes(_audio_chunk(16000, pcm))
+            assert _wait(lambda: len(tp.fed) == 1), "feed_audio 未被调用"
+    assert tp.fed[0] == (pcm, 16000)
+    assert tp.closed  # lifespan shutdown 已 close()
+
+
+def test_audio_short_frame_dropped_connection_survives():
+    """不足 4 字节前缀的帧丢弃不上抛，连接活着，后续帧照常送达。"""
+    tp = FakeTranslationPipeline()
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with client.websocket_connect("/audio") as ws:
+            ws.send_bytes(b"\x01\x02")                    # 短帧 → 丢弃
+            ws.send_text("not audio")                     # 文本帧 → 忽略
+            ws.send_bytes(_audio_chunk(48000, b"\xaa\xbb"))
+            assert _wait(lambda: len(tp.fed) == 1)
+    assert tp.fed == [(b"\xaa\xbb", 48000)]
+
+
+def test_events_broadcasts_all_event_types():
+    """/events 订阅者按序收到四类事件的 wire JSON；tts_ready 不带原始音频。"""
+    scripted = [
+        SubtitleEvent(segment_id=1, text="大家好", t0=0.0, t1=1.0),
+        TranslationEvent(segment_id=1, lang="en", status="ok", text="hello", detail=None),
+        _tts_ready(),
+        PipelineErrorEvent(segment_id=1, lang="ja", stage="tts", detail="boom"),
+    ]
+    tp = FakeTranslationPipeline(scripted)
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with client.websocket_connect("/events") as ev_ws:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))  # 触发 scripted 事件
+                msgs = [ev_ws.receive_json() for _ in range(4)]
+    assert [m["type"] for m in msgs] == ["subtitle", "translation", "tts_ready", "pipeline_error"]
+    tts = msgs[2]
+    assert tts["has_audio"] is True
+    assert "result" not in tts and "audio_pcm16" not in tts and "lip_curve" not in tts
+    assert msgs[0]["text"] == "大家好"  # 中文按原文过 wire（ensure_ascii 关闭与否均可解）
+
+
+def test_events_consumer_survives_bad_event():
+    """广播消费者遇到映射不了的事件只记日志跳过，后续事件照常广播。"""
+    scripted = [
+        SubtitleEvent(segment_id=1, text="a", t0=0.0, t1=0.5),
+        object(),  # 未知事件 → skip，消费者不死
+        TranslationEvent(segment_id=1, lang="en", status="ok", text="b", detail=None),
+    ]
+    tp = FakeTranslationPipeline(scripted)
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        with client.websocket_connect("/events") as ev_ws:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+                msgs = [ev_ws.receive_json() for _ in range(2)]
+    assert [m["type"] for m in msgs] == ["subtitle", "translation"]
+
+
+def test_audio_without_pipeline_closes_4404():
+    app = create_app(lambda ch: EchoPipeline())  # 未配翻译管线
+    client = TestClient(app)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/audio") as ws:
+            ws.receive_bytes()
+    assert exc.value.code == 4404
+
+
+def test_events_without_pipeline_closes_4404():
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/events") as ws:
+            ws.receive_text()
+    assert exc.value.code == 4404
+
+
+def test_status_translation_stats():
+    """配了翻译管线：/status 带 translation 节；没配：键不存在。"""
+    tp = FakeTranslationPipeline()
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        body = client.get("/status").json()
+    assert body["translation"] == tp.stats()
+
+    plain = TestClient(create_app(lambda ch: EchoPipeline()))
+    assert "translation" not in plain.get("/status").json()
+
+
+def test_capture_page_has_audio_uplink():
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    r = client.get("/capture")
+    assert "/audio" in r.text  # 采集页有音频上行路径
