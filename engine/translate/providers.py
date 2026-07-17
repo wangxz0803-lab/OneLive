@@ -103,7 +103,9 @@ class OpenAICompatProvider:
             return TranslateResult(
                 ok=False, text=None, status="error", detail=f"timeout: {exc}"
             )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+            # InvalidURL/ValueError：请求构建阶段（如 base_url 手误）就会抛，
+            # 且 InvalidURL 不是 HTTPError 子类 —— 同样收敛为 error，绝不上抛。
             return TranslateResult(
                 ok=False,
                 text=None,

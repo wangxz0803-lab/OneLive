@@ -128,6 +128,31 @@ async def test_malformed_json_returns_error():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "bad_base_url",
+    [
+        # 缺 scheme（真实的 AI_API_URL 手误）→ httpx.UnsupportedProtocol
+        "api.example.com/v1",
+        # 非法 IDNA 主机名 → httpx.InvalidURL（不是 HTTPError 子类）
+        "https://bad..host-\udcff.example/v1",
+    ],
+)
+async def test_malformed_base_url_returns_error_not_raise(bad_base_url):
+    # base_url 手误的错误发生在建请求阶段，到不了 transport ——
+    # translate 必须返回 error 而不是抛异常（never-raises 契约）。
+    provider = OpenAICompatProvider(
+        base_url=bad_base_url,
+        api_key="sk-test",
+        model="gpt-x",
+    )
+    result = await provider.translate("hi", target_lang="English")
+    assert result.ok is False
+    assert result.status == "error"
+    assert result.text is None
+    assert result.detail
+
+
+@pytest.mark.anyio
 async def test_no_key_unavailable_and_no_http_call():
     handler = CountingHandler(lambda req: _chat_response("should not happen"))
     provider = OpenAICompatProvider(
