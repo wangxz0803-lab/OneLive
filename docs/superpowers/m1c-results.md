@@ -17,7 +17,7 @@ chromium 假摄像头 (d14.y4m，真人脸驱动视频)
 - 驱动源：`ffmpeg -i d14.mp4 -pix_fmt yuv420p -t 18 engine/out/d14.y4m`（536 帧 / 17.86s / 30fps，**210,767,052 字节 ≈ 201MB**，位于 gitignore 的 `engine/out/`，保留以便复跑；重新生成仅需上述一条命令）。chromium 对 y4m 假设备自动循环播放，60s 运行覆盖 ≈3.3 遍。
 - 浏览器：Playwright 1.61.1 chromium（headless），flags：`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-video-capture=<d14.y4m>`。假摄像头 headless 下工作正常。
 - **Node/Playwright 解析方案（记录备查）**：本 worktree 无 node_modules，但 worktree 目录位于主 checkout 内（`OneLive\.worktrees\v2-m1c`），Node ESM 从脚本目录逐级向上找 node_modules 天然命中 `OneLive\node_modules`（含 @playwright/test 与已装好的 chromium-1228）。因此 `node engine/e2e/capture-e2e.mjs` 直接可跑，无需 NODE_PATH / npm install。脚本：`engine/e2e/capture-e2e.mjs`（入库）。
-- **脚本已自断言（Task 7 补强，本次实测时尚无）**：结束时拉 `GET /status` 自判 `errors==0 && processed>0` 且 viewer 帧数递增（首采样 < 末采样），打印 PASS/FAIL；FAIL 退出码 1，前置不满足（y4m 缺失 / 服务不可达，起浏览器前有可达性预检）退出码 2。复跑无需人工读日志判结果。
+- **脚本已自断言（Task 7 补强，本次实测时尚无）**：结束时拉 `GET /status` 自判 `errors==0 && processed>0` 且 viewer 帧数递增（首采样 < 末采样），打印 PASS/FAIL；FAIL 退出码 1，前置不满足（y4m 缺失 / 服务不可达，起浏览器前有可达性预检）退出码 2。复跑无需人工读日志判结果。注意：`E2E_DURATION_S=10` 只产生 1 个采样点，viewer 递增断言（末采样 > 首采样）恒 FAIL——短跑调试至少给 20s（默认 60s 无恙）。
 - **后台标签页节流（有意为之）**：标签页被隐藏时浏览器把定时器节流到 ~1 次/s，capture 页发帧率随之降到 ~1fps 但帧持续流动、链路不断；回前台后 visibilitychange 重置节拍基线（t0/n），恢复目标 fps 且无追赶突发（commit ad4ebe1）。headless E2E 双页面均"可见"，不触发此路径。
 
 ### out_probe 输出（原文）
@@ -99,18 +99,19 @@ M1c 已关闭：~~/out 空闲断连清理~~（Task 3）、~~解码移出事件�
 
 仍开放（沿用 m1a-results 编号）+ 本轮新增：
 
-1. **WS 生产化**：/ingest、/out 无鉴权、无 max_size 限制、无 keepalive/ping 配置。（原 #6）
+1. **WS 生产化**：/ingest、/out 无鉴权、无 max_size 限制、无 keepalive/ping 配置。另：/out 慢消费者会阻塞断连检测——`await ws.send_bytes` 被 TCP 背压卡住时循环回不到 asyncio.wait，disconnect 无法处理，且此时 send 抛的是 uvicorn 层异常（非 WebSocketDisconnect）出栈会脏日志；M2 casting 前需要 send 超时/慢消费者踢除。（原 #6）
 2. **errors 口径拆分**：管线异常 / JPEG 编码失败 / 订阅者回调异常仍聚合一个计数。（原 #7）
 3. **无脸中途丢跟踪**：适配器 `_initialized` 只保证首帧初始化，中途长时间无脸后的恢复未验证（本 E2E d14 全程有脸，未触发）。（原 #8）
 4. **无脸 4-tuple 返回形态对上游 clone 复核**。（原 #9）
 5. **viewer 乱序防护高 fps 复核**：lastDrawnSeq 守卫在本地 ~1.6fps 下无法充分压测。（原 #10）
 6. **适配器 chdir 副作用**：`liveportrait_pipeline.py` 构造时仍 `os.chdir(_CLONE)`，动 cfg 加载时一并移除。（原 #12）
 7. **新：/status 顶层 "channel" 别名退役**：多频道后顶层 `"channel"` 只是频道 0 的兼容别名（app.py），下游消费方切换到 `"channels"` 后应删除，避免双口径漂移。
-8. **新：/out 未知频道关闭码 4400 vs 1008**：当前用自定义 4400；RFC6455 语义上 1008 (policy violation) 更标准。选定一个并在 protocol.py 文档化，客户端重连逻辑需区分"频道不存在（别重试）"与"临时故障（可重试）"。
+8. **新：/out 未知频道关闭码 4400 vs 1008**：当前用自定义 4400；RFC6455 语义上 1008 (policy violation) 更标准。另：非数字 `?channel=abc` 走 FastAPI 参数校验以 1008 关闭，与未知数字频道的 4400 是双口径，一并收敛。选定一个并在 protocol.py 文档化，客户端重连逻辑需区分"频道不存在（别重试）"与"临时故障（可重试）"。
 9. **新：启动成本**：冷启动模型加载 15-20s（本次 warm 缓存 ≈2s）。多频道=每频道一套管线，动态建频道前需要预热/加载进度暴露（/status 加 loading 态），否则前 N 秒 /ingest 帧全静默丢弃。
 10. **新：跨机时钟偏移**：`--latency-from-header` 的前提是采集端与探针同机（本次浏览器 Date.now() vs Python time.time() 同机有效）。跨机部署后头内 ts_ms 延迟含时钟偏移，需 NTP 校准或改单向延迟估计。
 11. **新：capture 页 sent 计数含出口缓冲**：`ws.send()` 只是入 bufferedAmount，sent 计数≠对端已收。已有 MAX_BUFFERED=1MB 跳帧保护；如需精确投递口径，需服务端回执或读 bufferedAmount 差分。
 12. **新：openssl 证书命令 Git Bash 引号坑**：Git Bash (MSYS) 会把 `-subj "/CN=..."` 的前导 `/` 当路径改写；生成 --https 用的自签证书需 `MSYS_NO_PATHCONV=1` 前缀或双斜杠 `//CN=...`，写运维脚本时注意。
+13. **新：capture 页频道超范围静默回绕**：`?channel=300` 经 `& 0xff` 静默回绕成 44，叠加服务端未知频道静默丢帧 = "sent 一直涨但画面永远不来"且无任何客户端提示；应在超出 0-255 或非已启用频道时报错到状态行。同类守卫缺失：`run_local --channels 0`/负数无校验（`range(0)` 起一个零 worker 的服务且无报错）。
 
 ## 复现命令（全部入库可复跑）
 
