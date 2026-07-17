@@ -11,6 +11,12 @@
   canvas { background: #000; max-width: 100%; border: 1px solid #333; }
   #stats { font-size: 14px; color: #8f8; }
   #conn { font-size: 12px; color: #888; }
+  #speech { font-size: 14px; color: #8cf; }
+  #subtitle { font-size: 13px; color: #ccc; max-width: 560px; text-align: center; }
+  #audioBtn { font: inherit; padding: 6px 16px; background: #223; color: #ddd;
+              border: 1px solid #446; border-radius: 4px; cursor: pointer; }
+  #audioBtn:disabled { color: #8f8; border-color: #363; cursor: default; }
+  #note { font-size: 11px; color: #666; max-width: 560px; text-align: center; }
 </style>
 </head>
 <body>
@@ -18,15 +24,26 @@
 <canvas id="c" width="512" height="512"></canvas>
 <div id="stats">frames: 0 | seq: - | fps (last 10): -</div>
 <div id="conn">connecting...</div>
+<button id="audioBtn">开启声音</button>
+<div id="speech">audio: off</div>
+<div id="subtitle"></div>
+<div id="note">浏览器自动播放策略：WebAudio 必须由用户手势创建/恢复 AudioContext，
+故需点击「开启声音」后才有声。开启前到达的语音段直接丢弃（不补播旧语音，
+与服务端丢最旧的直播语义一致）。</div>
 <script>
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 const statsEl = document.getElementById("stats");
 const connEl = document.getElementById("conn");
+const speechEl = document.getElementById("speech");
+const subtitleEl = document.getElementById("subtitle");
+const audioBtn = document.getElementById("audioBtn");
 
-// ?channel=N 选订哪一路（默认 0），原样透传给 /out
+// ?channel=N 选订哪一路（默认 0），原样透传给 /out /speech；/events 端本地过滤
 const channel = new URLSearchParams(location.search).get("channel") ?? "0";
 document.getElementById("title").textContent = `OneLive engine viewer — channel ${channel}`;
+// ws/wss 跟随页面协议：HTTPS 页面里混发 ws:// 会被浏览器直接拒绝
+const wsScheme = location.protocol === "https:" ? "wss" : "ws";
 
 let frames = 0;
 let fpsText = "-";
@@ -34,9 +51,7 @@ let winStart = performance.now();
 let lastDrawnSeq = -1n;  // 乱序到达防护：createImageBitmap 异步，慢帧可能晚于新帧完成
 
 function connect() {
-  // ws/wss 跟随页面协议：HTTPS 页面里混发 ws:// 会被浏览器直接拒绝
-  const scheme = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${scheme}://${location.host}/out?channel=${encodeURIComponent(channel)}`);
+  const ws = new WebSocket(`${wsScheme}://${location.host}/out?channel=${encodeURIComponent(channel)}`);
   ws.binaryType = "arraybuffer";  // 需要 DataView 读 20 字节协议头
   ws.onopen = () => { connEl.textContent = "connected"; lastDrawnSeq = -1n; };
   ws.onmessage = async (ev) => {
@@ -74,6 +89,99 @@ function connect() {
   ws.onerror = () => { ws.close(); };
 }
 connect();
+
+// ---------------- /speech TTS 播放 + /events 元数据（M2b） ----------------
+// A/V 同步契约（app.py 模块 docstring）：音频收到即 FIFO 链式排播（下方
+// nextStart 机制——镜像服务端 SpeechSchedule 的 FIFO，段与段首尾相接绝不
+// 并行混播）；嘴型由渲染循环在下一次轮询时驱动，最多晚一个渲染周期
+// （本地 ~500ms）。精确对齐是 M3 范畴。
+let audioCtx = null;      // 用户手势后才创建（autoplay 策略，见页面说明）
+let nextStart = 0;        // AudioContext 时间线上的 FIFO 链尾
+let played = 0;           // 已开始播放的段数
+let droppedNoAudio = 0;   // 未开声前丢弃的段数
+let speakingText = "-";
+const segLang = new Map();  // segment_id -> lang（来自 /events 的 tts_ready）
+
+function updateSpeechLine() {
+  if (!audioCtx) {
+    speechEl.textContent = `audio: off${droppedNoAudio ? ` | 未开声丢弃: ${droppedNoAudio} 段` : ""}`;
+  } else {
+    speechEl.textContent = `audio: on | played: ${played} | speaking: ${speakingText}`;
+  }
+}
+updateSpeechLine();
+
+audioBtn.onclick = async () => {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();  // 手势内 resume：Chrome 对新建 context 也可能 suspended
+  audioBtn.disabled = true;
+  audioBtn.textContent = "声音已开启";
+  updateSpeechLine();
+};
+
+function connectSpeech() {
+  const ws = new WebSocket(`${wsScheme}://${location.host}/speech?channel=${encodeURIComponent(channel)}`);
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = (ev) => {
+    // 帧 = [u8 channel][u32 LE segment_id][u32 LE sr] + pcm16（app.py 契约）
+    if (ev.data.byteLength < 9) return;
+    const dv = new DataView(ev.data);
+    const seg = dv.getUint32(1, true);
+    const sr = dv.getUint32(5, true);
+    const pcm = new Int16Array(ev.data.slice(9));
+    if (!sr || !pcm.length) return;
+    if (!audioCtx) { droppedNoAudio += 1; updateSpeechLine(); return; }
+    const buf = audioCtx.createBuffer(1, pcm.length, sr);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) data[i] = pcm[i] / 32768;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    // FIFO 链式排播：接在链尾或立即开始（链已播完时 nextStart 落后于 currentTime）
+    const t = Math.max(audioCtx.currentTime, nextStart);
+    src.start(t);
+    nextStart = t + buf.duration;
+    setTimeout(() => {  // 到起播时刻才把状态行切到本段（lang 此刻查——
+      played += 1;      // /speech 帧先于 tts_ready 元数据到达时给 /events 留出时间）
+      speakingText = `seg ${seg} (${segLang.get(seg) ?? "?"})`;
+      updateSpeechLine();
+    }, Math.max(0, (t - audioCtx.currentTime) * 1000));
+    src.onended = () => {
+      if (speakingText.startsWith(`seg ${seg} `)) { speakingText = "-"; updateSpeechLine(); }
+    };
+  };
+  ws.onclose = (e) => {
+    if (e.code === 4404 || e.code === 4400) {  // 未配翻译管线/未知频道：别重连风暴
+      speechEl.textContent = `audio: /speech closed (${e.code}${e.code === 4404 ? "，translate 未启用" : "，未知频道"})`;
+      return;
+    }
+    setTimeout(connectSpeech, 1000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+connectSpeech();
+
+function connectEvents() {
+  const ws = new WebSocket(`${wsScheme}://${location.host}/events`);
+  ws.onmessage = (ev) => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === "subtitle") {
+      subtitleEl.textContent = `字幕 seg ${m.segment_id}: ${m.text}`;
+    } else if (m.type === "tts_ready" && String(m.channel) === channel) {
+      // 只记本频道的段（/events 无 ?channel=，端上过滤）；segment_id 关联
+      // /speech 二进制帧，状态行得以显示 "speaking: seg N (lang)"
+      segLang.set(m.segment_id, m.lang);
+      if (segLang.size > 64) segLang.delete(segLang.keys().next().value);
+    }
+  };
+  ws.onclose = (e) => {
+    if (e.code === 4404) return;  // translate 未启用：不重连
+    setTimeout(connectEvents, 1000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+connectEvents();
 </script>
 </body>
 </html>

@@ -181,6 +181,11 @@ class ChannelWorker:
                     self._stats["errors"] += 1
                     continue
                 lip = self.speech.lip_at(self._clock())  # 无语音 → None
+                if lip is not None:
+                    # 语音期观测锚点（也是 E2E 的机制证据）：本帧确实带非 None
+                    # 口型值进了管线。仅说话期间有帧率约束（本地 ~1.9fps），
+                    # INFO 量级无害；空闲期零输出。
+                    log.info("worker %s: speech lip=%.3f on seq=%d", self._name, lip, seq)
                 t0 = time.perf_counter()
                 out_bgr = self._pipeline.infer(frame, seq, lip_ratio=lip)
                 self._stats["last_infer_ms"] = (time.perf_counter() - t0) * 1000

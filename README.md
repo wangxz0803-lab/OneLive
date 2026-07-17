@@ -250,6 +250,14 @@ export AI_API_URL=https://<openai兼容端点>/v1  AI_API_KEY=sk-...  AI_MODEL=<
 - `/status` 增加 `translation` 节（segments/translated_ok/translations_unavailable/tts_ok/errors）。
 - E2E 复验：`<m0-venv-python> -m e2e.translate_e2e --leg all`（stub 腿进程内自足；server 腿需 8912 端口起 `--translate` 服务）。实测数据：[M2a 实测结果](docs/superpowers/m2a-results.md)。
 
+### 语音驱动嘴型（V2 M2b）
+
+`tts_ready` 到达时服务把嘴型曲线送进对应频道的口型调度器（渲染循环按时间线驱动数字人嘴部开合），音频以二进制帧广播到 **`/speech?channel=N`**（`[u8 ch][u32 LE seg][u32 LE sr][pcm16]`）。viewer 页内置 WebAudio 播放（FIFO 链式排播）+ `speaking: seg N (lang)` 状态行——浏览器自动播放策略所限，需点页面「开启声音」按钮后才有声。`/status` 每频道增加 `speech` 节（queued/played/dropped）。A/V 同步契约（音频即收即播、嘴型晚 ≤1 渲染周期、积压时两端各自丢段）见 `service/app.py` 模块 docstring；精确对齐是 M3 范畴。
+
+- `--no-lip`：关闭嘴型驱动的逃生开关（默认开启的 lip retarget 通路即使无语音也轻微改变唇形细节，见 [M2b 实测结果](docs/superpowers/m2b-results.md)）。
+- `--translate-stub`：**测试脚手架，绝非默认、不是翻译**——翻译 Provider 换成 stub（返回 `"EN: "+原文` 假装成功，事件 detail 自我声明 test-only），唯一用途是无 API key 环境跑通 翻译ok→TTS→嘴型 全链路。与 `--translate` 互斥；真翻译的诚实契约（无 key 绝不伪造译文）不受影响。
+- E2E 复验：`<m0-venv-python> -m e2e.lip_e2e`（自起 8915 真服务 + feeder，事件链/嘴型/计数断言，证据落 `engine/out/lip_e2e/`）。实测数据：[M2b 实测结果](docs/superpowers/m2b-results.md)。
+
 当前性能（本地 Arc，DML，512 crop）：空载 ~1.9fps / 单帧推理 ~534ms / E2E 延迟中位 566ms（M1a，Python feeder）；浏览器同机全链路（假摄像头 E2E，chromium 双页面同机争抢）1.63fps / E2E 延迟 mean 678ms。高帧率输入靠 latest-wins 丢帧适配（by design）。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)、[M1c 实测结果（浏览器采集桥 + 全链路 E2E）](docs/superpowers/m1c-results.md)。
 
 ## 文档
