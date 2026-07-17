@@ -25,7 +25,10 @@ _CLONE = _M0 / "FasterLivePortrait"
 
 
 def map_lip_ratio(lip: float, closed: float, open_: float) -> float:
-    """把调度器的归一化口型值 0..1 线性映射到 clone 的 close-ratio 单位。"""
+    """把调度器的归一化口型值线性映射到 clone 的 close-ratio 单位。
+
+    前置条件：lip ∈ [0,1]——由上游 SpeechClip 构造时 clip 保证，
+    本函数不再重复钳制（越界输入会线性外推出 [closed, open_]）。"""
     return closed + lip * (open_ - closed)
 
 
@@ -84,7 +87,13 @@ class LivePortraitPipeline:
     def infer(self, frame_bgr, seq: int, lip_ratio: float | None = None):
         """lip_ratio: 归一化口型值 0..1（None = 不覆写）。有值且 enable_lip 时
         映射为 close-ratio 后经 lip_ratio_override 传给 clone；None 或禁用时
-        完全不带该 kwarg——legacy 调用路径逐字节等价。"""
+        完全不带该 kwarg——调用参数与 legacy 逐字节相同。
+
+        注意：调用等价 ≠ 渲染等价。enable_lip=True 时构造期 flag
+        （flag_lip_retarget_keep_motion）已改变每帧渲染语义：嘴部经
+        retarget 通路跟随驱动视频，但只保留开合度（close-ratio），
+        丢失微笑/音素等细节口型。完全与 M1a 基线等价需 enable_lip=False
+        （run_local --no-lip）。详见 m2b-results.md 已知语义变化。"""
         kwargs = {}
         if lip_ratio is not None and self._enable_lip:
             kwargs["lip_ratio_override"] = map_lip_ratio(

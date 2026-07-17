@@ -1,7 +1,12 @@
 """本地启动引擎服务（Arc 慢速链路）。用法：
   <m0-venv-python> -m service.run_local [--port 8900] [--source <img>] [--channels N]
                                         [--https] [--host H] [--cfg onnx_infer.yaml]
-                                        [--translate]
+                                        [--translate] [--no-lip]
+
+--no-lip：关闭嘴型驱动（M2b）。enable_lip=True 会在管线构造前打开
+flag_lip_retargeting + flag_lip_retarget_keep_motion，即使无语音也改变
+每帧渲染语义（嘴部走 retarget 通路，见 m2b-results.md 已知语义变化）；
+需要与 M1a 基线逐字节等价的渲染路径时用本开关逃生。
 
 --translate：启用翻译链路（/audio 上行 + /events 广播）。真实组件：
 faster-whisper small ASR + from_env() 翻译 Provider（AI_API_URL/AI_API_KEY/
@@ -31,8 +36,7 @@ import uvicorn
 from service.app import create_app
 from service.liveportrait_pipeline import LivePortraitPipeline
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8900)
     ap.add_argument("--source", default=None)
@@ -46,7 +50,14 @@ if __name__ == "__main__":
                     help="监听地址（默认 127.0.0.1；--https 时默认 0.0.0.0）")
     ap.add_argument("--translate", action="store_true",
                     help="启用翻译链路（whisper ASR + from_env() Provider + en TTS）")
-    args = ap.parse_args()
+    ap.add_argument("--no-lip", action="store_true",
+                    help="关闭嘴型驱动（渲染路径与 M1a 基线逐字节等价的逃生开关）")
+    return ap
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    args = build_parser().parse_args()
 
     translation_pipeline = None
     if args.translate:
@@ -87,10 +98,13 @@ if __name__ == "__main__":
     # 适配器构造时 os.chdir(_CLONE)，相对路径会错误地相对 clone 目录解析——先转绝对
     source = os.path.abspath(args.source) if args.source else None
     channels = tuple(range(args.channels))
+    enable_lip = not args.no_lip
     app = create_app(
-        lambda ch: LivePortraitPipeline(source_image=source, cfg_name=args.cfg),
+        lambda ch: LivePortraitPipeline(source_image=source, cfg_name=args.cfg,
+                                        enable_lip=enable_lip),
         channels=channels,
         translation_pipeline=translation_pipeline)
+    print(f"[run_local] lip: {'enabled（嘴型驱动开，渲染语义与 M1a 基线不同）' if enable_lip else 'disabled（--no-lip，与 M1a 基线等价）'}")
     for ch in channels:
         print(f"[run_local] channel {ch}: "
               f"{scheme_ws}://{show_host}:{args.port}/out?channel={ch}"
