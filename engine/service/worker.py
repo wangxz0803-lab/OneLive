@@ -72,6 +72,10 @@ class ChannelWorker:
 
         return unsubscribe
 
+    def subscriber_count(self) -> int:
+        with self._subs_lock:
+            return len(self._subs)
+
     def stats(self) -> dict:
         return dict(self._stats)
 

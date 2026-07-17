@@ -35,6 +35,7 @@ def create_app(pipeline) -> FastAPI:
         worker.stop()
 
     app = FastAPI(lifespan=lifespan)
+    app.state.worker = worker  # 暴露给测试（标准 FastAPI 模式），生产代码不依赖
 
     @app.get("/")
     async def index() -> HTMLResponse:
@@ -43,8 +44,8 @@ def create_app(pipeline) -> FastAPI:
     @app.get("/status")
     async def status() -> dict:
         # channel 统计口径：last_infer_ms = 最近一次“跑到计时代码”的 infer 耗时
-        # （无脸帧也会刷新；infer 抛异常则不更新）；errors 聚合管线异常 +
-        # JPEG 编码失败 + 订阅者回调异常三类。
+        # （无脸帧也会刷新；infer 抛异常则不更新）；errors 聚合解码失败 +
+        # 管线异常 + JPEG 编码失败 + 订阅者回调异常四类。
         return {"engine": "ok", "channel": worker.stats()}
 
     @app.websocket("/ingest")
@@ -97,13 +98,36 @@ def create_app(pipeline) -> FastAPI:
 
             loop.call_soon_threadsafe(_put)
 
+        # 空闲断连清理（M1a E2E 复现的 bug）：只 await queue.get() 永远感知不到
+        # 无帧流动时的客户端断开，僵尸订阅者要等下一帧 send_bytes 抛错才清掉。
+        # 修复：queue.get() 与 ws.receive() 二选一竞速，哪边先完成处理哪边，
+        # 各自完成后各自重新武装——任意时刻每种任务最多存在一个，不会无限增殖。
         unsubscribe = worker.subscribe(on_frame)
+        queue_task: asyncio.Task = asyncio.ensure_future(queue.get())
+        recv_task: asyncio.Task = asyncio.ensure_future(ws.receive())
         try:
             while True:
-                await ws.send_bytes(await queue.get())
+                done, _ = await asyncio.wait({queue_task, recv_task},
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if recv_task in done:
+                    msg = recv_task.result()  # ws.receive() 把断开作为消息返回
+                    if msg["type"] == "websocket.disconnect":
+                        # 若此刻 queue_task 恰好也完成了，那一帧随取消丢弃——
+                        # 客户端都断开了，为它保帧毫无意义，明确接受这个取舍。
+                        break
+                    log.warning("out: unexpected client message ignored: %r", msg)
+                    recv_task = asyncio.ensure_future(ws.receive())
+                if queue_task in done:
+                    await ws.send_bytes(queue_task.result())
+                    queue_task = asyncio.ensure_future(queue.get())
         except WebSocketDisconnect:
             pass
         finally:
+            for task in (queue_task, recv_task):
+                task.cancel()
+            # return_exceptions=True 吞掉 CancelledError 及已完成任务上挂着的
+            # 其他异常（如断开后 receive 的 RuntimeError），清理路径绝不再抛。
+            await asyncio.gather(queue_task, recv_task, return_exceptions=True)
             unsubscribe()
 
     return app

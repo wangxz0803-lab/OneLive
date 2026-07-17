@@ -1,5 +1,8 @@
 """集成测试：fake 管线下 /ingest → worker → /out 全链路 + /status。"""
 
+import asyncio
+import time
+
 import numpy as np
 import cv2
 from fastapi.testclient import TestClient
@@ -69,6 +72,53 @@ def test_bad_frame_does_not_kill_ingest():
             in_ws.send_bytes(pack_frame(FrameHeader(seq=1, ts_ms=1, channel=0), _jpeg(3)))
             blob = out_ws.receive_bytes()
     assert unpack_frame(blob)[0].seq == 1
+
+
+async def _poll(cond, timeout: float = 2.0, interval: float = 0.01) -> bool:
+    """在事件循环内轮询 cond()，让出控制权给端点协程。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if cond():
+            return True
+        await asyncio.sleep(interval)
+    return cond()
+
+
+def test_out_idle_disconnect_unsubscribes_immediately():
+    """已知 bug（M1a E2E 复现）：/out 只 await queue.get() 不读 socket，
+    空闲期（无帧流动）断开的客户端会留下僵尸订阅者。
+
+    注意不能用 TestClient 复现：它退出 session 时会 cancel 掉端点 task，
+    cancel 恰好触发 finally 里的 unsubscribe，掩盖了 bug。真实服务器
+    （uvicorn）的语义是投递 websocket.disconnect 消息、task 继续活着——
+    这里直接以 ASGI 消息驱动 app 来模拟。"""
+    app = create_app(pipeline=EchoPipeline())
+    asyncio.run(_drive_idle_disconnect(app))
+
+
+async def _drive_idle_disconnect(app) -> None:
+    worker = app.state.worker
+    to_app: asyncio.Queue = asyncio.Queue()
+    from_app: asyncio.Queue = asyncio.Queue()
+    scope = {"type": "websocket", "path": "/out", "raw_path": b"/out",
+             "headers": [], "query_string": b"", "subprotocols": [],
+             "client": ("test", 1), "server": ("test", 80), "scheme": "ws"}
+    task = asyncio.ensure_future(app(scope, to_app.get, from_app.put))
+    try:
+        await to_app.put({"type": "websocket.connect"})
+        msg = await asyncio.wait_for(from_app.get(), timeout=2)
+        assert msg["type"] == "websocket.accept"
+        assert await _poll(lambda: worker.subscriber_count() == 1), \
+            f"订阅未注册, count={worker.subscriber_count()}"
+        # 全程不发任何帧——就是要覆盖"无帧流动时客户端断开"这条路径
+        await to_app.put({"type": "websocket.disconnect", "code": 1001})
+        assert await _poll(lambda: worker.subscriber_count() == 0), \
+            f"空闲断开后订阅者未清理, count={worker.subscriber_count()}"
+        await asyncio.wait_for(task, timeout=2)  # 端点协程必须真正退出
+    finally:
+        if not task.done():
+            task.cancel()
+        worker.stop()
 
 
 def test_ingest_text_ping_gets_pong():
