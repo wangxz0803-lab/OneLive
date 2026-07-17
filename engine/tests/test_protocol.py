@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from service.protocol import FrameHeader, pack_frame, unpack_frame
@@ -16,6 +15,15 @@ def test_frame_roundtrip():
 def test_unpack_rejects_short_blob():
     with pytest.raises(ValueError):
         unpack_frame(b"tiny")
+
+
+def test_unpack_rejects_bad_magic_or_version():
+    with pytest.raises(ValueError):
+        unpack_frame(b"\x00" * 20)          # bad magic
+    good = pack_frame(FrameHeader(seq=1, ts_ms=1), b"")
+    tampered = good[:2] + b"\x02" + good[3:]  # version byte -> 2
+    with pytest.raises(ValueError):
+        unpack_frame(tampered)
 
 
 def test_seq_and_ts_ranges():
