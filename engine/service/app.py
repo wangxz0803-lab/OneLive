@@ -67,7 +67,9 @@ _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 from service.audio_mixer import AudioMixer
 from service.protocol import FrameHeader, pack_frame, unpack_frame
 from service.speech import SpeechClip
+from service.wire import event_to_wire, wav_stream_header  # event_to_wire re-exported: test_app_integration imports from service.app
 from service.worker import ChannelWorker
+from service.ws_util import ws_subscriber_loop
 from translate.tts import LIP_FPS  # TTS 口型曲线帧率（25fps），tee 入队时随 clip 传递
 from translate.pipeline import (
     PipelineErrorEvent,
@@ -91,77 +93,6 @@ def _avatar_dir() -> Path:
         return Path(explicit)
     from service.liveportrait_pipeline import _CLONE  # 与管线适配器同一份 M0 路径逻辑
     return _CLONE / "assets" / "examples" / "source"
-
-
-def event_to_wire(ev) -> dict:
-    """管线事件 → /events 广播的 JSON 元数据。显式逐类映射，绝不 asdict：
-    TTSReadyEvent.result 带 pcm bytes + ndarray 嘴型曲线，asdict 会在 JSON
-    序列化时爆掉；音频/曲线只在进程内消费（M2b 数字人集成），wire 上仅以
-    has_audio 标记存在性。type 字符串与事件类名对应（snake_case 去 Event）。"""
-    if isinstance(ev, SubtitleEvent):
-        return {"type": "subtitle", "segment_id": ev.segment_id,
-                "text": ev.text, "t0": ev.t0, "t1": ev.t1}
-    if isinstance(ev, TranslationEvent):
-        return {"type": "translation", "segment_id": ev.segment_id, "lang": ev.lang,
-                "status": ev.status, "text": ev.text, "detail": ev.detail}
-    if isinstance(ev, TTSReadyEvent):
-        return {"type": "tts_ready", "segment_id": ev.segment_id, "lang": ev.lang,
-                "voice": ev.voice, "duration_s": ev.duration_s,
-                "synth_ms": ev.synth_ms, "has_audio": True}
-    if isinstance(ev, PipelineErrorEvent):
-        return {"type": "pipeline_error", "segment_id": ev.segment_id, "lang": ev.lang,
-                "stage": ev.stage, "detail": ev.detail}
-    raise TypeError(f"unknown pipeline event type: {type(ev).__name__}")
-
-
-def _wav_stream_header(sr: int) -> bytes:
-    """44 字节无限流 WAV 头：PCM(1) 单声道 16 位；RIFF/data 尺寸字段填
-    0xFFFFFFFF（无限流惯例——ffmpeg/播放器读到即按"到 EOF 为止"处理）。"""
-    return struct.pack("<4sI4s4sIHHIIHH4sI",
-                       b"RIFF", 0xFFFFFFFF, b"WAVE",
-                       b"fmt ", 16, 1, 1, sr, sr * 2, 2, 16,
-                       b"data", 0xFFFFFFFF)
-
-
-async def _ws_subscriber_loop(ws: WebSocket, queue: asyncio.Queue,
-                              send, unsubscribe: Callable[[], None],
-                              tag: str) -> None:
-    """订阅端点共享的竞速循环（/out /events /speech 同一模式，第三处出现时
-    按三振规则抽取）。queue.get() 与 ws.receive() 二选一竞速：只 await queue
-    永远感知不到无数据流动时的客户端断开（M1a E2E 僵尸订阅者 bug），哪边先
-    完成处理哪边，各自完成后各自重新武装——任意时刻每种任务最多一个。
-
-    send: async callable，把一个队列项发给客户端（send_bytes / send_text+json）。
-    unsubscribe: 同步零 await 的清理回调，finally 里最先执行。清理必须全同步：
-    外部取消（TestClient 退出时 portal cancel）会在 finally 的任意 await 点
-    重投 CancelledError，之前版本在此 await gather 偶发（~2%）拦腰打断 finally。
-    两个竞速任务只 cancel 不 await（绑在本循环上，取消后由循环回收），
-    done_callback 兜底取回可能已挂上的异常，避免 never-retrieved 告警。"""
-    queue_task: asyncio.Task = asyncio.ensure_future(queue.get())
-    recv_task: asyncio.Task = asyncio.ensure_future(ws.receive())
-    try:
-        while True:
-            done, _ = await asyncio.wait({queue_task, recv_task},
-                                         return_when=asyncio.FIRST_COMPLETED)
-            if recv_task in done:
-                msg = recv_task.result()  # ws.receive() 把断开作为消息返回
-                if msg["type"] == "websocket.disconnect":
-                    # 若此刻 queue_task 恰好也完成了，那一项随取消丢弃——
-                    # 客户端都断开了，为它保数据毫无意义，明确接受这个取舍。
-                    break
-                log.warning("%s: unexpected client message ignored: %r", tag, msg)
-                recv_task = asyncio.ensure_future(ws.receive())
-            if queue_task in done:
-                await send(queue_task.result())
-                queue_task = asyncio.ensure_future(queue.get())
-    except WebSocketDisconnect:
-        pass
-    finally:
-        unsubscribe()
-        for task in (queue_task, recv_task):
-            task.cancel()
-            task.add_done_callback(
-                lambda t: None if t.cancelled() else t.exception())
 
 
 def create_app(pipeline_factory: Callable[[int], object],
@@ -508,10 +439,10 @@ def create_app(pipeline_factory: Callable[[int], object],
 
             loop.call_soon_threadsafe(_put)
 
-        # 竞速循环 + 全同步 finally 抽在 _ws_subscriber_loop（空闲断连清理
+        # 竞速循环 + 全同步 finally 抽在 ws_subscriber_loop（空闲断连清理
         # bug 的教训见其 docstring）。unsubscribe 同步廉价，任何路径不漏。
         unsubscribe = worker.subscribe(on_frame)
-        await _ws_subscriber_loop(ws, queue, ws.send_bytes, unsubscribe, "out")
+        await ws_subscriber_loop(ws, queue, ws.send_bytes, unsubscribe, "out")
 
     @app.websocket("/audio")
     async def audio(ws: WebSocket) -> None:
@@ -568,7 +499,7 @@ def create_app(pipeline_factory: Callable[[int], object],
 
     @app.websocket("/events")
     async def events(ws: WebSocket) -> None:
-        # 广播订阅端，竞速循环见 _ws_subscriber_loop；区别仅在数据源是本
+        # 广播订阅端，竞速循环见 ws_subscriber_loop；区别仅在数据源是本
         # 循环内的广播队列而非 worker 线程回调，出帧是 JSON 文本而非二进制。
         await ws.accept()
         if translation_pipeline is None:
@@ -581,13 +512,13 @@ def create_app(pipeline_factory: Callable[[int], object],
         async def send_json(item) -> None:
             await ws.send_text(json.dumps(item, ensure_ascii=False))
 
-        await _ws_subscriber_loop(ws, queue, send_json,
-                                  lambda: events_subs.discard(queue), "events")
+        await ws_subscriber_loop(ws, queue, send_json,
+                                 lambda: events_subs.discard(queue), "events")
 
     @app.websocket("/speech")
     async def speech(ws: WebSocket, channel: int = Query(0)) -> None:
         # TTS 音频下行订阅端（帧格式见模块 docstring）。按 ?channel= 过滤，
-        # 只收本频道数字人的语音；竞速循环同 _ws_subscriber_loop。队列浅
+        # 只收本频道数字人的语音；竞速循环同 ws_subscriber_loop。队列浅
         # （8 段）+ 丢最旧：直播场景积压的旧语音早已过时，同 SpeechSchedule。
         # A/V 同步契约（详见模块 docstring）：音频 = viewer 收到即 FIFO 链式
         # 排播；嘴型 = worker 下一次渲染轮询才开始（≤1 渲染周期，本地 ~500ms）；
@@ -605,8 +536,8 @@ def create_app(pipeline_factory: Callable[[int], object],
             return
         queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
         subs.add(queue)
-        await _ws_subscriber_loop(ws, queue, ws.send_bytes,
-                                  lambda: subs.discard(queue), "speech")
+        await ws_subscriber_loop(ws, queue, ws.send_bytes,
+                                 lambda: subs.discard(queue), "speech")
 
     @app.get("/stream.mjpeg")
     async def stream_mjpeg(channel: int = Query(0)) -> StreamingResponse:
@@ -662,7 +593,7 @@ def create_app(pipeline_factory: Callable[[int], object],
             # 生成器同一事件循环，subscribe/退订无需线程桥。
             queue, unsubscribe = mixer.subscribe()
             try:
-                yield _wav_stream_header(mixer.sr)
+                yield wav_stream_header(mixer.sr)
                 while True:
                     chunk = await queue.get()
                     if chunk is None:
