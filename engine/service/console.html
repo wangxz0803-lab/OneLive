@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLive · Operator Console</title>
+<style>
+/* ============================================================================
+   OneLive 导播控制台（M3b Task 3）——暗色导播机房美学。
+   - 语义化遥测（LED / 徽标 / 分栏读数），不是密表；
+   - 动画仅走 transform/opacity；prefers-reduced-motion 全禁（D-012 / 规范 §4.2）；
+   - 诚实占位：Edge 灰置、未配置频道、链路RTT(ws) 限定词、翻译未配置。
+   自包含单文件，除同源 /status /avatars /out /events /ingest 外不发任何请求。
+   ============================================================================ */
+
+:root {
+  --bg:        #08090b;
+  --bg-2:      #0d0f12;
+  --panel:     #101317;
+  --panel-2:   #14181d;
+  --line:      #232830;
+  --line-soft: #1a1e24;
+  --ink:       #e7ebef;
+  --muted:     #808a95;
+  --dim:       #4b535d;
+  --faint:     #333a43;
+  --amber:     #ffb43a;   /* ON AIR / live tally */
+  --cyan:      #4fd6de;   /* uplink 遥测 */
+  --green:     #58d69b;   /* ok / running */
+  --red:       #ff6b6b;   /* error */
+  --violet:    #9b8cff;   /* subtitle 原文 */
+  --mono: "Cascadia Code","JetBrains Mono","SF Mono",ui-monospace,"Consolas","DejaVu Sans Mono",monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  /* 机房氛围：极淡的机顶网格 + 中心渐晕，营造监视墙景深，而非死平的纯色 */
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(79,214,222,0.05), transparent 60%),
+    radial-gradient(140% 120% at 50% 120%, rgba(255,180,58,0.035), transparent 55%),
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+  background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+}
+
+/* 极淡扫描线纹理叠加（导播监视器质感），不拦截交互 */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+
+.app {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 56px 1fr;
+  gap: 14px;
+  padding: 14px 18px 16px;
+}
+
+/* micro 标签：机房面板通用的小字号大写字距标题 */
+.tag { font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); }
+
+/* ---- 通用面板：四角折角（导播监视器边框） ---- */
+.panel { position: relative; background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); border-radius: 3px; }
+.panel::before, .panel::after,
+.panel > .corner-b, .panel > .corner-a {
+  content: ""; position: absolute; width: 9px; height: 9px; pointer-events: none;
+  border-color: var(--faint); border-style: solid; border-width: 0;
+}
+.panel::before { top: 4px; left: 4px; border-top-width: 1px; border-left-width: 1px; }
+.panel::after  { top: 4px; right: 4px; border-top-width: 1px; border-right-width: 1px; }
+.panel > .corner-b { bottom: 4px; left: 4px; border-bottom-width: 1px; border-left-width: 1px; }
+.panel > .corner-a { bottom: 4px; right: 4px; border-bottom-width: 1px; border-right-width: 1px; }
+
+/* ============================ 顶栏 ============================ */
+.topbar {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  padding: 0 16px; border: 1px solid var(--line); border-radius: 3px;
+  background: linear-gradient(180deg, #0f1216, #0b0d10);
+}
+.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand .mark {
+  font-size: 17px; font-weight: 600; letter-spacing: 0.16em;
+  color: var(--ink); text-transform: uppercase;
+}
+.brand .mark b { color: var(--amber); font-weight: 600; }
+.brand .sub { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--dim); }
+.brand .glyph {
+  display: inline-block; width: 11px; height: 11px; margin-right: 2px;
+  border-radius: 50%; background: conic-gradient(var(--amber) 0 50%, transparent 50% 100%);
+  border: 1px solid var(--amber); transform: translateY(1px);
+}
+
+.engine-stat { display: flex; align-items: center; gap: 14px; justify-self: center; }
+.led { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); box-shadow: 0 0 0 0 transparent; flex: none; }
+.led.ok  { background: var(--green); box-shadow: 0 0 8px 1px rgba(88,214,155,0.55); animation: breathe 3.4s ease-in-out infinite; }
+.led.bad { background: var(--red);   box-shadow: 0 0 8px 1px rgba(255,107,107,0.55); }
+.engine-stat .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.engine-stat .uptime { font-size: 12px; color: var(--muted); }
+.engine-stat .uptime b { color: var(--cyan); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Edge⇄Local 段选（Edge 灰置，诚实占位） */
+.seg { justify-self: end; display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.seg button { font: inherit; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 6px 14px; background: transparent; color: var(--muted); border: 0; cursor: pointer; }
+.seg button.active { background: rgba(79,214,222,0.14); color: var(--cyan); box-shadow: inset 0 0 0 1px rgba(79,214,222,0.25); }
+.seg button.disabled { color: var(--faint); cursor: not-allowed; }
+.seg .divider { width: 1px; background: var(--line); }
+.seg button.disabled::before { content: "◇ "; color: var(--faint); }
+
+/* ============================ 主区 ============================ */
+.main {
+  display: grid; grid-template-columns: 1fr 340px; grid-template-rows: 1fr 268px;
+  grid-template-areas: "channels hud" "subs hud";
+  gap: 14px; min-height: 0;
+}
+
+/* ---- 频道卡区 ---- */
+.channels { grid-area: channels; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; min-height: 0; }
+
+.card { display: flex; flex-direction: column; padding: 11px 12px 12px; min-height: 0; opacity: 0; }
+.card .chd { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.card .ch-id { font-size: 13px; letter-spacing: 0.12em; color: var(--ink); font-weight: 600; }
+.card .ch-id .num { color: var(--amber); }
+
+.badge { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 6px;
+  border: 1px solid var(--line); border-radius: 2px; color: var(--muted); white-space: nowrap; }
+.badge.lang { color: var(--cyan); border-color: rgba(79,214,222,0.3); }
+.badge.stream { color: var(--dim); }
+.badge.stream.live { color: var(--green); border-color: rgba(88,214,155,0.35); }
+.badge.stream.warn { color: var(--amber); border-color: rgba(255,180,58,0.35); }
+
+.tally { margin-left: auto; font-size: 9.5px; letter-spacing: 0.18em; color: var(--faint);
+  border: 1px solid var(--faint); border-radius: 2px; padding: 2px 7px; }
+.card.live .tally { color: var(--amber); border-color: var(--amber);
+  box-shadow: 0 0 10px -1px rgba(255,180,58,0.5); animation: tally 1.7s steps(1) infinite; }
+
+/* 预览屏 */
+.screen { position: relative; flex: 1; min-height: 0; background: #000; border: 1px solid var(--line);
+  border-radius: 2px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.screen canvas { max-width: 100%; max-height: 100%; display: block; }
+.screen .nosig { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px; color: var(--dim); text-align: center; }
+.screen .nosig .big { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; }
+.screen .nosig .sm { font-size: 10px; color: var(--faint); }
+.screen.unconf { background: repeating-linear-gradient(45deg, #0b0d10 0 10px, #0e1013 10px 20px); }
+/* 屏幕边角十字（对齐标记） */
+.screen::before, .screen::after { content: ""; position: absolute; width: 10px; height: 10px; border: 1px solid rgba(255,255,255,0.08); }
+.screen::before { top: 6px; left: 6px; border-right: 0; border-bottom: 0; }
+.screen::after  { bottom: 6px; right: 6px; border-left: 0; border-top: 0; }
+
+.card .speech { margin-top: 9px; font-size: 11px; color: var(--muted); display: flex; gap: 6px; align-items: baseline; }
+.card .speech .seg { color: var(--amber); font-variant-numeric: tabular-nums; }
+.card .speech .nums { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* casting 行 */
+.cast { margin-top: 9px; display: flex; gap: 7px; }
+.cast select { flex: 1; min-width: 0; font: inherit; font-size: 11px; background: var(--bg-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 2px; padding: 5px 6px; cursor: pointer; }
+.cast select:disabled { color: var(--faint); cursor: not-allowed; }
+.cast button { font: inherit; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: rgba(255,180,58,0.1); color: var(--amber); border: 1px solid rgba(255,180,58,0.32);
+  border-radius: 2px; padding: 5px 11px; cursor: pointer; transition: background .15s, transform .1s; }
+.cast button:hover:not(:disabled) { background: rgba(255,180,58,0.2); }
+.cast button:active:not(:disabled) { transform: translateY(1px); }
+.cast button:disabled { color: var(--faint); border-color: var(--faint); background: transparent; cursor: not-allowed; }
+.ack { margin-top: 6px; font-size: 10.5px; min-height: 14px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.ack.ok  { color: var(--green); }
+.ack.err { color: var(--red); }
+.ack.pend { color: var(--cyan); }
+
+/* ---- 字幕流面板 ---- */
+.subs { grid-area: subs; display: flex; flex-direction: column; padding: 10px 4px 10px 14px; min-height: 0; }
+.subs .head { display: flex; align-items: center; gap: 10px; padding-right: 12px; margin-bottom: 8px; }
+.subs .head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); }
+.log { flex: 1; overflow-y: auto; padding-right: 12px; display: flex; flex-direction: column; gap: 5px;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.log::-webkit-scrollbar { width: 7px; }
+.log::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.row { display: flex; gap: 9px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--line-soft);
+  animation: rowin .28s ease both; }
+.row .seg { flex: none; font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; min-width: 52px; }
+.row .kind { flex: none; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; min-width: 30px; }
+.row .txt { flex: 1; color: var(--ink); word-break: break-word; }
+.row.sub .kind { color: var(--violet); }
+.row.sub .txt { color: #cdd4dc; }
+.row.tr .kind { color: var(--cyan); }
+.row.tr.unavail .txt, .row.tr.unavail .kind { color: var(--dim); }
+.row.tts .kind { color: var(--amber); }
+.row.tts .txt { color: var(--amber); }
+.row.err .kind, .row.err .txt { color: var(--red); }
+.log .empty { color: var(--dim); font-size: 11px; padding: 8px 0; }
+.log .empty.warn { color: var(--amber); }
+
+/* ---- 双 HUD 面板 ---- */
+.hud { grid-area: hud; display: flex; flex-direction: column; padding: 11px 4px 12px 14px; min-height: 0; }
+.hud .head { padding-right: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.hud .scroll { flex: 1; overflow-y: auto; padding-right: 12px; scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  display: flex; flex-direction: column; }
+.hud .scroll::-webkit-scrollbar { width: 7px; }
+.hud .scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+/* flex:1 让块均分撑满 HUD 列高（与三卡栅格拉伸对齐、不留空洞）；不收缩，
+   内容超列高时容器滚动。占位块被拉伸后斜纹背景自然填满，读作有意的留位。 */
+.hblk { border: 1px solid var(--line-soft); border-radius: 3px; padding: 8px 9px; margin-bottom: 9px; background: rgba(0,0,0,0.18);
+  flex: 1 0 auto; }
+.hblk:last-child { margin-bottom: 0; }
+.hblk .htop { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.hblk .htop .cid { font-size: 11px; color: var(--ink); letter-spacing: 0.08em; }
+.hblk .htop .cid b { color: var(--amber); }
+.hblk .htop .stale { margin-left: auto; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--faint); border: 1px solid var(--faint); border-radius: 2px; padding: 1px 5px; }
+.hblk .htop .stale.on { color: var(--red); border-color: rgba(255,107,107,0.4); }
+/* 未配置槽占位块：斜纹 + 灰字，与未配置频道卡同款处理，填满 HUD 列不留空洞 */
+.hblk.unconf { background: repeating-linear-gradient(45deg, #0b0d10 0 10px, #0e1013 10px 20px); border-color: var(--line-soft); }
+.hblk.unconf .cid, .hblk.unconf .cid b, .hblk.unconf .gt, .hblk.unconf .m .k, .hblk.unconf .htop .stale { color: var(--faint); border-color: var(--faint); }
+
+.grp { margin-bottom: 6px; }
+.grp:last-child { margin-bottom: 0; }
+.grp .gt { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+.grp.up .gt { color: var(--cyan); }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.m { display: flex; justify-content: space-between; gap: 6px; font-size: 10.5px; }
+.m.wide { margin-top: 2px; }
+.m .k { color: var(--muted); white-space: nowrap; }
+.m .v { color: var(--ink); font-variant-numeric: tabular-nums; }
+.m .v.dim { color: var(--faint); }
+.hblk.staleblk .grp.up .m .v { color: var(--faint); }
+.hblk.staleblk .grp.up .m .k { color: var(--faint); }
+.stderr { margin-top: 5px; font-size: 9.5px; color: var(--dim); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; border-top: 1px solid var(--line-soft); padding-top: 4px; }
+.stderr b { color: var(--muted); }
+.hud .empty { color: var(--dim); font-size: 11px; }
+
+/* tooltip（Edge 说明，纯 CSS） */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 8px); right: 0;
+  background: #05060700; background: #060708; color: var(--muted); font-size: 10px; letter-spacing: 0.04em;
+  text-transform: none; white-space: nowrap; padding: 5px 9px; border: 1px solid var(--line); border-radius: 3px;
+  z-index: 20; box-shadow: 0 6px 20px rgba(0,0,0,0.5); animation: tipin .16s ease both;
+}
+
+/* ============================ 动画 ============================ */
+@keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes tally   { 0%,60% { opacity: 1; } 61%,100% { opacity: 0.35; } }
+@keyframes rowin   { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes tipin   { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@keyframes cardin  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes panelin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* 载入编排：面板错峰上浮（仅 transform/opacity） */
+.topbar { animation: panelin .5s ease both; }
+.channels .card { animation: cardin .55s ease both; }
+.channels .card:nth-child(1) { animation-delay: .10s; }
+.channels .card:nth-child(2) { animation-delay: .18s; }
+.channels .card:nth-child(3) { animation-delay: .26s; }
+.subs { animation: panelin .55s ease .30s both; }
+.hud  { animation: panelin .55s ease .36s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .card { opacity: 1 !important; }
+}
+
+@media (max-width: 1180px) {
+  .main { grid-template-columns: 1fr; grid-template-rows: auto auto auto;
+          grid-template-areas: "channels" "subs" "hud"; }
+  body { overflow: auto; }
+  .app { height: auto; min-height: 100vh; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================ 顶栏 ============================ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark"><span class="glyph"></span>ONE<b>LIVE</b></span>
+      <span class="sub">Operator&nbsp;Console</span>
+    </div>
+    <div class="engine-stat">
+      <span id="led" class="led"></span>
+      <span class="label" id="engineLabel">ENGINE …</span>
+      <span class="uptime">Uptime&nbsp;<b id="uptime">--:--:--</b></span>
+    </div>
+    <div class="seg">
+      <button class="disabled" disabled data-tip="边缘节点待 M1b">Edge</button>
+      <span class="divider"></span>
+      <button class="active">Local</button>
+    </div>
+  </header>
+
+  <!-- ============================ 主区 ============================ -->
+  <div class="main">
+    <section class="channels" id="channels"><!-- 频道卡由 JS 按 /status 配置渲染 --></section>
+
+    <!-- 字幕流 -->
+    <section class="subs panel">
+      <span class="corner-b"></span><span class="corner-a"></span>
+      <div class="head"><span class="dot"></span><span class="tag">Subtitle&nbsp;Stream</span></div>
+      <div class="log" id="log"><div class="empty" id="logEmpty">等待字幕事件…</div></div>
+    </section>
+
+    <!-- 双 HUD -->
+    <section class="hud panel">
+      <span class="corner-b"></span><span class="corner-a"></span>
+      <div class="head"><span class="tag">Telemetry&nbsp;·&nbsp;Uplink&nbsp;⇄&nbsp;Engine</span></div>
+      <div class="scroll" id="hud"><div class="empty">等待 /status…</div></div>
+    </section>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------------------------------------------------------------------------
+   连接模式沿用 viewer.html：ws/wss 跟随页面协议、断线 1s 重连、/out seq 乱序
+   防护 + 4400 未知频道处理、/events 4404 视为翻译未配置不重连。
+   /status ~1s 轮询喂 HUD/streams/uplink；/out /events 走 WS。
+   RTT 诚实标注为 "链路RTT(ws)"（WS 传输层往返，非蜂窝上行时延）。
+   --------------------------------------------------------------------------- */
+const wsScheme = location.protocol === "https:" ? "wss" : "ws";
+const CARD_SLOTS = 3;                 // 三市场铺垫：固定三张卡，多余为"未配置"
+const $ = (id) => document.getElementById(id);
+
+// ---------- 顶栏：引擎状态 + uptime ----------
+function fmtUptime(s) {
+  if (s == null || !isFinite(s)) return "--:--:--";
+  s = Math.floor(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(h)}:${p(m)}:${p(sec)}`;
+}
+
+// ---------- 频道卡状态 ----------
+const cards = new Map();   // ch(int) -> { el, ackEl, speechEl, streamBadge, langBadge, select, btn, lastSeg }
+let inited = false;        // 首个 /status 后按配置频道建卡（只建一次）
+let configuredChannels = [];
+let langByChannel = {};    // ch -> lang（/status.lang_channels 反转，仅翻译配置时）
+
+// ---------- /out：每频道预览 canvas（沿用 viewer 的乱序防护 + 重连） ----------
+function makeOut(ch, canvas, card) {
+  let lastDrawnSeq = -1n;
+  let liveTimer = null;
+  const markLive = () => {
+    card.classList.add("live");
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => card.classList.remove("live"), 2500); // 2.5s 无帧即熄 ON AIR
+  };
+  function connect() {
+    const ws = new WebSocket(`${wsScheme}://${location.host}/out?channel=${encodeURIComponent(ch)}`);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => { lastDrawnSeq = -1n; };
+    ws.onmessage = async (ev) => {
+      try {
+        const seq = new DataView(ev.data).getBigUint64(4, true);
+        const bmp = await createImageBitmap(new Blob([ev.data.slice(20)], { type: "image/jpeg" }));
+        if (seq < lastDrawnSeq && lastDrawnSeq - seq < 100n) { bmp.close(); return; }
+        lastDrawnSeq = seq;
+        if (canvas.width !== bmp.width || canvas.height !== bmp.height) { canvas.width = bmp.width; canvas.height = bmp.height; }
+        canvas.getContext("2d").drawImage(bmp, 0, 0);
+        bmp.close();
+        canvas.classList.add("hasframe");
+        card.querySelector(".nosig").style.display = "none";
+        markLive();
+      } catch (_) { /* 坏帧忽略，保持存活 */ }
+    };
+    ws.onclose = (e) => {
+      if (e.code === 4400) return;               // 未知频道：别重连风暴
+      setTimeout(connect, 1000);
+    };
+    ws.onerror = () => ws.close();
+  }
+  connect();
+}
+
+// ---------- 建卡 ----------
+function buildCards() {
+  const host = $("channels");
+  host.innerHTML = "";
+  for (let i = 0; i < CARD_SLOTS; i++) {
+    const ch = configuredChannels[i];           // 可能 undefined → 未配置槽
+    const configured = ch !== undefined;
+    const card = document.createElement("article");
+    card.className = "card panel" + (configured ? "" : " unconf-card");
+    card.innerHTML = `
+      <span class="corner-b"></span><span class="corner-a"></span>
+      <div class="chd">
+        <span class="ch-id">CH&nbsp;<span class="num">${configured ? ch : "—"}</span></span>
+        <span class="badge lang">—</span>
+        <span class="badge stream">—</span>
+        <span class="tally">ON AIR</span>
+      </div>
+      <div class="screen ${configured ? "" : "unconf"}">
+        <canvas width="320" height="320"></canvas>
+        <div class="nosig">
+          <div class="big">${configured ? "无信号" : "未配置"}</div>
+          <div class="sm">${configured ? "等待 /out 帧…" : "该市场频道未启用"}</div>
+        </div>
+      </div>
+      <div class="speech">
+        <span class="lbl">语音</span><span class="seg">—</span>
+        <span class="nums">played 0 · queue 0</span>
+      </div>
+      <div class="cast">
+        <select ${configured ? "" : "disabled"}><option value="">底图…</option></select>
+        <button ${configured ? "" : "disabled"}>切换</button>
+      </div>
+      <div class="ack"></div>`;
+    host.appendChild(card);
+    if (!configured) { card.querySelector(".screen").querySelector("canvas").remove(); continue; }
+
+    const rec = {
+      el: card,
+      ackEl: card.querySelector(".ack"),
+      speechSeg: card.querySelector(".speech .seg"),
+      speechNums: card.querySelector(".speech .nums"),
+      streamBadge: card.querySelector(".badge.stream"),
+      langBadge: card.querySelector(".badge.lang"),
+      select: card.querySelector("select"),
+      btn: card.querySelector("button"),
+      lastSeg: null,
+    };
+    cards.set(ch, rec);
+    makeOut(ch, card.querySelector("canvas"), card);
+    rec.btn.onclick = () => doCasting(ch, rec);
+  }
+  populateAvatars();
+}
+
+// ---------- /avatars：填充底图下拉 ----------
+async function populateAvatars() {
+  let list = [];
+  try { list = (await (await fetch("/avatars")).json()).avatars || []; } catch (_) {}
+  for (const rec of cards.values()) {
+    const sel = rec.select;
+    const keep = sel.value;
+    sel.innerHTML = "";
+    if (!list.length) {
+      sel.appendChild(new Option("无可用底图", ""));
+      sel.disabled = true; rec.btn.disabled = true;
+      continue;
+    }
+    sel.appendChild(new Option("底图…", ""));
+    for (const name of list) sel.appendChild(new Option(name, name));
+    if (list.includes(keep)) sel.value = keep;
+  }
+}
+
+// ---------- /ingest：casting 控制帧（发切换 + 收 casting_ack） ----------
+let ingestWS = null;
+function connectIngest() {
+  const ws = new WebSocket(`${wsScheme}://${location.host}/ingest`);
+  ingestWS = ws;
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type !== "casting_ack") return;
+    const rec = cards.get(m.channel);
+    if (!rec) return;
+    rec.btn.disabled = false; rec.select.disabled = false;
+    if (m.ok) { rec.ackEl.className = "ack ok"; rec.ackEl.textContent = `✓ ${m.source} · ${m.ms}ms`; }
+    else      { rec.ackEl.className = "ack err"; rec.ackEl.textContent = `✕ ${m.detail || "失败"}`; }
+  };
+  ws.onclose = () => { ingestWS = null; setTimeout(connectIngest, 1000); };
+  ws.onerror = () => ws.close();
+}
+connectIngest();
+
+function doCasting(ch, rec) {
+  const source = rec.select.value;
+  if (!source) { rec.ackEl.className = "ack err"; rec.ackEl.textContent = "请先选底图"; return; }
+  if (!ingestWS || ingestWS.readyState !== WebSocket.OPEN) {
+    rec.ackEl.className = "ack err"; rec.ackEl.textContent = "控制通道未连接"; return;
+  }
+  rec.btn.disabled = true;
+  rec.ackEl.className = "ack pend"; rec.ackEl.textContent = `切换中 → ${source} …`;
+  ingestWS.send(JSON.stringify({ type: "casting", channel: ch, source }));
+}
+
+// ---------- /events：字幕流 + 每频道语音态 ----------
+const MAX_ROWS = 200;
+let translateUnavailable = false;
+function addRow(kind, seg, txt, extraCls) {
+  const empty = $("logEmpty"); if (empty) empty.remove();
+  const log = $("log");
+  const near = log.scrollHeight - log.scrollTop - log.clientHeight < 40; // 贴底才自动滚
+  const row = document.createElement("div");
+  row.className = `row ${kind}${extraCls ? " " + extraCls : ""}`;
+  row.innerHTML = `<span class="seg">${seg != null ? "seg " + seg : ""}</span>`
+    + `<span class="kind">${kind === "sub" ? "原文" : kind === "tr" ? "译" : kind === "tts" ? "TTS" : "错误"}</span>`
+    + `<span class="txt"></span>`;
+  row.querySelector(".txt").textContent = txt;
+  log.appendChild(row);
+  while (log.children.length > MAX_ROWS) log.firstChild.remove();
+  if (near) log.scrollTop = log.scrollHeight;
+}
+function connectEvents() {
+  const ws = new WebSocket(`${wsScheme}://${location.host}/events`);
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === "subtitle") {
+      addRow("sub", m.segment_id, m.text);
+    } else if (m.type === "translation") {
+      if (m.status === "ok") addRow("tr", m.segment_id, m.text || "");
+      else addRow("tr", m.segment_id, `[${m.status}] ${m.detail || ""}`.trim(), "unavail");
+    } else if (m.type === "tts_ready") {
+      addRow("tts", m.segment_id, `♪ ${m.lang} · ${m.voice || ""} · ${m.duration_s?.toFixed?.(1) ?? "?"}s`);
+      // tts_ready 事件自带 channel（endpoints_translate 注入 lang_channels 映射结果），
+      // 直接用——不依赖 /status.lang_channels 是否已到，也少一层反查。
+      const rec = m.channel != null ? cards.get(m.channel) : null;
+      if (rec) { rec.lastSeg = m.segment_id; rec.speechSeg.textContent = `seg ${m.segment_id} (${m.lang})`; }
+    } else if (m.type === "pipeline_error") {
+      addRow("err", m.segment_id, `[${m.stage}] ${m.detail || ""}`);
+    }
+  };
+  ws.onclose = (e) => {
+    if (e.code === 4404) {   // 翻译未配置：诚实提示，不重连
+      translateUnavailable = true;
+      const log = $("log");
+      if (!log.querySelector(".empty.warn")) {
+        log.innerHTML = '<div class="empty warn">翻译未配置 · 字幕/翻译/TTS 事件流不可用</div>';
+      }
+      return;
+    }
+    setTimeout(connectEvents, 1000);
+  };
+  ws.onerror = () => ws.close();
+}
+connectEvents();
+
+// ---------- /status：~1s 轮询 → 顶栏 / 频道语音态 / HUD ----------
+function num(v, digits) {          // null/undefined → "-"（诚实，不 Math.round(null)→0）
+  if (v == null || Number.isNaN(v)) return "-";
+  return digits != null ? Number(v).toFixed(digits) : String(v);
+}
+
+async function poll() {
+  let s;
+  try { s = await (await fetch("/status")).json(); }
+  catch (_) {
+    $("led").className = "led bad"; $("engineLabel").textContent = "ENGINE UNREACHABLE";
+    return schedule();
+  }
+  // 顶栏
+  $("led").className = "led " + (s.engine === "ok" ? "ok" : "bad");
+  $("engineLabel").textContent = "ENGINE " + String(s.engine || "?").toUpperCase();
+  $("uptime").textContent = fmtUptime(s.uptime_s);
+
+  const chans = s.channels || {};
+  // 语言映射（仅翻译配置时存在）
+  langByChannel = {};
+  if (s.lang_channels) for (const [lang, ch] of Object.entries(s.lang_channels)) langByChannel[ch] = lang;
+
+  // 首个 /status：按配置频道建卡（键为字符串，转 int，升序）
+  if (!inited) {
+    configuredChannels = Object.keys(chans).map(Number).sort((a, b) => a - b);
+    inited = true;
+    buildCards();
+  }
+
+  // 频道卡：语言标签 / 推流徽标 / 语音态
+  const streams = s.streams;   // 未配推流时整块不存在
+  for (const [ch, rec] of cards.entries()) {
+    const cs = chans[String(ch)];
+    // 语言标签
+    const lang = langByChannel[ch];
+    rec.langBadge.textContent = lang ? lang.toUpperCase() : (s.lang_channels ? "无映射" : "本地");
+    rec.langBadge.style.color = lang ? "" : "var(--dim)";
+    // 语音态
+    if (cs && cs.speech) {
+      rec.speechNums.textContent = `played ${cs.speech.played} · queue ${cs.speech.queued}`;
+      if (rec.lastSeg == null) rec.speechSeg.textContent = cs.speech.played > 0 ? `已播 ${cs.speech.played} 段` : "—";
+    }
+    // 推流徽标
+    if (!streams) { rec.streamBadge.textContent = "推流未启用"; rec.streamBadge.className = "badge stream"; }
+    else {
+      const st = streams[String(ch)];
+      if (!st) { rec.streamBadge.textContent = "推流未启用"; rec.streamBadge.className = "badge stream"; }
+      else if (st.running) {
+        rec.streamBadge.className = "badge stream live";
+        rec.streamBadge.textContent = st.restarts ? `推流中 · 重启${st.restarts}` : "推流中";
+      } else {
+        rec.streamBadge.className = "badge stream warn";
+        rec.streamBadge.textContent = st.restarts ? `重启中 (${st.restarts})` : "推流停止";
+      }
+    }
+  }
+
+  renderHUD(s);
+  schedule();
+}
+function schedule() { setTimeout(poll, 1000); }
+
+// ---------- HUD：uplink（join 配置频道）+ engine + streaming ----------
+function renderHUD(s) {
+  const host = $("hud");
+  const chans = s.channels || {};
+  const uplink = s.uplink || {};     // 可能含未配置频道的孤儿项——只渲染配置频道
+  const streams = s.streams;
+  const chList = Object.keys(chans).map(Number).sort((a, b) => a - b);
+  if (!chList.length) { host.innerHTML = '<div class="empty">无配置频道</div>'; return; }
+
+  const frag = document.createDocumentFragment();
+  // HUD 列固定渲染 CARD_SLOTS 块与三卡栅格对齐：配置频道渲染真实遥测，
+  // 其余槽渲染灰置占位块（复用未配置卡的斜纹/灰字处理）——单/双频道演示
+  // 下不再留大片空洞（Render review IMPORTANT fix），且诚实标注"未配置"。
+  for (let slot = 0; slot < Math.max(CARD_SLOTS, chList.length); slot++) {
+    const ch = chList[slot];
+    if (ch === undefined) {
+      const ph = document.createElement("div");
+      ph.className = "hblk unconf";
+      ph.innerHTML = `<div class="htop"><span class="cid">频道 <b>—</b></span>`
+        + `<span class="stale">未配置</span></div>`
+        + `<div class="grp up"><div class="gt">Uplink · 边缘上行</div><div class="metrics">`
+        + metric("fps", "—") + metric("skip", "—") + `</div>`
+        + `<div class="m wide"><span class="k">链路RTT(ws)</span><span class="v dim">—</span></div></div>`
+        + `<div class="grp"><div class="gt">Engine · 本地引擎</div>`
+        + `<div class="m"><span class="k">该市场频道未启用</span><span class="v dim"></span></div></div>`;
+      frag.appendChild(ph);
+      continue;
+    }
+    const cs = chans[String(ch)] || {};
+    const up = uplink[String(ch)];   // 孤儿频道（?channel=N 报了但未配置）不在 chList，天然被丢弃
+    const stale = up && up.stale;
+    const st = streams ? streams[String(ch)] : undefined;
+
+    const blk = document.createElement("div");
+    blk.className = "hblk" + (stale ? " staleblk" : "");
+    let html = `<div class="htop"><span class="cid">频道 <b>${ch}</b></span>`
+      + `<span class="stale ${stale ? "on" : ""}">${up ? (stale ? "STALE" : "FRESH") : "无上报"}</span></div>`;
+
+    // Uplink 组（RTT 诚实标注 链路RTT(ws)；null → "-"；stale 整组置灰）。
+    // fps/skip 走 2 列，链路RTT(ws) 单独整行——340px 列里 3 列会把中文标签折行、
+    // 错位整排，整行给足宽度即不折行（Render review minor fix）。
+    html += `<div class="grp up"><div class="gt">Uplink · 边缘上行</div><div class="metrics">`
+      + metric("fps", up ? num(up.fps_sent, 1) : "-")
+      + metric("skip", up ? num(up.skipped) : "-")
+      + `</div>`
+      + `<div class="m wide"><span class="k">链路RTT(ws)</span><span class="v">${up ? (up.rtt_ms == null ? "-" : num(up.rtt_ms, 0) + "ms") : "-"}</span></div>`
+      + (up ? `<div class="m wide"><span class="k">age</span><span class="v ${stale ? "dim" : ""}">${num(up.age_s, 1)}s</span></div>` : "")
+      + `</div>`;
+
+    // Engine 组
+    const sp = cs.speech || {};
+    html += `<div class="grp"><div class="gt">Engine · 本地引擎</div><div class="metrics">`
+      + metric("processed", num(cs.processed))
+      + metric("dropped", num(cs.dropped))
+      + metric("skipped", num(cs.skipped))
+      + metric("errors", num(cs.errors))
+      + metric("infer", cs.last_infer_ms == null ? "-" : num(cs.last_infer_ms, 0) + "ms")
+      + metric("spk played", num(sp.played))
+      + `</div></div>`;
+
+    // Streaming 组
+    if (streams) {
+      html += `<div class="grp"><div class="gt">Streaming · RTMP 推流</div><div class="metrics">`
+        + metric("running", st ? (st.running ? "yes" : "no") : "-")
+        + metric("restarts", st ? num(st.restarts) : "-")
+        + `</div>`;
+      const tail = st && st.stderr_tail && st.stderr_tail.length ? st.stderr_tail[st.stderr_tail.length - 1] : "";
+      if (tail) html += `<div class="stderr"><b>stderr</b> ${escapeHtml(tail)}</div>`;
+      html += `</div>`;
+    } else {
+      html += `<div class="grp"><div class="gt">Streaming</div><div class="m"><span class="k">状态</span><span class="v dim">推流未启用</span></div></div>`;
+    }
+    blk.innerHTML = html;
+    frag.appendChild(blk);
+  }
+  host.innerHTML = "";
+  host.appendChild(frag);
+}
+function metric(k, v) { return `<div class="m"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
+function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+poll();
+</script>
+</body>
+</html>

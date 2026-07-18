@@ -45,6 +45,8 @@
 
 组合：sink（node 子进程）+ 真服务（`--translate-stub --rtmp rtmp://127.0.0.1:1935/live/ch{ch}`）+ feeder d14 @5fps + `/audio` 实时喂 2 句中文 fixture。timeline 全程留档（out/rtmp_e2e/timeline.txt），一次通过，全程 60.1s：
 
+> 注：盘上 engine/out/rtmp_e2e/ 证据来自验证复跑（ratio 5070x 等）；下方首次运行数字（4929x 等）为初次记录，两次同性质一致。
+
 ```
 [t+ 14.02s] service ready (models loaded) → feeder 立即跟上
 [t+ 17.61s] streams.0 running=True pid=29304 restarts(warmup)=0   ← 无早期看门狗重启
@@ -149,6 +151,7 @@ M3a 新增：
 - DTS 警告族（见 Task 4 known noise）：flv mux 等时间戳帧 dup + aac queue backward——现阶段属已知噪音，若后续平台端出现音画撕裂再回头治理。
 - **stderr 脱敏的截断行限制**：脱敏按整 URL 精确匹配——ffmpeg 把 URL 截断/换行输出时 KEY 可能漏出；接真实串流码前收紧为按 KEY 子串匹配。另 run_local 启动 banner 打印未脱敏推流 URL（OWNER 项已提示）。
 - **D14 驱动 fixture 依赖外部 worktree**：`rtmp_e2e.py`/`lip_e2e.py` 的驱动视频住在 v2-m0-spike worktree（未入库），worktree 清理即断——Task 6 已给两脚本加 `ONELIVE_D14` 环境变量兜底；长期应把小体积驱动 fixture 入库或提供下载脚本（两脚本一起换）。
+- **N 频道 libx264 编码 CPU 上限**（3ch = 3 个编码器 + 3 条管线，M3b 多频道演示前评估）：单机同时跑多路 libx264（veryfast + zerolatency）+ 各自 mixer/worker 管线的 CPU 天花板未测，多频道现场演示前需压测确认可承载路数。
 
 M2a/M2b 滚动项（M3a 未动，逐项带状态）：
 

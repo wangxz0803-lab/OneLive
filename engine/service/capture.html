@@ -14,6 +14,7 @@
   button:disabled { opacity: 0.4; cursor: default; }
   #controls { display: flex; gap: 12px; }
   #status { font-size: 14px; color: #8f8; }
+  #hud { font-size: 13px; color: #6cf; }
   #conn { font-size: 12px; color: #888; }
 </style>
 </head>
@@ -26,6 +27,7 @@
   <button id="audio">Audio</button>
 </div>
 <div id="status">idle</div>
+<div id="hud">上行: - fps · 链路RTT(ws) - ms</div>
 <div id="astatus">audio: off</div>
 <div id="conn">-</div>
 <script>
@@ -36,6 +38,7 @@ const video = document.getElementById("v");
 const startBtn = document.getElementById("start");
 const stopBtn = document.getElementById("stop");
 const statusEl = document.getElementById("status");
+const hudEl = document.getElementById("hud");
 const connEl = document.getElementById("conn");
 
 // URL 参数：?fps=10（目标发送帧率，默认 10）  ?channel=0（协议头频道字节，默认 0）
@@ -62,6 +65,14 @@ let busy = false;      // toBlob 异步；上一帧尚未编码完则本节拍�
 let t0 = 0;            // 绝对时钟起点（performance.now()）
 let n = 0;             // 自 t0 起的节拍序号；下一拍定在 t0 + n*1000/fps，误差不累积
 
+// 上行统计上报（M3b）：每 STATS_INTERVAL_S 秒上报一次窗口内 fps_sent/skipped
+// + 最近一次 RTT（ping/pong 往返测得）。窗口用累计计数的差值算，Start 时归零。
+const STATS_INTERVAL_S = 2;
+let lastRtt = null;    // 最近一次 pong 回显测得的 RTT(ms)；无则 null
+let winBaseSent = 0, winBaseSkipped = 0;  // 上一窗口边界的累计基线
+let lastFps = 0;       // 最近一窗上报的 fps_sent（供 HUD 显示）
+let statsTimer = null; // setInterval 句柄
+
 function setStatus() {
   const c = ws == null ? "no ws"
     : ["connecting", "connected", "closing", "closed"][ws.readyState];
@@ -71,6 +82,31 @@ function setStatus() {
   connEl.textContent = `ws: ${c} | ${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ingest`;
 }
 
+function updateHud() {
+  // 如实标注：链路RTT(ws) 是 WS 传输层往返，非蜂窝上行 RTT（loopback ~0ms）
+  hudEl.textContent = running
+    ? `上行: ${lastFps.toFixed(1)} fps · 链路RTT(ws) ${lastRtt == null ? "-" : Math.round(lastRtt)} ms`
+    : "上行: - fps · 链路RTT(ws) - ms";
+}
+
+// 每 STATS_INTERVAL_S 秒：发一个带 t 的 ping 探 RTT，并把上一窗口的
+// fps_sent/skipped + 最近 RTT 作为 uplink_stats 上报（走 /ingest 控制帧）。
+function reportUplinkStats() {
+  const winSent = sent - winBaseSent;
+  const winSkipped = skipped - winBaseSkipped;
+  winBaseSent = sent;
+  winBaseSkipped = skipped;
+  lastFps = winSent / STATS_INTERVAL_S;
+  if (running && ws && ws.readyState === WebSocket.OPEN) {
+    // t 用 performance.now()（与 pong 收据侧同源单调钟）；服务端只原样回显 t，
+    // 无需理解其含义。rtt_ms 是 ws 传输层 RTT，不是蜂窝/RAN 上行 RTT。
+    ws.send(JSON.stringify({ type: "ping", t: performance.now() }));  // RTT 探测
+    ws.send(JSON.stringify({ type: "uplink_stats", channel,
+      fps_sent: lastFps, skipped: winSkipped, rtt_ms: lastRtt }));
+  }
+  updateHud();
+}
+
 function connect() {
   if (!running) return;
   // ws/wss 跟随页面协议：HTTPS 页面里混发 ws:// 会被浏览器直接拒绝
@@ -78,6 +114,15 @@ function connect() {
   ws = new WebSocket(`${scheme}://${location.host}/ingest`);
   ws.binaryType = "arraybuffer";
   ws.onopen = setStatus;
+  ws.onmessage = (e) => {        // /ingest 只回文本控制帧（pong / casting_ack）
+    if (typeof e.data !== "string") return;
+    let m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m && m.type === "pong" && typeof m.t === "number") {
+      // WS 传输层往返（ping t 与 pong 回显同源，都用 performance.now() 单调钟——
+      // Date.now() 会被 NTP 校时跳变搞成负/错值）。这是 ws 链路 RTT，非蜂窝 RTT。
+      lastRtt = performance.now() - m.t;
+    }
+  };
   ws.onclose = () => {           // 断线 1s 后重连；seq 继续递增，不重置
     ws = null;
     if (running) setTimeout(connect, 1000);
@@ -156,6 +201,13 @@ startBtn.onclick = async () => {   // iOS 要求 getUserMedia 由用户手势触
   skipped = 0;
   t0 = performance.now();
   n = 0;
+  // 上行统计基线归零 + 起周期上报（RTT 每次探测刷新，故先清 lastRtt）
+  winBaseSent = 0;
+  winBaseSkipped = 0;
+  lastFps = 0;
+  lastRtt = null;
+  statsTimer = setInterval(reportUplinkStats, STATS_INTERVAL_S * 1000);
+  updateHud();
   stopBtn.disabled = false;
   connect();
   tick();
@@ -165,10 +217,12 @@ function doStop() {
   running = false;
   stopBtn.disabled = true;
   startBtn.disabled = false;
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }  // 停周期上报
   if (ws) { ws.onclose = null; ws.close(); ws = null; }  // 摘掉 onclose 防止重连
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }  // 释放摄像头
   video.srcObject = null;
   setStatus();
+  updateHud();
 }
 stopBtn.onclick = doStop;
 

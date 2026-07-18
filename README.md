@@ -205,7 +205,7 @@ macOS / Linux 示例：
 
 演示主链路不依赖外部 AI。切换到预置台词和 Demo Translation Provider，确认界面标记为 EMULATED。
 
-## 数字人引擎服务（V2 M1a–M3a）
+## 数字人引擎服务（V2 M1a–M3b）
 
 LivePortrait 实时驱动的数字人引擎服务原型：WebSocket `/ingest` 收驱动帧（摄像头/视频/浏览器采集页），每频道一个常驻 worker 以 latest-wins 策略推理，`/out` 按频道扇出渲染帧给多个订阅者，`/status` 报统计。运行需要 M0 spike 的引擎资产（模型 + patched FasterLivePortrait clone）：
 
@@ -284,6 +284,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File engine\netlab\profiles.ps1 -
 ```
 
 首次先跑 `get-clumsy.ps1` 下载（SHA256 pin）；`-DryRun` 只打印命令不需管理员；端口选择（8900=WS 媒体路径 / 1935=RTMP）、loopback 双倍效应与完整实测步骤见 [engine/netlab/README.md](engine/netlab/README.md)。
+
+### 导播控制台（V2 M3b）
+
+服务内置一个单文件、无构建步骤的导播控制台，桌面浏览器打开即用（数据源来自服务真实运行状态，非独立后端）：
+
+```bash
+# 浏览器打开（服务已在 8900 监听时）：
+http://127.0.0.1:8900/console
+```
+
+- **`GET /console`**：自包含 HTML 导播台——按频道渲染卡片（预览屏 = `/out` 渲染帧、语言标签取自 `lang_channels`、ON AIR/推流徽标取自 `streams` 块）、字幕流面板（消费 `/events`）、casting 换角下拉，以及右侧遥测 HUD。未配置的频道槽诚实显示斜纹占位（"该市场频道未启用"），不伪造数据。
+- **`GET /avatars`** → `{"avatars": [...]}`：casting 底图白名单枚举，列 `ONELIVE_AVATAR_DIR`（默认 M0 clone `assets/examples/source/`）下通过 `_AVATAR_NAME_RE` 校验的纯文件名。与 `/ingest` casting 帧用**同一份目录逻辑 + 同一条正则**——下拉里能选到的正是服务端会接受的，不给前后端白名单漂移留缝；目录缺失时诚实返回空列表（不 500）。
+- **上行统计 HUD**：采集页（`/capture`）每 2s 通过 `/ingest` 文本控制帧上报一次窗口 `uplink_stats{channel,fps_sent,skipped,rtt_ms}`，并同步发 `ping{t}` 探测（服务原样回显 `pong{t}`）；`/status` 汇总成每频道 `uplink` 块 `{fps_sent,skipped,rtt_ms,age_s,stale}`——`age_s = now - received_at`（monotonic 差值），`age_s ≥ 5s` 记 `stale=true`（HUD 据此置灰）。**`rtt_ms` 是 WS 传输层链路往返（loopback ~0ms、LAN 是局域网时延），HUD 与采集页均如实标注为 `链路RTT(ws)`，绝非蜂窝/RAN 上行 RTT。**
+- **Edge⇄Local 段选是占位**：Local 为当前唯一实态，Edge 按钮灰置禁用（tooltip「边缘节点待 M1b」），待 M1b 边缘节点落地后接线。
+- E2E 复验：`node engine/e2e/console_e2e.mjs`（自起 console 启动器 + 驱 chromium，5 项断言，产物落 `engine/out/console_e2e/`）。实测数据：[M3b 实测结果](docs/superpowers/m3b-results.md)。
 
 当前性能（本地 Arc，DML，512 crop）：空载 ~1.9fps / 单帧推理 ~534ms / E2E 延迟中位 566ms（M1a，Python feeder）；浏览器同机全链路（假摄像头 E2E，chromium 双页面同机争抢）1.63fps / E2E 延迟 mean 678ms。高帧率输入靠 latest-wins 丢帧适配（by design）。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)、[M1c 实测结果（浏览器采集桥 + 全链路 E2E）](docs/superpowers/m1c-results.md)。
 

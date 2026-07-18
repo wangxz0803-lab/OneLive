@@ -185,6 +185,19 @@ async def test_lifecycle_is_one_shot():
 
 
 @pytest.mark.anyio
+async def test_subscribe_after_stop_yields_sentinel_not_hang():
+    """stop() 之后订阅（shutdown 竞态：晚到的 /stream.wav）必须立即拿到
+    None 哨兵而非永久挂在 queue.get() 上——节拍任务已终结、不会再 fanout。"""
+    m = AudioMixer(sr=1000, chunk_ms=10)
+    await m.start()
+    await m.stop()
+    queue, unsubscribe = m.subscribe()
+    item = await asyncio.wait_for(queue.get(), 1.0)  # 挂死则超时失败
+    assert item is None
+    unsubscribe()  # no-op（从未入 _subs），不得抛
+
+
+@pytest.mark.anyio
 async def test_slow_consumer_does_not_block_emission():
     m = AudioMixer(sr=1000, chunk_ms=10)
     queue, unsubscribe = m.subscribe()  # 从不消费 → 队列打满

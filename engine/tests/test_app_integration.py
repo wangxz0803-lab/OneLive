@@ -145,6 +145,60 @@ def test_ingest_text_ping_gets_pong():
         assert in_ws.receive_json() == {"type": "pong"}
 
 
+def test_ingest_ping_with_t_echoes_t():
+    """RTT 探测：ping 带 t → pong 回显同一 t（capture 端算 rtt = now - t）。"""
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as in_ws:
+        in_ws.send_text('{"type": "ping", "t": 1234567}')
+        assert in_ws.receive_json() == {"type": "pong", "t": 1234567}
+
+
+def test_status_uplink_block_empty_when_no_reports():
+    """uplink 块始终在场：无上报时为空 dict（不是缺键）。"""
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    body = client.get("/status").json()
+    assert body["uplink"] == {}
+
+
+def test_ingest_uplink_stats_reflected_in_status():
+    """uplink_stats 文本帧 → /status uplink 块反映该频道的最新统计。
+    尾随 ping 作接收顺序屏障：pong 到达即证明前面的 uplink_stats 已被记录。"""
+    app = create_app(lambda ch: EchoPipeline(), channels=(0, 1))
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as in_ws:
+        in_ws.send_text(json.dumps({"type": "uplink_stats", "channel": 1,
+                                    "fps_sent": 9.5, "skipped": 3, "rtt_ms": 42}))
+        in_ws.send_text('{"type": "ping"}')
+        assert in_ws.receive_json() == {"type": "pong"}   # 顺序屏障
+        body = client.get("/status").json()
+    rec = body["uplink"]["1"]                              # JSON 键为字符串
+    assert rec["fps_sent"] == 9.5
+    assert rec["skipped"] == 3
+    assert rec["rtt_ms"] == 42
+    assert rec["stale"] is False                           # 刚上报，不 stale
+    assert isinstance(rec["age_s"], (int, float)) and rec["age_s"] >= 0
+    assert "0" not in body["uplink"]                       # ch0 从未上报
+
+
+def test_ingest_malformed_uplink_stats_survives():
+    """坏 uplink_stats（非 int channel / 缺字段 / 缺 channel）只记日志忽略：
+    连接活着（尾随 ping 有 pong），uplink 块不被污染。"""
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    with client.websocket_connect("/ingest") as in_ws:
+        in_ws.send_text(json.dumps({"type": "uplink_stats", "channel": [0],
+                                    "fps_sent": 5}))          # 非 int channel
+        in_ws.send_text(json.dumps({"type": "uplink_stats", "channel": True,
+                                    "rtt_ms": 1}))            # bool 也拒
+        in_ws.send_text(json.dumps({"type": "uplink_stats"}))  # 缺 channel 与全部字段
+        in_ws.send_text('{"type": "ping"}')
+        assert in_ws.receive_json() == {"type": "pong"}       # 接收循环没死
+        body = client.get("/status").json()
+    assert body["uplink"] == {}                               # 无一条被记录
+
+
 def test_two_channels_route_independently():
     """多频道：ch1 的帧只到 ?channel=1 订阅者；/status 每频道独立计数 + 顶层别名。"""
     app = create_app(lambda ch: EchoPipeline(), channels=(0, 1))
@@ -582,6 +636,14 @@ def test_capture_page_has_audio_uplink():
     client = TestClient(app)
     r = client.get("/capture")
     assert "/audio" in r.text  # 采集页有音频上行路径
+
+
+def test_capture_page_reports_uplink_stats():
+    """采集页含上行统计上报 + RTT 探测的接线（M3b 双端 HUD）。"""
+    app = create_app(lambda ch: EchoPipeline())
+    r = TestClient(app).get("/capture")
+    assert "uplink_stats" in r.text          # 周期上报控制帧
+    assert "reportUplinkStats" in r.text     # 上报函数已接线
 
 
 # ---------------------------------------------------------- TTS tee + /speech
