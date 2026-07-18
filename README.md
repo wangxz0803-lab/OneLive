@@ -205,7 +205,7 @@ macOS / Linux 示例：
 
 演示主链路不依赖外部 AI。切换到预置台词和 Demo Translation Provider，确认界面标记为 EMULATED。
 
-## 数字人引擎服务（V2 M1a–M2b）
+## 数字人引擎服务（V2 M1a–M3a）
 
 LivePortrait 实时驱动的数字人引擎服务原型：WebSocket `/ingest` 收驱动帧（摄像头/视频/浏览器采集页），每频道一个常驻 worker 以 latest-wins 策略推理，`/out` 按频道扇出渲染帧给多个订阅者，`/status` 报统计。运行需要 M0 spike 的引擎资产（模型 + patched FasterLivePortrait clone）：
 
@@ -257,6 +257,33 @@ export AI_API_URL=https://<openai兼容端点>/v1  AI_API_KEY=sk-...  AI_MODEL=<
 - `--no-lip`：关闭嘴型驱动的逃生开关（默认开启的 lip retarget 通路即使无语音也轻微改变唇形细节，见 [M2b 实测结果](docs/superpowers/m2b-results.md)）。
 - `--translate-stub`：**测试脚手架，绝非默认、不是翻译**——翻译 Provider 换成 stub（返回 `"EN: "+原文` 假装成功，事件 detail 自我声明 test-only），唯一用途是无 API key 环境跑通 翻译ok→TTS→嘴型 全链路。与 `--translate` 互斥；真翻译的诚实契约（无 key 绝不伪造译文）不受影响。
 - E2E 复验：`<m0-venv-python> -m e2e.lip_e2e`（自起 8915 真服务 + feeder，事件链/嘴型/计数断言，证据落 `engine/out/lip_e2e/`）。实测数据：[M2b 实测结果](docs/superpowers/m2b-results.md)。
+
+### RTMP 推流（V2 M3a）
+
+`--rtmp <模板>` 为每频道起一个受监督 ffmpeg（崩溃指数退避重启），把渲染帧（`/stream.mjpeg`）+ 连续音轨（`/stream.wav`，静音打底 + TTS 语音拼接，纯静音也不断流）合成 flv 推向 RTMP 地址；`{ch}` 为频道占位，与 `--https` 不兼容：
+
+```bash
+# 本地收流端（自建 node-media-server，另开终端）：
+cd engine/rtmp-sink && npm ci && node server.mjs
+# 服务 + 推流（每频道一路）：
+<m0-venv-python> -m service.run_local --port 8900 --translate \
+    --rtmp rtmp://127.0.0.1:1935/live/ch{ch}
+# 观看：VLC / ffplay / ffprobe 打开 http://127.0.0.1:8000/live/ch0.flv
+```
+
+- 推公开平台（YouTube/B站/Twitch）＝把 `--rtmp` 换成平台推流地址+串流码（账号归 OWNER）；注意两点：推流音轨当前 16k 而主流平台推荐 44.1k/48k（ffmpeg 侧一处 `-ar` 改动即可），YouTube 现推荐 rtmps 入口（ffmpeg TLS 推流转公网时需验证）。详见 [M3a 实测结果](docs/superpowers/m3a-results.md)。
+- `/status` 增 `streams` 节（running/pid/restarts/last_exit_code/stderr_tail；stderr 里的串流码已脱敏，但 run_local 启动日志含未脱敏 URL，用真实串流码时勿外传日志）。
+- E2E 复验：`<m0-venv-python> -m e2e.rtmp_e2e`（自起 sink+服务+feeder，端口 8917，含弹性断言）。
+
+### 网络损伤实验（V2 M3a netlab）
+
+`engine/netlab/` 用 [clumsy](https://github.com/jagt/clumsy)（WinDivert 内核驱动）对真实流量做损伤，支撑 demo 网络场景：`congested`（限速 120KB/s + 丢包 5%）/ `weak`（丢包 15% + 乱序 25%）/ `latency`（双向 lag 300ms）/ `off`（恢复）。**需管理员 PowerShell**（装驱动；非管理员会拒绝并打印可复制的提权命令），OWNER 一行命令：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File engine\netlab\profiles.ps1 -Profile latency -Ports 8900
+```
+
+首次先跑 `get-clumsy.ps1` 下载（SHA256 pin）；`-DryRun` 只打印命令不需管理员；端口选择（8900=WS 媒体路径 / 1935=RTMP）、loopback 双倍效应与完整实测步骤见 [engine/netlab/README.md](engine/netlab/README.md)。
 
 当前性能（本地 Arc，DML，512 crop）：空载 ~1.9fps / 单帧推理 ~534ms / E2E 延迟中位 566ms（M1a，Python feeder）；浏览器同机全链路（假摄像头 E2E，chromium 双页面同机争抢）1.63fps / E2E 延迟 mean 678ms。高帧率输入靠 latest-wins 丢帧适配（by design）。实测数据与已知问题：[M1a 实测结果](docs/superpowers/m1a-results.md)、[M1c 实测结果（浏览器采集桥 + 全链路 E2E）](docs/superpowers/m1c-results.md)。
 

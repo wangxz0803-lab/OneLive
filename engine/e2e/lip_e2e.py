@@ -23,6 +23,7 @@
 import argparse
 import asyncio
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -41,8 +42,12 @@ from service.protocol import unpack_frame  # noqa: E402
 
 VENV_PY = sys.executable
 FIXTURES = ENGINE_ROOT / "tests" / "fixtures"
-D14 = Path(r"C:\Users\76475\Documents\OneLive\.worktrees\v2-m0-spike\engine"
-           r"\FasterLivePortrait\assets\examples\driving\d14.mp4")
+# 驱动 fixture 住在 v2-m0-spike worktree（未入库）；该 worktree 被清理时用
+# ONELIVE_D14 指向任意等价驱动视频。入库/下载脚本见 m3a-results backlog。
+D14 = Path(os.environ.get(
+    "ONELIVE_D14",
+    r"C:\Users\76475\Documents\OneLive\.worktrees\v2-m0-spike\engine"
+    r"\FasterLivePortrait\assets\examples\driving\d14.mp4"))
 OUT_DIR = ENGINE_ROOT / "out" / "lip_e2e"
 CHUNK_S = 0.25   # 实时节奏（同 translate_e2e）
 GAP_S = 1.0      # 句间静音（>0.6s 静音确认阈值）

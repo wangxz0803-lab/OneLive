@@ -9,11 +9,11 @@
 
 ```
 cd engine/rtmp-sink
-npm install
+npm ci
 node server.mjs
 ```
 
-依赖锁在 `package-lock.json`（入库）；`node_modules/` 不入库。纯本地验证用，无鉴权、无落盘。
+依赖锁在 `package-lock.json`（入库；node-media-server 锁 2.7.4）——用 `npm ci` 严格按锁文件安装，锁定才是硬保证（`npm install` 可能改写锁文件）。`node_modules/` 不入库。纯本地验证用，无鉴权、无落盘。
 
 ## 快速验证
 

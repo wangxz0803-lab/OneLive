@@ -1,6 +1,6 @@
 # M3a 实测结果：真实 RTMP 推流（渲染帧 + 连续音轨 → 自建收流端）
 
-日期：2026-07-18　|　分支：`feature/v2-m3a-rtmp`　|　状态：**Task 1-4 完成**（154 passed + rtmp E2E PASS）
+日期：2026-07-18　|　分支：`feature/v2-m3a-rtmp`　|　状态：**Task 1-6 完成**（154 passed + rtmp E2E PASS + Node 32 passed）
 
 ## Task 1：AudioMixer（已完成，`356abf2`）
 
@@ -139,15 +139,56 @@ Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-Command',"cd 'C:\
 
 进入后按 `engine/netlab/README.md` 的"OWNER 实测步骤"跑 latency 档量化验证（serve_echo 8918 + out_probe 基线/损伤对比，loopback 预期 +600ms 量级），demo 现场用 `-Ports 8900`（WS）或 `8900,1935`（WS+RTMP）。
 
-## Backlog（M3b/后续）
+## Backlog（滚动终稿，M3b/后续）
 
-- **app.py 拆分升级**：app.py 已 676 行（本里程碑又进 /stream.*、streamer 集成、mixer 生命周期），单文件承载 路由+广播+tee+生命周期编排 逼近失控——M3b 动手拆（端点模块 / 广播编排 / 生命周期各归位）。
-- 丢弃上限三处各自为政（mixer 60s / SpeechSchedule 16 段 / /speech Queue(8)）：严重积压时三端各自丢段是已知失同步源，统一丢弃策略 M3b。
+M3a 新增：
+
+- **app.py 拆分（升级为 M3b 第一优先）**：app.py 已 676 行（本里程碑又进 /stream.*、streamer 集成、mixer 生命周期），单文件承载 路由+广播+tee+生命周期编排 逼近失控——M3b 动手拆（端点模块 / 广播编排 / 生命周期各归位）。
+- 丢弃上限三处各自为政（mixer 60s / SpeechSchedule 16 段 / /speech Queue(8)）：严重积压时三端各自丢段是已知失同步源，统一丢弃策略 M3b（吸收 M2b「/speech(8) vs SpeechSchedule(16) 积压分歧」项）。
 - `-ar 16000` 推流音轨采样率：TTS 管线 16k 一路到底；主流平台推荐 44.1k/48k——遇平台收流约束时在 ffmpeg 侧 `-ar 44100` 重采样即可（命令一处改动），是否需要由 OWNER 对目标平台确认。
 - DTS 警告族（见 Task 4 known noise）：flv mux 等时间戳帧 dup + aac queue backward——现阶段属已知噪音，若后续平台端出现音画撕裂再回头治理。
+- **stderr 脱敏的截断行限制**：脱敏按整 URL 精确匹配——ffmpeg 把 URL 截断/换行输出时 KEY 可能漏出；接真实串流码前收紧为按 KEY 子串匹配。另 run_local 启动 banner 打印未脱敏推流 URL（OWNER 项已提示）。
+- **D14 驱动 fixture 依赖外部 worktree**：`rtmp_e2e.py`/`lip_e2e.py` 的驱动视频住在 v2-m0-spike worktree（未入库），worktree 清理即断——Task 6 已给两脚本加 `ONELIVE_D14` 环境变量兜底；长期应把小体积驱动 fixture 入库或提供下载脚本（两脚本一起换）。
+
+M2a/M2b 滚动项（M3a 未动，逐项带状态）：
+
+- SegmentTranscriber `_audio` 无界累积 + O(n²) 拼接（M2a）：**仍开放，长跑前必改**（环形缓冲）。
+- TTS 流式首块（M2a，首配音 5-6s 超预算的最大单点收益）：仍开放。
+- /events 满队丢最旧 → wire seq 或快照/重放（M2a）：仍开放，M3 控制台可靠展示的前置。
+- whisper 降延迟旋钮 beam_size/模型档（M2a）：仍开放，配音链达标后再动。
+- 麦克风自适应静音阈值（M2a）：仍开放，待 OWNER 真机数据标定。
+- speech-period lip-log 音量（M2b，75 行/秒@25fps×3ch）：仍开放，M1b 部署前降 DEBUG/抽样。
+- run_local 未暴露 `--lang-channels`（M2b，写死 `{"en": 0}`）：仍开放，三语演示前置。
+- viewer 奇数字节 pcm 硬化（M2b，美化项）：仍开放。
+- SpeechSchedule stats 新鲜度（M2b，nit）：仍开放。
+- 嘴型观感增强（M2b，可选）：仍开放，帧率提升自然缓解或 lip_open 上调。
+- 已闭合：/audio 奇数字节帧误诊 4409（M2a 记录）→ M2b 已在 /audio 入口加 `len(pcm)%2` 丢弃守卫（app.py）。
+
+## Task 6：收尾（评审项落地 + 回归 + README）
+
+评审项落地（全部小改，docs/e2e 脚本）：
+
+- `rtmp_e2e.py` + `lip_e2e.py`：D14 路径加 **`ONELIVE_D14` 环境变量兜底**（默认仍指 v2-m0-spike worktree）；入库/下载脚本进 backlog。
+- `rtmp_e2e.py`：sink 重启复用同一 log 句柄（原实现二次 `open` 泄漏句柄）；`_wait_status` 容忍 warmup 期非 JSON 响应（`ValueError` 并入重试，`json.JSONDecodeError` 是其子类）。
+- `rtmp-sink/README.md`：`npm install` → **`npm ci`**（2.7.4 锁定从"大概率"变成硬保证）。
+- `netlab/README.md` OWNER 步骤：venv 路径纠正——本 worktree 无 `.venv`，改为 M0 venv 全路径（`$m0py` 变量式），并注明任何装齐依赖的 python 均可。
+- 本文件：脱敏措辞收敛（"已自动脱敏"→"整 URL 形态已脱敏，截断行未覆盖"）+ run_local 明文 URL 提示 + rtmps/采样率/关键帧间隔三点并入 OWNER 推流项。
+
+回归（本轮实测）：
+
+- Python 套件：`154 passed`（M0 venv，engine/tests）。
+- Node 套件：`32 passed (5 files)`（主 checkout 运行——M3a diff 仅触及 engine/ + docs + README，前端/server TS 零改动，主 checkout 即等价验证面）。
+- 浏览器回归 `capture-e2e.mjs`：**本轮 SKIP**——`git diff master..HEAD -- engine/service/viewer.html` 为空（M3a 未触碰 viewer/采集页/前端 JS），M2b Task 6 的浏览器回归结论（PASS，0 console error）对本分支依然成立；A/V 契约变化只在 app.py docstring（文档性质），无浏览器执行面变化。
+- README（仓库根）：引擎服务节补 RTMP 推流用法 + netlab 网络损伤一段（见 README「RTMP 推流」「网络损伤实验」）。
 
 ## OWNER 项（滚动）
 
-- **公开平台推流**：只差 `--rtmp` 换成平台推流地址+串流码（YouTube/B站/Twitch 账号归 OWNER）；串流码在 /status stderr_tail 里已自动脱敏。
+- **公开平台推流**：只差 `--rtmp` 换成平台推流地址+串流码（YouTube/B站/Twitch 账号归 OWNER）。已备好的正面证据：`-g 30`@15fps = **2s 关键帧间隔**，符合主流平台（YouTube/Twitch）对推流关键帧间隔的要求。注意三点：
+  - 脱敏边界：/status stderr_tail 里推流 URL 的**整 URL 形态已脱敏**（`rtmp://host/app/KEY` → `.../***`），但**截断行未覆盖**（ffmpeg 把长 URL 截断/换行时 KEY 可能漏出，见 backlog）；且 `run_local` 启动 banner 会把**未脱敏**的完整推流 URL 打到控制台/service.log——用真实串流码时该日志勿外传。
+  - 采样率：推流音轨当前 16k（TTS 管线一路到底），主流平台推荐 44.1k/48k——见 backlog 采样率项（ffmpeg 侧 `-ar 44100` 一处改动）。
+  - rtmps：YouTube 现推荐 `rtmps://` 入口——转公网时需验证本机 ffmpeg 的 TLS 推流可用（本地 E2E 只验证过明文 rtmp）。
 - **A/V 同步观感验收**：机制契约见 app.py docstring；数值实测见 E2E；最终"看起来对不对"需 OWNER 拉流目检（VLC/potplayer 开 `http://127.0.0.1:8000/live/ch0.flv`）。
 - **clumsy 真实损伤验证**（Task 5 交付，脚本/文档/DryRun 已备）：需 OWNER 在管理员 PowerShell 跑 `engine/netlab/profiles.ps1`，按 netlab/README.md 步骤做 latency 档 out_probe 前后对比 + demo 三档目检；`off` 要在同一管理员会话执行。
+- **真机验收**（M2b 滚动携带，仍开放）：手机浏览器打开 viewer（HTTPS），点「开启声音」，确认音频播放 + speaking 状态行 + 嘴型动；录屏留档待 OWNER 演示时补。
+- **AI_API_KEY / AI_API_URL / AI_MODEL**（M2b 滚动携带，仍开放）：真翻译 Provider 配 key 后用 `--translate` 复跑 E2E（stub 只证链路机制）。
+- **idle 语义视觉验收**（M2b 滚动携带，仍开放）：目检 `idle_semantic_lip_on.png` vs `idle_semantic_lip_off_m1a.png`，不可接受则演示用 `--no-lip`。

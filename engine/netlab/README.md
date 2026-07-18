@@ -81,14 +81,18 @@ Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-Command',"cd '<re
 量化验证（latency 档为例）：
 
 ```powershell
-# 终端A（普通权限即可，engine/ 下，M0 venv）：起 echo 服务
-.\.venv\Scripts\python.exe tests\helpers\serve_echo.py --port 8918
+# python 一律用 M0 venv 的全路径（venv 在 v2-m0-spike worktree，不在本 worktree；
+# 或任何装齐 numpy/opencv/websockets/httpx 的 python 也行）：
+$m0py = 'C:\Users\76475\Documents\OneLive\.worktrees\v2-m0-spike\engine\.venv\Scripts\python.exe'
+
+# 终端A（普通权限即可，本 worktree 的 engine/ 下）：起 echo 服务
+& $m0py tests\helpers\serve_echo.py --port 8918
 # 终端B：基线到达统计
-.\.venv\Scripts\python.exe -m tools.out_probe --url ws://127.0.0.1:8918/out --count 60 --latency-from-header
+& $m0py -m tools.out_probe --url ws://127.0.0.1:8918/out --count 60 --latency-from-header
 # 终端C（管理员）：施加 300ms lag（loopback 双倍 → 预期 +600ms 量级）
 powershell -NoProfile -ExecutionPolicy Bypass -File netlab\profiles.ps1 -Profile latency -Ports 8918
 # 终端B：复测，对比 fps / 延迟
-.\.venv\Scripts\python.exe -m tools.out_probe --url ws://127.0.0.1:8918/out --count 60 --latency-from-header
+& $m0py -m tools.out_probe --url ws://127.0.0.1:8918/out --count 60 --latency-from-header
 # 终端C：恢复
 powershell -NoProfile -ExecutionPolicy Bypass -File netlab\profiles.ps1 -Profile off
 ```

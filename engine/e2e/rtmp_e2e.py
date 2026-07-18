@@ -25,6 +25,7 @@
 import argparse
 import asyncio
 import json
+import os
 import socket
 import struct
 import subprocess
@@ -43,8 +44,12 @@ from service.streamer import resolve_ffmpeg  # noqa: E402
 
 VENV_PY = sys.executable
 FIXTURES = ENGINE_ROOT / "tests" / "fixtures"
-D14 = Path(r"C:\Users\76475\Documents\OneLive\.worktrees\v2-m0-spike\engine"
-           r"\FasterLivePortrait\assets\examples\driving\d14.mp4")
+# 驱动 fixture 住在 v2-m0-spike worktree（未入库）；该 worktree 被清理时用
+# ONELIVE_D14 指向任意等价驱动视频。入库/下载脚本见 m3a-results backlog。
+D14 = Path(os.environ.get(
+    "ONELIVE_D14",
+    r"C:\Users\76475\Documents\OneLive\.worktrees\v2-m0-spike\engine"
+    r"\FasterLivePortrait\assets\examples\driving\d14.mp4"))
 OUT_DIR = ENGINE_ROOT / "out" / "rtmp_e2e"
 SINK_DIR = ENGINE_ROOT / "rtmp-sink"
 FLV_URL = "http://127.0.0.1:8000/live/ch0.flv"
@@ -85,7 +90,9 @@ async def _wait_status(base: str, cond, desc: str, timeout_s: float,
                     last = r.json()
                     if cond(last):
                         return last
-            except httpx.HTTPError:
+            except (httpx.HTTPError, ValueError):
+                # ValueError 覆盖 warmup 期非 JSON 响应（json.JSONDecodeError
+                # 是其子类）——照常重试而不是让整个 E2E 炸掉。
                 pass
             await asyncio.sleep(interval)
     raise RuntimeError(f"timeout waiting for {desc}; last status: {last}")
@@ -143,11 +150,10 @@ async def _collect_events(ws, events: list, stop: asyncio.Event) -> None:
         mark(f"[event] {json.dumps(ev, ensure_ascii=False)}")
 
 
-def _start_sink(log_path: Path):
-    log_f = open(log_path, "a", encoding="utf-8")
-    proc = subprocess.Popen(["node", "server.mjs"], cwd=str(SINK_DIR),
+def _start_sink(log_f):
+    """起 sink（node）。log_f 由调用方持有——重启复用同一句柄，不泄漏。"""
+    return subprocess.Popen(["node", "server.mjs"], cwd=str(SINK_DIR),
                             stdout=log_f, stderr=subprocess.STDOUT)
-    return proc, log_f
 
 
 def _stop_procs(procs: list[tuple[str, object]]) -> None:
@@ -190,7 +196,8 @@ async def run(port: int) -> int:
     ok = False
     try:
         # ---- sink ----
-        sink, sink_log_f = _start_sink(OUT_DIR / "sink.log")
+        sink_log_f = open(OUT_DIR / "sink.log", "a", encoding="utf-8")
+        sink = _start_sink(sink_log_f)
         mark(f"[setup] sink pid={sink.pid} (node-media-server)")
         _wait_port(1935, 20, "sink rtmp")
         _wait_port(8000, 20, "sink http-flv")
@@ -366,7 +373,7 @@ async def run(port: int) -> int:
 
         # 退避期间再观察 3s：sink 不在，重启只会继续失败（计数还会涨）
         await asyncio.sleep(3.0)
-        sink, _ = _start_sink(OUT_DIR / "sink.log")
+        sink = _start_sink(sink_log_f)
         t_restart = time.monotonic()
         mark(f"[resilience] sink RESTARTED pid={sink.pid}")
         _wait_port(1935, 20, "sink rtmp (restarted)")
