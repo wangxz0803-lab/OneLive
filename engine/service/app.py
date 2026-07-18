@@ -62,6 +62,7 @@ from fastapi.responses import HTMLResponse
 
 _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
 _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
+_CONSOLE_HTML = Path(__file__).resolve().parent / "console.html"
 
 from service.audio_mixer import AudioMixer
 from service.console_api import UplinkStore
@@ -219,6 +220,11 @@ def create_app(pipeline_factory: Callable[[int], object],
     # /status 取快照。now 用 time.monotonic()（/ingest 记录、/status 快照一致）。
     uplink = UplinkStore()
 
+    # 引擎启动时刻（M3b Task 3，console 顶栏正常运行时长）。monotonic 算
+    # 时长（不受墙钟跳变影响）；started_at 墙钟仅作页面展示锚点，不参与运算。
+    started_mono = time.monotonic()
+    started_at = time.time()
+
     app = FastAPI(lifespan=lifespan)
     app.state.workers = workers
     app.state.mixers = mixers
@@ -234,12 +240,35 @@ def create_app(pipeline_factory: Callable[[int], object],
     async def capture() -> HTMLResponse:
         return HTMLResponse(_CAPTURE_HTML.read_text(encoding="utf-8"))
 
+    @app.get("/console")
+    async def console() -> HTMLResponse:
+        # 导播控制台（M3b Task 3）：单文件自包含页面，无构建步骤。
+        return HTMLResponse(_CONSOLE_HTML.read_text(encoding="utf-8"))
+
+    @app.get("/avatars")
+    async def avatars() -> dict:
+        # casting 底图白名单枚举：列 _avatar_dir()、按 _AVATAR_NAME_RE 过滤。
+        # 与 _handle_casting 用同一份目录逻辑 + 同一条正则——console 下拉里能
+        # 选到的，正是服务端会接受的（不给前后端白名单漂移留缝）。目录不存在
+        # 时诚实返回空列表（未部署资产也不 500）。
+        names: list[str] = []
+        try:
+            for p in sorted(_avatar_dir().iterdir()):
+                if p.is_file() and _AVATAR_NAME_RE.fullmatch(p.name):
+                    names.append(p.name)
+        except (FileNotFoundError, NotADirectoryError):
+            pass
+        return {"avatars": names}
+
     @app.get("/status")
     async def status() -> dict:
         # 统计口径：last_infer_ms = 最近一次“跑到计时代码”的 infer 耗时
         # （无脸帧也会刷新；infer 抛异常则不更新）；errors 聚合解码失败 +
         # 管线异常 + JPEG 编码失败 + 订阅者回调异常四类。
         body = {"engine": "ok",
+                # 正常运行时长（M3b console 顶栏）+ 墙钟启动锚点（仅展示）。
+                "uptime_s": round(time.monotonic() - started_mono, 1),
+                "started_at": started_at,
                 "channels": {str(ch): w.stats() for ch, w in workers.items()},
                 # 上行 HUD（M3b）：始终在场——无上报时为空 dict。now 与 /ingest
                 # 记录同源（monotonic），age/stale 差值口径一致。
@@ -248,6 +277,9 @@ def create_app(pipeline_factory: Callable[[int], object],
             body["channel"] = body["channels"]["0"]
         if translation_pipeline is not None:  # 没配翻译时键整体不存在
             body["translation"] = translation_pipeline.stats()
+            # 语言→频道映射（console 据此给频道卡打语言标签、把 tts_ready 事件
+            # 归到对应频道）。仅在配了翻译时透出——没翻译时映射无实义（诚实）。
+            body["lang_channels"] = lang_channels
         if streamer is not None:  # 没配推流时键整体不存在（同 translation）
             body["streams"] = streamer.status()
         return body
