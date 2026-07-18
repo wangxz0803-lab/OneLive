@@ -1,0 +1,14 @@
+{
+  "name": "onelive-rtmp-sink",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OneLive M3a 自建 RTMP 收流端：node-media-server（RTMP 1935 收流 + HTTP-FLV 8000 播出），E2E 验证与本地联调用",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "node-media-server": "^2.7.4"
+  }
+}
