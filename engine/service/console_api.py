@@ -7,7 +7,11 @@ age 计算（snapshot.now - received_at）纯是差值，单调递增即可，�
 纯逻辑、now 注入 → 可单测（不依赖真实时钟、不睡眠）。
 
 snapshot 键沿用 record 传入的 channel（int）；经 FastAPI JSON 编码后自然
-变成字符串键，与 /status 里 channels 块的 str(ch) 键一致。"""
+变成字符串键，与 /status 里 channels 块的 str(ch) 键一致。
+
+rtt_ms 语义（如实标注）：capture 端 ping/pong 测得的 WS 传输层往返，
+不是蜂窝/RAN 上行 RTT——loopback 近 0ms、LAN 上是局域网时延。Task 3
+console 展示须沿用同一限定词（"链路RTT(ws)"），勿呈现为蜂窝上行时延。"""
 
 
 class UplinkStore:

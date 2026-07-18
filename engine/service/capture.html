@@ -27,7 +27,7 @@
   <button id="audio">Audio</button>
 </div>
 <div id="status">idle</div>
-<div id="hud">上行: - fps · RTT - ms</div>
+<div id="hud">上行: - fps · 链路RTT(ws) - ms</div>
 <div id="astatus">audio: off</div>
 <div id="conn">-</div>
 <script>
@@ -83,9 +83,10 @@ function setStatus() {
 }
 
 function updateHud() {
+  // 如实标注：链路RTT(ws) 是 WS 传输层往返，非蜂窝上行 RTT（loopback ~0ms）
   hudEl.textContent = running
-    ? `上行: ${lastFps.toFixed(1)} fps · RTT ${lastRtt == null ? "-" : Math.round(lastRtt)} ms`
-    : "上行: - fps · RTT - ms";
+    ? `上行: ${lastFps.toFixed(1)} fps · 链路RTT(ws) ${lastRtt == null ? "-" : Math.round(lastRtt)} ms`
+    : "上行: - fps · 链路RTT(ws) - ms";
 }
 
 // 每 STATS_INTERVAL_S 秒：发一个带 t 的 ping 探 RTT，并把上一窗口的
@@ -97,7 +98,9 @@ function reportUplinkStats() {
   winBaseSkipped = skipped;
   lastFps = winSent / STATS_INTERVAL_S;
   if (running && ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "ping", t: Date.now() }));  // RTT 探测
+    // t 用 performance.now()（与 pong 收据侧同源单调钟）；服务端只原样回显 t，
+    // 无需理解其含义。rtt_ms 是 ws 传输层 RTT，不是蜂窝/RAN 上行 RTT。
+    ws.send(JSON.stringify({ type: "ping", t: performance.now() }));  // RTT 探测
     ws.send(JSON.stringify({ type: "uplink_stats", channel,
       fps_sent: lastFps, skipped: winSkipped, rtt_ms: lastRtt }));
   }
@@ -115,7 +118,9 @@ function connect() {
     if (typeof e.data !== "string") return;
     let m; try { m = JSON.parse(e.data); } catch (_) { return; }
     if (m && m.type === "pong" && typeof m.t === "number") {
-      lastRtt = Date.now() - m.t;  // RTT = 回显 t 到现在的往返耗时
+      // WS 传输层往返（ping t 与 pong 回显同源，都用 performance.now() 单调钟——
+      // Date.now() 会被 NTP 校时跳变搞成负/错值）。这是 ws 链路 RTT，非蜂窝 RTT。
+      lastRtt = performance.now() - m.t;
     }
   };
   ws.onclose = () => {           // 断线 1s 后重连；seq 继续递增，不重置

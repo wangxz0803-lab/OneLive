@@ -363,6 +363,9 @@ def create_app(pipeline_factory: Callable[[int], object],
                         # 上行统计上报（M3b）：channel 必须是真 int（复用 casting
                         # 的守卫——不可哈希类型进 dict 键会崩接收循环；bool 也拒）。
                         # 字段缺失只记 None，坏帧只记日志忽略，连接不死。
+                        # 注意 rtt_ms 是 WS 传输层往返（capture 端 ping/pong 测），
+                        # 不是蜂窝/RAN 上行 RTT——loopback ~0ms、LAN 为局域网时延。
+                        # Task 3 console 渲染须带同一限定词，勿标成蜂窝时延。
                         ch = ctrl.get("channel")
                         if not isinstance(ch, int) or isinstance(ch, bool):
                             log.warning("ingest: uplink_stats invalid channel %r ignored", ch)
