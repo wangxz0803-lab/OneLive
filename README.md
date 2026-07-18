@@ -205,7 +205,7 @@ macOS / Linux 示例：
 
 演示主链路不依赖外部 AI。切换到预置台词和 Demo Translation Provider，确认界面标记为 EMULATED。
 
-## 数字人引擎服务（V2 M1a/M1c）
+## 数字人引擎服务（V2 M1a–M2b）
 
 LivePortrait 实时驱动的数字人引擎服务原型：WebSocket `/ingest` 收驱动帧（摄像头/视频/浏览器采集页），每频道一个常驻 worker 以 latest-wins 策略推理，`/out` 按频道扇出渲染帧给多个订阅者，`/status` 报统计。运行需要 M0 spike 的引擎资产（模型 + patched FasterLivePortrait clone）：
 
@@ -245,7 +245,7 @@ export AI_API_URL=https://<openai兼容端点>/v1  AI_API_KEY=sk-...  AI_MODEL=<
 ```
 
 - **`/audio` 音频上行**（WS 二进制帧）：`[4 字节 LE u32 采样率][pcm16 mono]`，~250ms/帧；采集页 Audio 开关即走此路。采样率会话内必须恒定（中途变化 → error 说明帧 + close 4409）。
-- **`/events` 事件广播**（WS JSON，多订阅者）：`subtitle{segment_id,text,t0,t1}` → `translation{segment_id,lang,status,text,detail}` → `tts_ready{segment_id,lang,voice,duration_s,synth_ms,has_audio}`（音频/嘴型曲线不上 wire）→ `pipeline_error{...}`。
+- **`/events` 事件广播**（WS JSON，多订阅者）：`subtitle{segment_id,text,t0,t1}` → `translation{segment_id,lang,status,text,detail}` → `tts_ready{segment_id,lang,voice,duration_s,synth_ms,has_audio,channel}`（音频/嘴型曲线不上 wire；`channel` 为 M2b 分流的目标频道，未命中 lang_channels 时为 null）→ `pipeline_error{...}`。
 - **casting 换角**（`/ingest` 文本帧）：`{"type":"casting","channel":0,"source":"s1.jpg"}` → `casting_ack{ok,ms|detail}`；source 白名单限 `ONELIVE_AVATAR_DIR`（默认 M0 clone `assets/examples/source/`）下的纯文件名。
 - `/status` 增加 `translation` 节（segments/translated_ok/translations_unavailable/tts_ok/errors）。
 - E2E 复验：`<m0-venv-python> -m e2e.translate_e2e --leg all`（stub 腿进程内自足；server 腿需 8912 端口起 `--translate` 服务）。实测数据：[M2a 实测结果](docs/superpowers/m2a-results.md)。

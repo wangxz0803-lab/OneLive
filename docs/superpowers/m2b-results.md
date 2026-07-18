@@ -1,6 +1,6 @@
 # M2b 实测结果：语音驱动嘴型（TTS → 渲染循环）
 
-日期：2026-07-18　|　分支：`feature/v2-m2b-lip-integration`　|　状态：**Task 1-5 完成**（118 passed + lip E2E PASS）
+日期：2026-07-18　|　分支：`feature/v2-m2b-lip-integration`　|　状态：**Task 1-6 完成**（118 passed + lip E2E PASS + 浏览器回归 PASS）
 
 ## Task 1：clone 嘴型覆写补丁（已完成）
 
@@ -99,6 +99,16 @@
 
 `events.jsonl`、`status.json`、`service.log`（含 lip-log 行）、`feeder.log`、空闲 PNG x2 + `idle_for_m1a_compare.png`、播放窗 PNG x7（seq89-114）、`idle_semantic_lip_on/off_m1a.png`。
 
+## Task 6：收尾（浏览器回归 + 文档，final-review I1）
+
+### 浏览器回归：非 translate 服务下 viewer 新 JS 实跑（PASS）
+
+背景：viewer.html 的 M2b 新增 JS（/speech WebAudio + /events 订阅）此前只在 translate-stub E2E 的 raw-ws 客户端下验证过，未在真实浏览器里执行过。本轮在**非 translate** 真实管线（`run_local --port 8916`，无 --translate 参数）下补跑：
+
+- `engine/e2e/capture-e2e.mjs`（E2E_PORT=8916，d14.y4m 按 m1c-results 命令重新生成，210,767,052 字节与 m1c 一致）：**PASS，退出码 0**——`processed=98, errors=0`，viewer 帧数 16 → 97 递增，三项自断言全过。
+- **4404 无重连风暴**（final-review I1 核心关切）：60s+ 全程服务端日志仅 **1 次 /speech + 1 次 /events** WebSocket 连接（共 4 个 ws open = /ingest + /out + /speech + /events），close code 4404 后 viewer 按设计不重连。
+- 补充控制台采集（Playwright 开 viewer 10s，收 console + pageerror）：**0 console error、0 page error**，`#speech` 状态行正确显示 `audio: /speech closed (4404，translate 未启用)`，/out 保持 `connected`。
+
 ## 评审 ride-along 完成记录（Task 5 随车）
 
 - [x] A/V 同步契约写死在 tee/端点处（app.py 模块 docstring + /speech 注释）。
@@ -120,3 +130,7 @@
 - M2a 滚动项仍开放：SegmentTranscriber 环形缓冲（长跑前必改）、延迟预算实测回写。
 - 嘴型观感增强（后续里程碑可选）：渲染帧率提升后欠采样自然缓解；或 lip_open 上限上调（`LivePortraitPipeline(lip_open=...)`）放大开合幅度。
 - /speech 队列 (8) 与 SpeechSchedule (16) 的积压分歧统一（M3 精确 A/V 对齐时一并处理）。
+- **speech-period lip-log 音量**：worker 的 `speech lip=... on seq=...` INFO 日志在边缘节点 25fps × 3 频道下约 75 行/秒——M1b 部署前降为 DEBUG 或抽样打印（如每 25 帧 1 行）。
+- **run_local 未暴露 `--lang-channels`**：`create_app` 的 lang_channels 目前写死 `{"en": 0}`——M2 三语演示（en/ja/ko → 频道 0/1/2）需要 CLI 参数透传。
+- **viewer 奇数字节 pcm 硬化（美化项）**：/speech 帧 pcm 段若为奇数字节，`new Int16Array(buffer)` 会 throw（被 onmessage 内局部逻辑吞掉一段音频）；服务端 pcm16 契约保证偶数字节，仅防御性加固。
+- **SpeechSchedule stats 新鲜度（nit）**：played/dropped 统计在 `lip_at` 轮询时才结算——渲染循环停轮询（如 feeder 断流）期间 /status 的 speech 块滞后，不影响正确性。
