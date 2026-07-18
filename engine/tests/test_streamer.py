@@ -32,7 +32,7 @@ SERVE_ECHO = ENGINE_ROOT / "tests" / "helpers" / "serve_echo.py"
 class ScriptedManager(StreamerManager):
     """command() 换成假 ffmpeg 脚本；其余（监督/排空/退避/停机）走真实现。"""
 
-    def __init__(self, mode: str, **kw):
+    def __init__(self, mode: str, *extra_args: str, **kw):
         kw.setdefault("ffmpeg_path", "ffmpeg-not-used")
         kw.setdefault("base_url", "http://127.0.0.1:1")
         kw.setdefault("rtmp_url_template", "rtmp://unused/{ch}")
@@ -41,9 +41,10 @@ class ScriptedManager(StreamerManager):
         kw.setdefault("backoff_cap", 0.2)
         super().__init__(**kw)
         self._mode = mode
+        self._extra_args = extra_args
 
     def command(self, ch: int) -> list[str]:
-        return [sys.executable, "-u", str(FAKE_FFMPEG), self._mode]
+        return [sys.executable, "-u", str(FAKE_FFMPEG), self._mode, *self._extra_args]
 
 
 async def _poll(cond, timeout: float = 10.0, interval: float = 0.02) -> bool:
@@ -62,15 +63,19 @@ def test_command_shape_input_options_before_each_input():
     """生产命令契约。与计划的偏差：-use_wallclock_as_timestamps 是输入侧
     demuxer 选项（decoding param），计划把它放在两个 -i 之后（输出位置）
     ——ffmpeg 会以 "input option applied to output file" 报错退出；实现
-    改为在每个 -i 之前各放一份。输入半区的真实性由 demuxer E2E 背书。"""
+    改为在每个 -i 之前各放一份。-rw_timeout（Task 4 ride-along）同为输入
+    侧协议选项：端点僵而不断时 10s 读超时让 ffmpeg 退出、监督器重启
+    （stall watchdog）。输入半区的真实性由 demuxer E2E 背书。"""
     m = StreamerManager(ffmpeg_path="F:/ffmpeg.exe",
                         base_url="http://127.0.0.1:8900",
                         rtmp_url_template="rtmp://127.0.0.1:1935/live/ch{ch}",
                         channels=(0, 3))
     assert m.command(3) == [
         "F:/ffmpeg.exe", "-hide_banner", "-loglevel", "warning",
+        "-rw_timeout", "10000000",
         "-use_wallclock_as_timestamps", "1",
         "-i", "http://127.0.0.1:8900/stream.mjpeg?channel=3",
+        "-rw_timeout", "10000000",
         "-use_wallclock_as_timestamps", "1",
         "-i", "http://127.0.0.1:8900/stream.wav?channel=3",
         "-map", "0:v", "-map", "1:a",
@@ -131,6 +136,62 @@ def test_immediate_exit_restarts_with_backoff_and_records_exit_code():
         n = m.status()["0"]["restarts"]
         await asyncio.sleep(0.3)
         assert m.status()["0"]["restarts"] == n
+
+    asyncio.run(run())
+
+
+def test_backoff_resets_after_stable_run():
+    """稳定运行（存活 ≥ stable_reset_s）后崩溃：退避回到 backoff_base，
+    不继承指数惩罚。fake 'live' 存活 0.3s、stable_reset_s=0.2 → 每次崩溃
+    都算"曾经健康"，白盒观测 st.backoff 恒等于基值。"""
+    async def run():
+        m = ScriptedManager("live", stable_reset_s=0.2,
+                            backoff_base=0.05, backoff_cap=5.0)
+        await m.start_all()
+        try:
+            assert await _poll(lambda: m.status()["0"]["restarts"] >= 3,
+                               timeout=15), m.status()
+            assert m._states[0].backoff == 0.05, m._states[0].backoff
+            assert m.status()["0"]["last_exit_code"] == 5
+        finally:
+            await m.stop_all()
+
+    asyncio.run(run())
+
+
+def test_backoff_keeps_growing_without_stable_run():
+    """负对照：立即崩溃（存活 << stable_reset_s）时退避照旧指数增长。"""
+    async def run():
+        m = ScriptedManager("exit3", stable_reset_s=10.0,
+                            backoff_base=0.05, backoff_cap=5.0)
+        await m.start_all()
+        try:
+            assert await _poll(lambda: m.status()["0"]["restarts"] >= 3), m.status()
+            # 第 3 次重启前的退避已是 base*4=0.2（读取时可能又翻了几倍）
+            assert m._states[0].backoff >= 0.2, m._states[0].backoff
+        finally:
+            await m.stop_all()
+
+    asyncio.run(run())
+
+
+def test_stderr_tail_redacts_stream_key():
+    """脱敏（Task 4 ride-along）：stderr 里出现的推流 URL，末段路径（串流
+    码位）在进入 stderr_tail 前必须换成 ***——/status 会把尾巴吐给任何
+    观测方。fake 'say' 原样回显一行含完整 URL 的报错文本。"""
+    async def run():
+        url = "rtmp://a.rtmp.example.com/live2/secret-stream-key-0"
+        m = ScriptedManager(
+            "say", f"[flv @ 0x1] Failed to update header with correct duration. {url}",
+            rtmp_url_template="rtmp://a.rtmp.example.com/live2/secret-stream-key-{ch}")
+        await m.start_all()
+        try:
+            assert await _poll(lambda: m.status()["0"]["stderr_tail"]), m.status()
+            tail = "\n".join(m.status()["0"]["stderr_tail"])
+            assert "secret-stream-key-0" not in tail, tail
+            assert "rtmp://a.rtmp.example.com/live2/***" in tail, tail
+        finally:
+            await m.stop_all()
 
     asyncio.run(run())
 

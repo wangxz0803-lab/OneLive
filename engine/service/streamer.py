@@ -26,7 +26,16 @@ StreamerManager 为每个信道拉起一个 ffmpeg 子进程：从本服务的
 监督：每信道一个 supervisor 任务——spawn → 等退出 → 记录 exit code +
 stderr 尾巴（环形 50 行；stderr 必须并发排空：ffmpeg 话多，管道缓冲写
 满即阻塞，进程"僵而不死"、wait() 死锁）→ 指数退避重启（backoff_base
-起倍增至 backoff_cap；退避等待可被 stopping 即刻打断）。
+起倍增至 backoff_cap；一次运行存活 ≥ stable_reset_s 即视为曾经健康、
+下次崩溃从基值重来；退避等待可被 stopping 即刻打断）。
+
+看门狗（Task 4 ride-along）：两个 -i 前各带 -rw_timeout（默认 10s，µs
+单位）——端点"僵而不断"（连接在、字节不来）时 ffmpeg 自行超时退出，
+由监督器重启，避免推流进程围着死端点永远干等。
+
+脱敏（Task 4 ride-along）：stderr 进环形缓冲前把推流 URL 的末段路径
+（rtmp://host/app/KEY 的 KEY——公开平台串流码位）替换为 ***；/status
+把 stderr_tail 吐给任意观测方，串流码绝不能跟着泄出。
 
 stop_all：置 stopping（抑制一切后续 spawn/重启）→ terminate 全部存活
 进程 → 宽限 grace_s 等 supervisor 收尾 → 超时 kill 补刀；幂等。
@@ -36,6 +45,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import time
 from collections import deque
 from typing import Awaitable, Callable, Iterable, Optional
 
@@ -55,15 +66,19 @@ def resolve_ffmpeg(path: str | None = None) -> str:
 
 
 class _ChannelState:
-    __slots__ = ("proc", "running", "pid", "restarts", "last_exit_code", "stderr_tail")
+    __slots__ = ("proc", "running", "pid", "restarts", "last_exit_code", "stderr_tail",
+                 "backoff")
 
-    def __init__(self) -> None:
+    def __init__(self, backoff_base: float) -> None:
         self.proc: Optional[asyncio.subprocess.Process] = None
         self.running = False
         self.pid: Optional[int] = None
         self.restarts = 0
         self.last_exit_code: Optional[int] = None
         self.stderr_tail: deque[str] = deque(maxlen=_STDERR_RING)
+        # 下一次重启前要等的退避秒数（supervisor 每轮进等待前刷新；
+        # 白盒观测点：稳定运行后归位 backoff_base，见 stable_reset_s）
+        self.backoff = backoff_base
 
 
 class StreamerManager:
@@ -73,7 +88,8 @@ class StreamerManager:
                  channels: Iterable[int], fps: int = 15,
                  ready_probe: Optional[Callable[[], Awaitable[None]]] = None,
                  backoff_base: float = 1.0, backoff_cap: float = 30.0,
-                 grace_s: float = 3.0) -> None:
+                 grace_s: float = 3.0, stable_reset_s: float = 60.0,
+                 rw_timeout_us: int = 10_000_000) -> None:
         self._ffmpeg = ffmpeg_path
         self._base = base_url.rstrip("/")
         self._template = rtmp_url_template
@@ -83,9 +99,25 @@ class StreamerManager:
         self._backoff_base = backoff_base
         self._backoff_cap = backoff_cap
         self._grace_s = grace_s
-        self._states: dict[int, _ChannelState] = {ch: _ChannelState() for ch in self._channels}
+        # 稳定运行阈值：一次 ffmpeg 存活 ≥ 此秒数即视为"曾经健康"，下次
+        # 崩溃从 backoff_base 重新退避（长跑后的偶发断线不该吃 30s 冷宫）
+        self._stable_reset_s = stable_reset_s
+        # 输入侧读超时（µs）：/stream.* 端点僵死（连接在、字节不来）时
+        # ffmpeg 自行退出 → 监督器重启，充当 stall watchdog
+        self._rw_timeout_us = rw_timeout_us
+        self._states: dict[int, _ChannelState] = {
+            ch: _ChannelState(backoff_base) for ch in self._channels}
         self._supervisors: dict[int, asyncio.Task] = {}
         self._stopping = asyncio.Event()  # Event 而非 bool：退避等待可被即刻打断
+        # stderr 脱敏：推流 URL 的末段路径当作串流码（公开平台正是
+        # rtmp://host/app/KEY 形态），存入 stderr_tail 前统一打码——
+        # /status 会把尾巴原样吐给任何观测方，密钥绝不能跟着出去。
+        self._redactors: list[tuple[re.Pattern, str]] = []
+        for ch in self._channels:
+            url = self._template.format(ch=ch)
+            head, sep, _key = url.rpartition("/")
+            if sep and "://" in head and not head.endswith("//") and not head.endswith(":/"):
+                self._redactors.append((re.compile(re.escape(url)), f"{head}/***"))
 
     # ------------------------------------------------------------- command
 
@@ -93,8 +125,12 @@ class StreamerManager:
         """信道 ch 的完整 ffmpeg 命令行（测试覆写此方法注入假 ffmpeg）。"""
         return [
             self._ffmpeg, "-hide_banner", "-loglevel", "warning",
-            "-use_wallclock_as_timestamps", "1",  # 输入侧选项：必须在 -i 之前
+            # 输入侧选项：必须在各自的 -i 之前。-rw_timeout = 单次网络读
+            # 超时（µs）——端点僵死时 ffmpeg 退出、由监督器重启（watchdog）
+            "-rw_timeout", str(self._rw_timeout_us),
+            "-use_wallclock_as_timestamps", "1",
             "-i", f"{self._base}/stream.mjpeg?channel={ch}",
+            "-rw_timeout", str(self._rw_timeout_us),
             "-use_wallclock_as_timestamps", "1",
             "-i", f"{self._base}/stream.wav?channel={ch}",
             "-map", "0:v", "-map", "1:a",
@@ -171,26 +207,35 @@ class StreamerManager:
 
     # ------------------------------------------------------------- internal
 
+    def _redact(self, line: str) -> str:
+        """stderr 行脱敏：推流 URL 末段（串流码位）→ ***（模式见 __init__）。"""
+        for pat, repl in self._redactors:
+            line = pat.sub(repl, line)
+        return line
+
     async def _drain_stderr(self, st: _ChannelState, stream: asyncio.StreamReader) -> None:
-        """并发排空 stderr 进环形缓冲。按块读 + 手工切行（readline 在超长行上
-        raise ValueError 丢数据）；不排空则 ffmpeg 写满管道缓冲即阻塞。"""
+        """并发排空 stderr 进环形缓冲（入缓冲前先脱敏）。按块读 + 手工切行
+        （readline 在超长行上 raise ValueError 丢数据）；不排空则 ffmpeg 写满
+        管道缓冲即阻塞。"""
         buf = b""
         while True:
             chunk = await stream.read(4096)
             if not chunk:
                 if buf:
-                    st.stderr_tail.append(buf.decode("utf-8", "replace"))
+                    st.stderr_tail.append(self._redact(buf.decode("utf-8", "replace")))
                 return
             buf += chunk
             *lines, buf = buf.split(b"\n")
             for ln in lines:
-                st.stderr_tail.append(ln.decode("utf-8", "replace").rstrip("\r"))
+                st.stderr_tail.append(
+                    self._redact(ln.decode("utf-8", "replace").rstrip("\r")))
 
     async def _supervise(self, ch: int) -> None:
         """spawn → 排空 stderr + 等退出 → 记录 → 指数退避重启（除非 stopping）。"""
         st = self._states[ch]
         backoff = self._backoff_base
         while not self._stopping.is_set():
+            spawned_at = time.monotonic()
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *self.command(ch),
@@ -222,11 +267,16 @@ class StreamerManager:
                 if self._stopping.is_set():
                     return
                 st.restarts += 1
+                if time.monotonic() - spawned_at >= self._stable_reset_s:
+                    # 稳定运行过（≥ stable_reset_s）：退避归位基值——长跑后的
+                    # 偶发断线立刻重试，而不是继承此前累积的指数惩罚
+                    backoff = self._backoff_base
                 log.warning(
                     "streamer ch%d: ffmpeg exited rc=%s, restart #%d in %.1fs; stderr: %s",
                     ch, rc, st.restarts, backoff,
                     " | ".join(list(st.stderr_tail)[-_TAIL_IN_STATUS:]) or "<empty>")
             # 可打断退避：stopping 置位即刻醒来退出，不等满 backoff
+            st.backoff = backoff  # 白盒观测点：本轮实际等待的退避值
             try:
                 await asyncio.wait_for(self._stopping.wait(), timeout=backoff)
                 return
