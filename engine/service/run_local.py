@@ -2,6 +2,15 @@
   <m0-venv-python> -m service.run_local [--port 8900] [--source <img>] [--channels N]
                                         [--https] [--host H] [--cfg onnx_infer.yaml]
                                         [--translate | --translate-stub] [--no-lip]
+                                        [--rtmp rtmp://127.0.0.1:1935/live/ch{ch}]
+
+--rtmp：每频道起一个受监督的 ffmpeg（service/streamer.py）拉本服务的
+/stream.mjpeg + /stream.wav 推到模板地址（{ch} 占位频道号）。ffmpeg 路径
+经 resolve_ffmpeg 解析（ONELIVE_FFMPEG 环境变量可覆盖）。启动时序：
+lifespan 起后台任务 → 轮询 GET /status 到 200（30s 上限，serving 真正
+开始后探针才通）→ spawn ffmpeg；停机时 streamer 最先停（rationale 见
+streamer.py）。与 --https 暂不兼容（ffmpeg 拉 http://127.0.0.1，HTTPS-only
+服务下自签证书过不了校验）。
 
 --no-lip：关闭嘴型驱动（M2b）。enable_lip=True 会在管线构造前打开
 flag_lip_retargeting + flag_lip_retarget_keep_motion，即使无语音也改变
@@ -31,9 +40,11 @@ ONNX 权重经单例缓存共享（M0 验证过），显存不随频道数线性
 """
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import uvicorn
@@ -78,6 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "翻译 ok，走真 TTS/嘴型）——仅供 E2E 链路验证，非真翻译")
     ap.add_argument("--no-lip", action="store_true",
                     help="关闭嘴型驱动（渲染路径与 M1a 基线逐字节等价的逃生开关）")
+    ap.add_argument("--rtmp", default=None, metavar="TEMPLATE",
+                    help="RTMP 推流地址模板（{ch} 占位频道号），如 "
+                         "rtmp://127.0.0.1:1935/live/ch{ch}——配了即为每频道起"
+                         "受监督 ffmpeg 拉 /stream.* 推流；与 --https 不兼容")
     return ap
 
 
@@ -132,15 +147,55 @@ if __name__ == "__main__":
     source = os.path.abspath(args.source) if args.source else None
     channels = tuple(range(args.channels))
     enable_lip = not args.no_lip
+
+    streamer = None
+    base_url = f"http://127.0.0.1:{args.port}"
+    if args.rtmp:
+        if args.https:
+            sys.exit("[run_local] --rtmp 与 --https 暂不兼容：ffmpeg 从 "
+                     "http://127.0.0.1 拉流，HTTPS-only 服务下自签证书过不了校验")
+        if args.channels > 1 and "{ch}" not in args.rtmp:
+            sys.exit("[run_local] --rtmp 模板缺 {ch} 占位：多频道会全推到同一地址")
+        from service.streamer import StreamerManager, resolve_ffmpeg
+
+        async def _ready_probe() -> None:
+            """轮询 GET /status 到 200（30s 上限）——ffmpeg 只能在 serving
+            真正开始后 spawn，而 lifespan startup 早于 serving（见 streamer.py）。"""
+            import httpx
+            deadline = time.monotonic() + 30.0
+            async with httpx.AsyncClient() as probe:
+                while True:
+                    try:
+                        r = await probe.get(f"{base_url}/status", timeout=2.0)
+                        if r.status_code == 200:
+                            return
+                    except httpx.HTTPError:
+                        pass
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            "service not ready within 30s, rtmp streamer not started")
+                    await asyncio.sleep(0.25)
+
+        streamer = StreamerManager(
+            ffmpeg_path=resolve_ffmpeg(), base_url=base_url,
+            rtmp_url_template=args.rtmp, channels=channels,
+            ready_probe=_ready_probe)
+
     app = create_app(
         lambda ch: LivePortraitPipeline(source_image=source, cfg_name=args.cfg,
                                         enable_lip=enable_lip),
         channels=channels,
-        translation_pipeline=translation_pipeline)
+        translation_pipeline=translation_pipeline,
+        streamer=streamer)
     print(f"[run_local] lip: {'enabled（嘴型驱动开，渲染语义与 M1a 基线不同）' if enable_lip else 'disabled（--no-lip，与 M1a 基线等价）'}")
     for ch in channels:
         print(f"[run_local] channel {ch}: "
               f"{scheme_ws}://{show_host}:{args.port}/out?channel={ch}"
               f"  viewer: {scheme_http}://{show_host}:{args.port}/?channel={ch}"
               f"  capture: {scheme_http}://{show_host}:{args.port}/capture?channel={ch}")
+    if streamer is not None:
+        for ch in channels:
+            print(f"[run_local] channel {ch}: rtmp -> {args.rtmp.format(ch=ch)}"
+                  f"  (ffmpeg pulls {base_url}/stream.mjpeg?channel={ch}"
+                  f" + {base_url}/stream.wav?channel={ch})")
     uvicorn.run(app, host=host, port=args.port, **ssl_kwargs)

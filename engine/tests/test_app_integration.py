@@ -1011,6 +1011,55 @@ def test_mixers_run_in_lifespan_without_translation_pipeline():
         asyncio.run(mixer.start())  # 停后重启不支持：重启 = 新建实例
 
 
+# ---------------------------------------------------------- M3a 推流监督集成
+
+
+class FakeStreamer:
+    """create_app(streamer=) 集成替身：记录 start/stop 时序与停机时 mixer 状态
+    （验证 shutdown 里 streamer 最先停——puller 是 /stream.* 的客户端，
+    不先杀会卡死连接 draining，见 streamer.py 停机顺序 rationale）。"""
+
+    def __init__(self):
+        self.started = False
+        self.stopped = False
+        self.mixer_running_at_stop = None
+        self.app = None  # 测试注入，stop_all 时窥探 mixer 存活
+
+    async def start_all(self):
+        self.started = True
+
+    async def stop_all(self):
+        self.stopped = True
+        if self.app is not None:
+            self.mixer_running_at_stop = self.app.state.mixers[0]._task is not None
+
+    def status(self):
+        return {"0": {"running": True, "pid": 4242, "restarts": 0,
+                      "last_exit_code": None, "stderr_tail": []}}
+
+
+def test_status_streams_block_only_when_streamer_configured():
+    fs = FakeStreamer()
+    app = create_app(lambda ch: EchoPipeline(), streamer=fs)
+    body = TestClient(app).get("/status").json()
+    assert body["streams"] == fs.status()
+
+    plain = TestClient(create_app(lambda ch: EchoPipeline()))
+    assert "streams" not in plain.get("/status").json()
+
+
+def test_lifespan_starts_streamer_and_stops_it_before_mixers():
+    """启动：lifespan 起后台任务调 start_all；停机：stop_all 必须先于 mixer
+    停止执行（此刻 mixer 节拍任务还活着）——先杀 puller 再收尾其余组件。"""
+    fs = FakeStreamer()
+    app = create_app(lambda ch: EchoPipeline(), streamer=fs)
+    fs.app = app
+    with TestClient(app):
+        assert _wait(lambda: fs.started), "lifespan 未启动 streamer start 任务"
+    assert fs.stopped
+    assert fs.mixer_running_at_stop is True
+
+
 def test_audio_odd_byte_frame_dropped_connection_survives():
     """pcm16 字节数为奇数的 /audio 帧：丢弃不进管线，连接活着。"""
     tp = FakeTranslationPipeline()

@@ -19,6 +19,14 @@ def test_translate_stub_flag_default_off():
     assert ap.parse_args(["--translate-stub"]).translate_stub is True
 
 
+def test_rtmp_flag_default_none_and_takes_template():
+    """--rtmp 收推流地址模板（{ch} 占位），默认关（None → 不构造 StreamerManager）。"""
+    ap = build_parser()
+    assert ap.parse_args([]).rtmp is None
+    assert (ap.parse_args(["--rtmp", "rtmp://127.0.0.1:1935/live/ch{ch}"]).rtmp
+            == "rtmp://127.0.0.1:1935/live/ch{ch}")
+
+
 def test_stub_provider_self_declares_and_marks_text():
     """stub Provider 返回 ok + 'EN: '+原文，detail 自我声明 test-only——
     事件流里一眼可辨不是真翻译。"""

@@ -38,6 +38,12 @@ multipart JPEG，两者是 ffmpeg 的拉流源（推 RTMP）。A/V 契约的 M3a
 - 丢弃上限如今有三处且各自为政：mixer 60s（按时长）/ SpeechSchedule 16
   （按段数）/ /speech Queue(8)（按段数）——严重积压时三端各自丢段是
   已知失同步源，统一丢弃策略留给 M3b。
+
+推流监督（M3a Task 3）：可选注入 StreamerManager（service/streamer.py，
+run_local --rtmp 构造），每频道一个 ffmpeg 拉 /stream.* 推 RTMP；/status
+增 "streams" 块。启停顺序是硬约束：启动走 lifespan 后台任务（探针等
+serving 开始后才 spawn），停机在 shutdown 里最先 stop_all——puller 是
+/stream.* 的客户端，不先杀会卡死 uvicorn 连接 draining（详见 streamer.py）。
 """
 
 import asyncio
@@ -161,7 +167,8 @@ async def _ws_subscriber_loop(ws: WebSocket, queue: asyncio.Queue,
 def create_app(pipeline_factory: Callable[[int], object],
                channels: Iterable[int] = (0,),
                translation_pipeline=None,
-               lang_channels: dict[str, int] | None = None) -> FastAPI:
+               lang_channels: dict[str, int] | None = None,
+               streamer=None) -> FastAPI:
     """pipeline_factory(ch) 为每个频道构造一条独立管线（协议头 channel 为 u8，
     合法频道号 0-255）。不做单管线兼容 shim——所有调用点统一工厂形式。
 
@@ -171,7 +178,12 @@ def create_app(pipeline_factory: Callable[[int], object],
 
     lang_channels: TTS 语言 → 数字人频道映射（默认 {"en": 0}）。映射命中的
     TTSReadyEvent 会 tee 进对应 worker 的 SpeechSchedule 并广播到 /speech；
-    未映射语言只发 /events 元数据。仅在配了翻译管线时校验/生效。"""
+    未映射语言只发 /events 元数据。仅在配了翻译管线时校验/生效。
+
+    streamer: 可选 StreamerManager（M3a，run_local --rtmp 构造）。/status 增
+    "streams" 块；启动 = lifespan 起后台任务跑 start_all（其内部先 await
+    ready_probe 等 serving 真正开始，再 spawn ffmpeg puller），停机 = shutdown
+    里【最先】stop_all——启停顺序 rationale 见 streamer.py 模块 docstring。"""
     # 先整体校验再启动 worker：校验中途 raise 不会留下已启动的孤儿线程
     channels = tuple(channels)
     seen: set[int] = set()
@@ -289,9 +301,34 @@ def create_app(pipeline_factory: Callable[[int], object],
                     w.stop()
                 raise
             consumer = asyncio.create_task(_broadcast_events())
+        # 推流监督（M3a）：start_all 只能作为后台任务——ffmpeg 要拉的
+        # /stream.* 端点在 serving 开始后才可达，而 lifespan startup 完成
+        # 于 serving 之前；任务内部先 await ready_probe（轮询 localhost
+        # /status 到 200）再 spawn，见 streamer.py。
+        streamer_start: asyncio.Task | None = None
+        if streamer is not None:
+            streamer_start = asyncio.create_task(streamer.start_all())
         try:
             yield
         finally:
+            # 停机顺序（M3a review carry-forward）：streamer 必须最先停。
+            # ffmpeg puller 就是 /stream.* 的长连接 HTTP 客户端——先走服务
+            # 收尾的话，uvicorn 优雅停机等这些连接 drain、puller 只会继续
+            # 拉，互相僵持；先杀 puller，流式生成器随断连取消，之后的
+            # 管线/混音器/worker 收尾才畅通。
+            if streamer is not None:
+                if streamer_start is not None:
+                    streamer_start.cancel()  # 可能还卡在 ready_probe 上
+                    try:
+                        await streamer_start
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        log.exception("streamer start task failed")
+                try:
+                    await streamer.stop_all()
+                except Exception:
+                    log.exception("streamer stop_all failed")
             if translation_pipeline is not None:
                 try:
                     await asyncio.wait_for(translation_pipeline.close(), 30)
@@ -337,6 +374,8 @@ def create_app(pipeline_factory: Callable[[int], object],
             body["channel"] = body["channels"]["0"]
         if translation_pipeline is not None:  # 没配翻译时键整体不存在
             body["translation"] = translation_pipeline.stats()
+        if streamer is not None:  # 没配推流时键整体不存在（同 translation）
+            body["streams"] = streamer.status()
         return body
 
     async def _handle_casting(ws: WebSocket, ctrl: dict,
