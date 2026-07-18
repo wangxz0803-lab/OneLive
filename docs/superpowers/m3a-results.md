@@ -101,6 +101,44 @@ INFO:engine.streamer:streamer ch0: ffmpeg started (pid=40732)
 
 事件链（events.jsonl UTF-8 正常；控制台 GBK 乱码仅显示问题，同 M2b）：subtitle→translation(ok, stub 自我声明)→tts_ready(channel=0) 逐段成链，两段 segment_id 1/2 完整。
 
+## Task 5：clumsy 网络损伤脚本化（已完成，**OWNER-RUN-REQUIRED**）
+
+新增 `engine/netlab/`：`get-clumsy.ps1`（下载器）+ `profiles.ps1`（三档损伤/off）+ `README.md`（使用说明），二进制目录 `netlab/clumsy/` 已 gitignore（`netlab/.gitignore`）。
+
+**真实执行了什么：**
+
+- **下载真实完成**：本会话真实运行 `get-clumsy.ps1` → GitHub 下载 `clumsy-0.3-win64-a.zip`（536,789B），SHA256 `F50DC734148815831C67D9FC2C246C22D421C53DCEA51E26EEE905B0B2806C27`（上游未发布校验和，此哈希已固化进脚本作 pin，不匹配即中止）；解压出 clumsy.exe / WinDivert.dll / WinDivert64.sys / config.txt / License.txt。二次运行验证幂等（`already present ... skip`）。
+- **版本纠偏**：计划里写的 "clumsy 1.4.x" 不存在——上游 latest release 是 **0.3**（2023-10 发布，1.4/2.x 是 WinDivert 的版本号）。0.3 提供 a/b/c 三个 win64 包，仅 WinDivert 驱动签名不同（上游 issue #84）；默认取 a，驱动加载失败时 `-Variant b|c` 换签名。
+- **CLI 契约从源码逐一核实**（上游 README/manual 只写 GUI）：`src/utils.c parseArgs` 把任意 `--key value` 存 IUP global，模块启动读取。有效键：`--filter`、`--timeout <s>`、`--<mod> on`（lag/drop/throttle/ood/dup/tamper/reset/bandwidth）、`--<mod>-inbound|outbound on|off`、`--lag-time <ms>`、`--drop-chance`、`--ood-chance`、`--throttle-chance/-frame`、`--bandwidth-bandwidth <KB/s>`。**关键发现**（`src/elevate.c`）：CLI 模式下非管理员时 clumsy **静默退出、不弹 UAC**——profiles.ps1 因此自带提权检查并给出精确的管理员命令。
+- **congested 档用 bandwidth 模块而非 throttle**：0.3 新增 bandwidth 模块（KB/s 直接限速，PR#70），比 throttle 时间窗攒包更贴合"带宽受限"，映射为 120KB/s + drop 5%；weak = drop 15% + ood 25%；latency = lag 300ms 双向。
+- **本会话未提权**（`net session` → Access denied），未做真实损伤测量；四档 `-DryRun` 全部真实执行（exit 0），verbatim：
+
+```
+===== -Profile congested -Ports 8900,1935 -DryRun =====
+[netlab] DRY-RUN profile=congested ports=8900,1935
+[netlab] filter: tcp and (tcp.DstPort == 8900 or tcp.SrcPort == 8900 or tcp.DstPort == 1935 or tcp.SrcPort == 1935)
+[netlab] command: "...\engine\netlab\clumsy\clumsy.exe" --filter "tcp and (tcp.DstPort == 8900 or tcp.SrcPort == 8900 or tcp.DstPort == 1935 or tcp.SrcPort == 1935)" --bandwidth on --bandwidth-inbound on --bandwidth-outbound on --bandwidth-bandwidth 120 --drop on --drop-inbound on --drop-outbound on --drop-chance 5
+===== -Profile weak -Ports 8900,1935 -DryRun =====
+[netlab] command: "...clumsy.exe" --filter "..." --drop on --drop-inbound on --drop-outbound on --drop-chance 15 --ood on --ood-inbound on --ood-outbound on --ood-chance 25
+===== -Profile latency -Ports 8900,1935 -DryRun =====
+[netlab] command: "...clumsy.exe" --filter "..." --lag on --lag-inbound on --lag-outbound on --lag-time 300
+===== -Profile off -DryRun =====
+[netlab] DRY-RUN: Stop-Process -Name clumsy -Force
+```
+
+- 错误路径实测：非法端口 exit 1；非提权直跑 exit 1 并打印可复制的管理员命令。DryRun 执行本身即完成 ps1 语法验证。
+- **踩坑修复**：`powershell -File` 传 `-Ports 8900,1935` 时整串是一个字符串，`[int[]]` 绑定按 culture 把逗号当千分位 → 端口变 89001935；改为 `[string[]]` 手动 split+校验后修复（首轮 DryRun 抓到）。
+- **loopback 事实（上游 manual "Limitations" 原文核实）**：clumsy 支持 localhost↔localhost；但 WFP 把所有 loopback 包归 outbound（filter 不能带 `inbound` 词——我们只按端口过滤，安全），且 loopback 包被处理**两次**（lag 300ms 实测应 ~600ms）。手机↔PC 的 LAN 流量不受加倍影响。
+- 套件回归：`154 passed`（不变，ps1 不进 pytest）。
+
+**OWNER-RUN-REQUIRED**（需管理员 PowerShell，本会话无法提权、也不允许弹 UAC）：
+
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-Command',"cd 'C:\Users\76475\Documents\OneLive\.worktrees\v2-m3a\engine'"
+```
+
+进入后按 `engine/netlab/README.md` 的"OWNER 实测步骤"跑 latency 档量化验证（serve_echo 8918 + out_probe 基线/损伤对比，loopback 预期 +600ms 量级），demo 现场用 `-Ports 8900`（WS）或 `8900,1935`（WS+RTMP）。
+
 ## Backlog（M3b/后续）
 
 - **app.py 拆分升级**：app.py 已 676 行（本里程碑又进 /stream.*、streamer 集成、mixer 生命周期），单文件承载 路由+广播+tee+生命周期编排 逼近失控——M3b 动手拆（端点模块 / 广播编排 / 生命周期各归位）。
@@ -112,4 +150,4 @@ INFO:engine.streamer:streamer ch0: ffmpeg started (pid=40732)
 
 - **公开平台推流**：只差 `--rtmp` 换成平台推流地址+串流码（YouTube/B站/Twitch 账号归 OWNER）；串流码在 /status stderr_tail 里已自动脱敏。
 - **A/V 同步观感验收**：机制契约见 app.py docstring；数值实测见 E2E；最终"看起来对不对"需 OWNER 拉流目检（VLC/potplayer 开 `http://127.0.0.1:8000/live/ch0.flv`）。
-- **clumsy 管理员运行**（Task 5 预告）：WinDivert 需要 elevated PowerShell。
+- **clumsy 真实损伤验证**（Task 5 交付，脚本/文档/DryRun 已备）：需 OWNER 在管理员 PowerShell 跑 `engine/netlab/profiles.ps1`，按 netlab/README.md 步骤做 latency 档 out_probe 前后对比 + demo 三档目检；`off` 要在同一管理员会话执行。
