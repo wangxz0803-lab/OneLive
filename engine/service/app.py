@@ -256,8 +256,8 @@ def create_app(pipeline_factory: Callable[[int], object],
             for p in sorted(_avatar_dir().iterdir()):
                 if p.is_file() and _AVATAR_NAME_RE.fullmatch(p.name):
                     names.append(p.name)
-        except (FileNotFoundError, NotADirectoryError):
-            pass
+        except (FileNotFoundError, NotADirectoryError, PermissionError):
+            pass  # 目录缺失/不是目录/无权限：诚实返回空列表，不 500
         return {"avatars": names}
 
     @app.get("/status")

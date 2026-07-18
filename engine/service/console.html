@@ -208,26 +208,34 @@ body::after {
 /* ---- 双 HUD 面板 ---- */
 .hud { grid-area: hud; display: flex; flex-direction: column; padding: 11px 4px 12px 14px; min-height: 0; }
 .hud .head { padding-right: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.hud .scroll { flex: 1; overflow-y: auto; padding-right: 12px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.hud .scroll { flex: 1; overflow-y: auto; padding-right: 12px; scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  display: flex; flex-direction: column; }
 .hud .scroll::-webkit-scrollbar { width: 7px; }
 .hud .scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
-.hblk { border: 1px solid var(--line-soft); border-radius: 3px; padding: 8px 9px; margin-bottom: 9px; background: rgba(0,0,0,0.18); }
+/* flex:1 让块均分撑满 HUD 列高（与三卡栅格拉伸对齐、不留空洞）；不收缩，
+   内容超列高时容器滚动。占位块被拉伸后斜纹背景自然填满，读作有意的留位。 */
+.hblk { border: 1px solid var(--line-soft); border-radius: 3px; padding: 8px 9px; margin-bottom: 9px; background: rgba(0,0,0,0.18);
+  flex: 1 0 auto; }
+.hblk:last-child { margin-bottom: 0; }
 .hblk .htop { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
 .hblk .htop .cid { font-size: 11px; color: var(--ink); letter-spacing: 0.08em; }
 .hblk .htop .cid b { color: var(--amber); }
 .hblk .htop .stale { margin-left: auto; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--faint); border: 1px solid var(--faint); border-radius: 2px; padding: 1px 5px; }
 .hblk .htop .stale.on { color: var(--red); border-color: rgba(255,107,107,0.4); }
+/* 未配置槽占位块：斜纹 + 灰字，与未配置频道卡同款处理，填满 HUD 列不留空洞 */
+.hblk.unconf { background: repeating-linear-gradient(45deg, #0b0d10 0 10px, #0e1013 10px 20px); border-color: var(--line-soft); }
+.hblk.unconf .cid, .hblk.unconf .cid b, .hblk.unconf .gt, .hblk.unconf .m .k, .hblk.unconf .htop .stale { color: var(--faint); border-color: var(--faint); }
 
 .grp { margin-bottom: 6px; }
 .grp:last-child { margin-bottom: 0; }
 .grp .gt { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
 .grp.up .gt { color: var(--cyan); }
 .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
-.metrics.three { grid-template-columns: 1fr 1fr 1fr; }
 .m { display: flex; justify-content: space-between; gap: 6px; font-size: 10.5px; }
-.m .k { color: var(--muted); }
+.m.wide { margin-top: 2px; }
+.m .k { color: var(--muted); white-space: nowrap; }
 .m .v { color: var(--ink); font-variant-numeric: tabular-nums; }
 .m .v.dim { color: var(--faint); }
 .hblk.staleblk .grp.up .m .v { color: var(--faint); }
@@ -511,9 +519,9 @@ function connectEvents() {
       else addRow("tr", m.segment_id, `[${m.status}] ${m.detail || ""}`.trim(), "unavail");
     } else if (m.type === "tts_ready") {
       addRow("tts", m.segment_id, `♪ ${m.lang} · ${m.voice || ""} · ${m.duration_s?.toFixed?.(1) ?? "?"}s`);
-      // tts_ready 按 lang 归到频道，更新该卡"最近语音段"
-      const ch = channelForLang(m.lang);
-      const rec = ch != null ? cards.get(ch) : null;
+      // tts_ready 事件自带 channel（endpoints_translate 注入 lang_channels 映射结果），
+      // 直接用——不依赖 /status.lang_channels 是否已到，也少一层反查。
+      const rec = m.channel != null ? cards.get(m.channel) : null;
       if (rec) { rec.lastSeg = m.segment_id; rec.speechSeg.textContent = `seg ${m.segment_id} (${m.lang})`; }
     } else if (m.type === "pipeline_error") {
       addRow("err", m.segment_id, `[${m.stage}] ${m.detail || ""}`);
@@ -533,11 +541,6 @@ function connectEvents() {
   ws.onerror = () => ws.close();
 }
 connectEvents();
-
-function channelForLang(lang) {
-  for (const [ch, l] of Object.entries(langByChannel)) if (l === lang) return Number(ch);
-  return null;
-}
 
 // ---------- /status：~1s 轮询 → 顶栏 / 频道语音态 / HUD ----------
 function num(v, digits) {          // null/undefined → "-"（诚实，不 Math.round(null)→0）
@@ -612,7 +615,24 @@ function renderHUD(s) {
   if (!chList.length) { host.innerHTML = '<div class="empty">无配置频道</div>'; return; }
 
   const frag = document.createDocumentFragment();
-  for (const ch of chList) {
+  // HUD 列固定渲染 CARD_SLOTS 块与三卡栅格对齐：配置频道渲染真实遥测，
+  // 其余槽渲染灰置占位块（复用未配置卡的斜纹/灰字处理）——单/双频道演示
+  // 下不再留大片空洞（Render review IMPORTANT fix），且诚实标注"未配置"。
+  for (let slot = 0; slot < Math.max(CARD_SLOTS, chList.length); slot++) {
+    const ch = chList[slot];
+    if (ch === undefined) {
+      const ph = document.createElement("div");
+      ph.className = "hblk unconf";
+      ph.innerHTML = `<div class="htop"><span class="cid">频道 <b>—</b></span>`
+        + `<span class="stale">未配置</span></div>`
+        + `<div class="grp up"><div class="gt">Uplink · 边缘上行</div><div class="metrics">`
+        + metric("fps", "—") + metric("skip", "—") + `</div>`
+        + `<div class="m wide"><span class="k">链路RTT(ws)</span><span class="v dim">—</span></div></div>`
+        + `<div class="grp"><div class="gt">Engine · 本地引擎</div>`
+        + `<div class="m"><span class="k">该市场频道未启用</span><span class="v dim"></span></div></div>`;
+      frag.appendChild(ph);
+      continue;
+    }
     const cs = chans[String(ch)] || {};
     const up = uplink[String(ch)];   // 孤儿频道（?channel=N 报了但未配置）不在 chList，天然被丢弃
     const stale = up && up.stale;
@@ -623,13 +643,15 @@ function renderHUD(s) {
     let html = `<div class="htop"><span class="cid">频道 <b>${ch}</b></span>`
       + `<span class="stale ${stale ? "on" : ""}">${up ? (stale ? "STALE" : "FRESH") : "无上报"}</span></div>`;
 
-    // Uplink 组（RTT 诚实标注 链路RTT(ws)；null → "-"；stale 整组置灰）
-    html += `<div class="grp up"><div class="gt">Uplink · 边缘上行</div><div class="metrics three">`
+    // Uplink 组（RTT 诚实标注 链路RTT(ws)；null → "-"；stale 整组置灰）。
+    // fps/skip 走 2 列，链路RTT(ws) 单独整行——340px 列里 3 列会把中文标签折行、
+    // 错位整排，整行给足宽度即不折行（Render review minor fix）。
+    html += `<div class="grp up"><div class="gt">Uplink · 边缘上行</div><div class="metrics">`
       + metric("fps", up ? num(up.fps_sent, 1) : "-")
       + metric("skip", up ? num(up.skipped) : "-")
-      + metric("链路RTT(ws)", up ? (up.rtt_ms == null ? "-" : num(up.rtt_ms, 0) + "ms") : "-")
       + `</div>`
-      + (up ? `<div class="m" style="margin-top:2px"><span class="k">age</span><span class="v ${stale ? "dim" : ""}">${num(up.age_s, 1)}s</span></div>` : "")
+      + `<div class="m wide"><span class="k">链路RTT(ws)</span><span class="v">${up ? (up.rtt_ms == null ? "-" : num(up.rtt_ms, 0) + "ms") : "-"}</span></div>`
+      + (up ? `<div class="m wide"><span class="k">age</span><span class="v ${stale ? "dim" : ""}">${num(up.age_s, 1)}s</span></div>` : "")
       + `</div>`;
 
     // Engine 组
