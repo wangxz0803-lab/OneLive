@@ -750,6 +750,267 @@ def test_create_app_rejects_lang_channel_without_worker():
                    lang_channels={"en": 3})
 
 
+# ---------------------------------------------------------- M3a 拉流端点
+
+
+class _AsgiLifespan:
+    """手动驱动 lifespan scope。流式端点不能用 TestClient 测：它把整个响应
+    体缓冲到 app 返回为止（testclient.py 里 portal.call(self.app, ...) 跑到
+    完成才组装响应），无限流会永久挂死；只能手驱 ASGI。而 mixer 只在
+    lifespan startup 里启动，所以 lifespan 也一并手驱（同 _drive_idle_disconnect
+    的 ASGI 消息驱动模式）。"""
+
+    def __init__(self, app):
+        self._to_app: asyncio.Queue = asyncio.Queue()
+        self._from_app: asyncio.Queue = asyncio.Queue()
+        self._task = asyncio.ensure_future(
+            app({"type": "lifespan"}, self._to_app.get, self._from_app.put))
+
+    async def __aenter__(self):
+        await self._to_app.put({"type": "lifespan.startup"})
+        msg = await asyncio.wait_for(self._from_app.get(), 10)
+        assert msg["type"] == "lifespan.startup.complete", msg
+        return self
+
+    async def __aexit__(self, *exc):
+        await self._to_app.put({"type": "lifespan.shutdown"})
+        msg = await asyncio.wait_for(self._from_app.get(), 10)
+        assert msg["type"] == "lifespan.shutdown.complete", msg
+        await asyncio.wait_for(self._task, 5)
+
+
+class _HttpStream:
+    """手动驱动一个 GET http scope，增量读响应体（动机见 _AsgiLifespan）。"""
+
+    def __init__(self, app, path: str, query: str = ""):
+        self._to_app: asyncio.Queue = asyncio.Queue()
+        self._from_app: asyncio.Queue = asyncio.Queue()
+        scope = {"type": "http", "http_version": "1.1", "method": "GET",
+                 "path": path, "raw_path": path.encode(), "root_path": "",
+                 "query_string": query.encode(), "headers": [],
+                 "client": ("test", 1), "server": ("test", 80), "scheme": "http"}
+        self.task = asyncio.ensure_future(
+            app(scope, self._to_app.get, self._from_app.put))
+        self.status: int | None = None
+        self.headers: dict[str, str] = {}
+
+    async def start(self) -> None:
+        msg = await asyncio.wait_for(self._from_app.get(), 5)
+        assert msg["type"] == "http.response.start", msg
+        self.status = msg["status"]
+        self.headers = {k.decode(): v.decode() for k, v in msg.get("headers", [])}
+
+    async def chunk(self, timeout: float = 2.0) -> bytes:
+        msg = await asyncio.wait_for(self._from_app.get(), timeout)
+        assert msg["type"] == "http.response.body", msg
+        return msg.get("body", b"")
+
+    async def disconnect(self) -> None:
+        await self._to_app.put({"type": "http.disconnect"})
+        try:
+            await asyncio.wait_for(self.task, 5)
+        except asyncio.CancelledError:
+            pass
+
+
+async def _read_until(s: _HttpStream, n_bytes: int, max_chunks: int = 200) -> bytes:
+    buf = b""
+    for _ in range(max_chunks):
+        if len(buf) >= n_bytes:
+            return buf
+        buf += await s.chunk()
+    raise AssertionError(f"stream produced only {len(buf)} bytes, wanted {n_bytes}")
+
+
+def _parse_mjpeg(buf: bytes) -> list[bytes]:
+    """解析 multipart/x-mixed-replace 完整帧；边界格式逐字节严格校验。"""
+    frames = []
+    pos = 0
+    while True:
+        start = buf.find(b"--frame\r\n", pos)
+        if start < 0:
+            break
+        hdr_end = buf.find(b"\r\n\r\n", start)
+        if hdr_end < 0:
+            break
+        lines = buf[start + len(b"--frame\r\n"):hdr_end].decode("ascii").split("\r\n")
+        assert lines[0] == "Content-Type: image/jpeg", lines
+        assert lines[1].startswith("Content-Length: "), lines
+        n = int(lines[1][len("Content-Length: "):])
+        body_start = hdr_end + 4
+        if len(buf) < body_start + n + 2:
+            break  # 帧体还没到齐
+        frames.append(buf[body_start:body_start + n])
+        assert buf[body_start + n:body_start + n + 2] == b"\r\n"
+        pos = body_start + n + 2
+    return frames
+
+
+def test_stream_mjpeg_multipart_frames_decode():
+    app = create_app(lambda ch: EchoPipeline())
+    asyncio.run(_drive_mjpeg_frames(app))
+
+
+async def _drive_mjpeg_frames(app) -> None:
+    worker = app.state.workers[0]
+    async with _AsgiLifespan(app):
+        s = _HttpStream(app, "/stream.mjpeg", "channel=0")
+        try:
+            await s.start()
+            assert s.status == 200
+            assert s.headers["content-type"] == "multipart/x-mixed-replace; boundary=frame"
+            # 等订阅注册完成再喂帧：订阅在响应体生成器首次迭代时才发生
+            assert await _poll(lambda: worker.subscriber_count() == 1)
+            jpeg = _jpeg(9)
+            buf = b""
+            for seq in range(60):
+                worker.submit(jpeg, seq=seq, ts_ms=seq)  # /ingest 的最终去处
+                buf += await s.chunk()
+                if len(_parse_mjpeg(buf)) >= 2:
+                    break
+            frames = _parse_mjpeg(buf)
+            assert len(frames) >= 2, f"only {len(frames)} frames in {len(buf)} bytes"
+            assert buf.startswith(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ")
+            img = cv2.imdecode(np.frombuffer(frames[0], np.uint8), cv2.IMREAD_COLOR)
+            assert img is not None and img.shape == (16, 16, 3)
+        finally:
+            await s.disconnect()
+    assert worker.subscriber_count() == 0  # 断连后订阅清理
+
+
+def test_stream_mjpeg_disconnect_unsubscribes():
+    app = create_app(lambda ch: EchoPipeline())
+    asyncio.run(_drive_mjpeg_disconnect(app))
+
+
+async def _drive_mjpeg_disconnect(app) -> None:
+    worker = app.state.workers[0]
+    async with _AsgiLifespan(app):
+        s = _HttpStream(app, "/stream.mjpeg", "channel=0")
+        await s.start()
+        assert await _poll(lambda: worker.subscriber_count() == 1)
+        # 全程不发一帧——覆盖"空闲期客户端断开"：CancelledError 落在
+        # queue.get()，生成器 finally 必须退订（/out 僵尸订阅者的教训）
+        await s.disconnect()
+        assert await _poll(lambda: worker.subscriber_count() == 0), \
+            f"断连后订阅者未清理, count={worker.subscriber_count()}"
+
+
+def test_stream_mjpeg_unknown_channel_404():
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    assert client.get("/stream.mjpeg?channel=7").status_code == 404
+
+
+_WAV_HDR = struct.Struct("<4sI4s4sIHHIIHH4sI")  # 44 字节 RIFF/WAVE 头
+
+
+def test_stream_wav_header_and_silence():
+    app = create_app(lambda ch: EchoPipeline())
+    asyncio.run(_drive_wav_header(app))
+
+
+async def _drive_wav_header(app) -> None:
+    async with _AsgiLifespan(app):
+        mixer = app.state.mixers[0]
+        s = _HttpStream(app, "/stream.wav", "channel=0")
+        try:
+            await s.start()
+            assert s.status == 200
+            assert s.headers["content-type"] == "audio/wav"
+            buf = await _read_until(s, 44 + 3200)  # 头 + ≥1 块（100ms@16k=3200B）
+        finally:
+            await s.disconnect()
+        (riff, riff_size, wave, fmt, fmt_size, audio_fmt, n_ch, sr,
+         byte_rate, block_align, bits, data, data_size) = _WAV_HDR.unpack_from(buf)
+        assert (riff, wave, fmt, data) == (b"RIFF", b"WAVE", b"fmt ", b"data")
+        assert riff_size == 0xFFFFFFFF and data_size == 0xFFFFFFFF  # 无限流惯例
+        assert (fmt_size, audio_fmt, n_ch, bits) == (16, 1, 1, 16)  # PCM 单声道 16 位
+        assert (sr, byte_rate, block_align) == (16000, 32000, 2)
+        body = buf[44:]
+        assert body == b"\x00" * len(body)  # 无 TTS → 纯静音
+        assert mixer._subs == set()  # 断连后混音器订阅清理
+
+
+def test_stream_wav_contains_spliced_speech():
+    app = create_app(lambda ch: EchoPipeline())
+    asyncio.run(_drive_wav_splice(app))
+
+
+async def _drive_wav_splice(app) -> None:
+    async with _AsgiLifespan(app):
+        mixer = app.state.mixers[0]
+        s = _HttpStream(app, "/stream.wav", "channel=0")
+        try:
+            await s.start()
+            buf = await _read_until(s, 44 + 3200)  # 订阅已激活且在收静音
+            pattern = b"\x11\x22\x33\x44" * 400  # 1600 字节 = 0.05s @ 16k
+            mixer.splice(pattern, segment_id=1)  # 事件循环内直接拼（tee 集成另测）
+            for _ in range(100):
+                if pattern in buf:
+                    break
+                buf += await s.chunk()
+            assert pattern in buf  # 语音字节原样出现在音轨流里
+        finally:
+            await s.disconnect()
+
+
+def test_stream_wav_unknown_channel_404():
+    app = create_app(lambda ch: EchoPipeline())
+    client = TestClient(app)
+    assert client.get("/stream.wav?channel=7").status_code == 404
+
+
+def test_tts_tee_splices_mixer_alongside_schedule_and_speech():
+    """tee 三路并行：同一 TTSReadyEvent → SpeechSchedule 入队 + /speech 广播
+    + mixer.splice，三处都到货。"""
+    pcm = b"\x0a\x0b" * 1600  # 3200 字节 = 0.1s @ 16k
+    ev = _tts_ready_ev(segment_id=9, lang="en", pcm=pcm, sr=16000)
+    tp = FakeTranslationPipeline([ev])
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    sched = RecordingSchedule()
+    app.state.workers[0].speech = sched
+    with TestClient(app) as client:
+        mixer = app.state.mixers[0]
+        with client.websocket_connect("/speech") as sp_ws:
+            with client.websocket_connect("/audio") as au_ws:
+                au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+                blob = sp_ws.receive_bytes()
+        assert _wait(lambda: mixer.stats()["spliced_segments"] == 1), "mixer 未收到 splice"
+    assert _parse_speech_frame(blob)[1] == 9
+    assert [c.segment_id for c in sched.clips] == [9]
+
+
+def test_tts_tee_sr_mismatch_not_spliced_consumer_survives():
+    """TTSResult.sr 与 mixer 采样率不一致：不 splice（宁缺毋腐——错采样率
+    的字节进音轨是变速噪音），只记日志；广播任务活着，后续匹配段照常拼。"""
+    bad = _tts_ready_ev(segment_id=1, lang="en", sr=24000)
+    good = _tts_ready_ev(segment_id=2, lang="en", sr=16000)
+    tp = FakeTranslationPipeline([bad, good])
+    app = create_app(lambda ch: EchoPipeline(), translation_pipeline=tp)
+    with TestClient(app) as client:
+        mixer = app.state.mixers[0]
+        with client.websocket_connect("/audio") as au_ws:
+            au_ws.send_bytes(_audio_chunk(16000, b"\x00\x00"))
+            assert _wait(lambda: mixer.stats()["spliced_segments"] == 1)
+    assert mixer.stats()["spliced_segments"] == 1  # 只有 sr 匹配的段入混音器
+
+
+def test_mixers_run_in_lifespan_without_translation_pipeline():
+    """mixer 不依赖翻译管线（纯静音直播也要有音轨）：create_app 即存在，
+    lifespan startup 启动、shutdown 停止；停后不可重启（一次性生命周期）。"""
+    app = create_app(lambda ch: EchoPipeline(), channels=(0, 1))
+    assert set(app.state.mixers) == {0, 1}
+    with TestClient(app):
+        mixer = app.state.mixers[0]
+        assert _wait(lambda: mixer.stats()["chunks_emitted"] > 0), "lifespan 内节拍未跑"
+    emitted = mixer.stats()["chunks_emitted"]
+    time.sleep(0.35)
+    assert mixer.stats()["chunks_emitted"] == emitted  # shutdown 已停节拍
+    with pytest.raises(RuntimeError):
+        asyncio.run(mixer.start())  # 停后重启不支持：重启 = 新建实例
+
+
 def test_audio_odd_byte_frame_dropped_connection_survives():
     """pcm16 字节数为奇数的 /audio 帧：丢弃不进管线，连接活着。"""
     tp = FakeTranslationPipeline()

@@ -27,6 +27,17 @@ A/V 同步契约（M2b，机制正确性即达标，精确对齐留给 M3）：
   （本地慢速链路 ~1.7-1.9fps 即 ~500ms），且 25fps 曲线被渲染帧率欠采样；
 - 已知分歧源：/speech 订阅队列 Queue(8) 丢最旧 vs SpeechSchedule maxlen=16
   ——严重积压时两端各自丢段，嘴型可能"念"到 viewer 没听到的段（反之亦然）。
+
+音轨/画面拉流（M3a）：每频道一个 AudioMixer（app.state.mixers）常驻实时
+节拍——静音打底，TTSReady tee 到达即把语音接到时间线尾部；/stream.wav
+输出无限 WAV（RIFF/data 尺寸字段 0xFFFFFFFF 惯例），/stream.mjpeg 输出
+multipart JPEG，两者是 ffmpeg 的拉流源（推 RTMP）。A/V 契约的 M3a 补充：
+- 锚点分歧：混音器"到达即拼"=音频连续实时播出；嘴型要等 worker 下一次
+  渲染轮询才开始——每逢段切换嘴型额外滞后 ≤1 渲染周期，背靠背多段会
+  逐段累积，直到两侧队列都排空才归零；
+- 丢弃上限如今有三处且各自为政：mixer 60s（按时长）/ SpeechSchedule 16
+  （按段数）/ /speech Queue(8)（按段数）——严重积压时三端各自丢段是
+  已知失同步源，统一丢弃策略留给 M3b。
 """
 
 import asyncio
@@ -41,12 +52,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Callable
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
 _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 
+from service.audio_mixer import AudioMixer
 from service.protocol import FrameHeader, pack_frame, unpack_frame
 from service.speech import SpeechClip
 from service.worker import ChannelWorker
@@ -94,6 +106,15 @@ def event_to_wire(ev) -> dict:
         return {"type": "pipeline_error", "segment_id": ev.segment_id, "lang": ev.lang,
                 "stage": ev.stage, "detail": ev.detail}
     raise TypeError(f"unknown pipeline event type: {type(ev).__name__}")
+
+
+def _wav_stream_header(sr: int) -> bytes:
+    """44 字节无限流 WAV 头：PCM(1) 单声道 16 位；RIFF/data 尺寸字段填
+    0xFFFFFFFF（无限流惯例——ffmpeg/播放器读到即按"到 EOF 为止"处理）。"""
+    return struct.pack("<4sI4s4sIHHIIHH4sI",
+                       b"RIFF", 0xFFFFFFFF, b"WAVE",
+                       b"fmt ", 16, 1, 1, sr, sr * 2, 2, 16,
+                       b"data", 0xFFFFFFFF)
 
 
 async def _ws_subscriber_loop(ws: WebSocket, queue: asyncio.Queue,
@@ -173,6 +194,11 @@ def create_app(pipeline_factory: Callable[[int], object],
         w.start()
         workers[ch] = w
 
+    # 每频道一个混音器，与翻译管线无关（纯静音直播也要有连续音轨——
+    # RTMP 编码器断音轨即断流）。构造在此、start/stop 在 lifespan（async）。
+    # 默认 sr=16000 与 TTSResult.sr 一致，tee 侧仍校验以防上游变更。
+    mixers: dict[int, AudioMixer] = {ch: AudioMixer() for ch in channels}
+
     # /events /speech 订阅队列。广播任务与所有订阅端点都跑在同一事件循环，
     # add/discard/put 全是循环内同步操作，无需 /out 那样的 call_soon_threadsafe 桥。
     events_subs: set[asyncio.Queue] = set()
@@ -205,6 +231,19 @@ def create_app(pipeline_factory: Callable[[int], object],
         except Exception:
             log.exception("tts tee: speech broadcast failed (segment=%d lang=%s)",
                           ev.segment_id, ev.lang)
+        # 混音器 splice 是第三个独立兜底半区：/stream.wav 音轨故障不拖累
+        # 嘴型/浏览器广播，反之亦然。sr 不匹配宁缺毋腐——错采样率的字节
+        # 直接进音轨是变速噪音，跳过并记日志（TTSResult.sr 契约 16k）。
+        try:
+            mixer = mixers[ch]
+            if r.sr != mixer.sr:
+                log.warning("tts tee: sr mismatch (tts=%d, mixer=%d), segment %d "
+                            "not spliced into audio track", r.sr, mixer.sr, ev.segment_id)
+            else:
+                mixer.splice(r.audio_pcm16, ev.segment_id)
+        except Exception:
+            log.exception("tts tee: mixer splice failed (segment=%d lang=%s)",
+                          ev.segment_id, ev.lang)
 
     async def _broadcast_events() -> None:
         # 管线 events() 的唯一消费者（单消费者契约），向所有 /events 订阅者
@@ -233,13 +272,19 @@ def create_app(pipeline_factory: Callable[[int], object],
     # wait_for 硬上限包裹 close()（其总时长不完全有界：whisper 线程池 drain）。
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        # 混音器最先启动（start 是 async 只能在这做；不依赖翻译管线——
+        # 静音音轨对 RTMP 同样是硬需求）。注意 TestClient 需 with 才进 lifespan。
+        for m in mixers.values():
+            await m.start()
         consumer: asyncio.Task | None = None
         if translation_pipeline is not None:
             try:
                 await translation_pipeline.start()
             except BaseException:
-                # startup 失败时 finally 不会跑（yield 未到）：worker 是
-                # create_app 时启动的，这里必须亲手停掉，不留孤儿线程
+                # startup 失败时 finally 不会跑（yield 未到）：worker/mixer 是
+                # 此前启动的，这里必须亲手停掉，不留孤儿线程/任务
+                for m in mixers.values():
+                    await m.stop()
                 for w in workers.values():
                     w.stop()
                 raise
@@ -259,11 +304,17 @@ def create_app(pipeline_factory: Callable[[int], object],
                         await asyncio.wait_for(consumer, 5)
                     except Exception:
                         log.exception("events broadcast task did not exit cleanly")
+            # 混音器停在广播任务回收之后：tee（跑在 consumer 里）已终结，
+            # 不会再有晚到的 TTSReady splice 打在已停的 mixer 上——先断
+            # 供给端、再停混音器（订阅者此刻才收 None 哨兵）。
+            for m in mixers.values():
+                await m.stop()
             for w in workers.values():
                 w.stop()
 
     app = FastAPI(lifespan=lifespan)
     app.state.workers = workers
+    app.state.mixers = mixers
     # 频道 0 的 worker 单独暴露，兼容既有测试/工具的 app.state.worker 访问习惯
     app.state.worker = workers.get(0)
 
@@ -517,5 +568,70 @@ def create_app(pipeline_factory: Callable[[int], object],
         subs.add(queue)
         await _ws_subscriber_loop(ws, queue, ws.send_bytes,
                                   lambda: subs.discard(queue), "speech")
+
+    @app.get("/stream.mjpeg")
+    async def stream_mjpeg(channel: int = Query(0)) -> StreamingResponse:
+        # ffmpeg 拉流用的视频源（M3a）：multipart/x-mixed-replace，每部分一张
+        # 渲染 JPEG。裸 JPEG 不带协议头——协议头版走 /out WS，此端点专为
+        # `ffmpeg -f mjpeg -i http://…` 这类标准 HTTP 消费方。
+        worker = workers.get(channel)
+        if worker is None:
+            raise HTTPException(status_code=404, detail=f"unknown channel: {channel}")
+
+        async def frames():
+            # 订阅在生成器首次迭代时才建立（而非请求处理器里）：客户端在
+            # 响应体开始前就断开时生成器根本不会启动，也就无需清理——
+            # 订阅的生存期严格等于生成器的生存期。断开/服务停止由
+            # StreamingResponse 取消本生成器：CancelledError 落在
+            # queue.get()，finally 保证退订（/out 僵尸订阅者的教训）。
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=4)
+
+            def on_frame(seq: int, ts_ms: int, jpeg: bytes) -> None:  # worker 线程 → 事件循环
+                def _put() -> None:
+                    if queue.full():
+                        queue.get_nowait()  # 订阅端 latest-wins 丢最旧，同 /out
+                    queue.put_nowait(jpeg)
+
+                loop.call_soon_threadsafe(_put)
+
+            unsubscribe = worker.subscribe(on_frame)
+            try:
+                while True:
+                    jpeg = await queue.get()
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n"
+                           b"Content-Length: " + str(len(jpeg)).encode("ascii")
+                           + b"\r\n\r\n" + jpeg + b"\r\n")
+            finally:
+                unsubscribe()
+
+        return StreamingResponse(
+            frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+    @app.get("/stream.wav")
+    async def stream_wav(channel: int = Query(0)) -> StreamingResponse:
+        # ffmpeg 拉流用的音频源（M3a）：44 字节无限流 WAV 头 + AudioMixer
+        # 实时 pcm16 块流（静音打底 + TTS 语音，见 audio_mixer.py）。
+        # None 哨兵 = mixer 已停（lifespan shutdown），正常终结响应。
+        mixer = mixers.get(channel)
+        if mixer is None:
+            raise HTTPException(status_code=404, detail=f"unknown channel: {channel}")
+
+        async def track():
+            # 订阅同样只活在生成器内（动机见 stream_mjpeg）；mixer 与本
+            # 生成器同一事件循环，subscribe/退订无需线程桥。
+            queue, unsubscribe = mixer.subscribe()
+            try:
+                yield _wav_stream_header(mixer.sr)
+                while True:
+                    chunk = await queue.get()
+                    if chunk is None:
+                        return  # mixer 停了：让响应正常收尾而非挂死
+                    yield chunk
+            finally:
+                unsubscribe()
+
+        return StreamingResponse(track(), media_type="audio/wav")
 
     return app

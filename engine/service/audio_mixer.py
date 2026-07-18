@@ -1,9 +1,14 @@
 """每信道实时连续音轨混音器（V2 M3a Task 1）。
 
 RTMP 推流需要不间断的音轨：本模块按实时节拍产出 pcm16 块流——
-空闲时是静音（全零），TTS 语音按 FIFO 追加在时间线尾部依次播出
-（语义对齐 SpeechSchedule：排队播放、不重叠）。消费方：/stream.wav
-HTTP 响应经 ``subscribe()`` 订阅。
+空闲时是静音（全零），TTS 语音按 FIFO 追加在时间线尾部依次播出。
+"对齐 SpeechSchedule" 仅限 FIFO 语义（排队播放、不重叠）；丢弃上限
+并不一致——本混音器按时长（默认 60s）、SpeechSchedule 按段数（16）、
+/speech 订阅队列按段数（8），积压时各自丢段（见 app.py A/V 契约，
+统一化留 M3b）。消费方：/stream.wav HTTP 响应经 ``subscribe()`` 订阅。
+
+生命周期一次性：start → stop 一个来回，stop 后再 start 是
+RuntimeError——重启 = 新建实例（lifespan 每次启动都新建 app）。
 
 线程模型：**全部方法只能在 asyncio 事件循环线程调用**（splice 由
 TTS 事件处理器调、subscribe 由 HTTP handler 调），因此无锁。
@@ -63,6 +68,7 @@ class AudioMixer:
 
         self._subs: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
+        self._started = False  # 一次性生命周期：start 过（含已 stop）即不可再 start
 
         self._chunks_emitted = 0
         self._spliced = 0
@@ -70,10 +76,19 @@ class AudioMixer:
 
     # ------------------------------------------------------------- lifecycle
 
+    @property
+    def sr(self) -> int:
+        """采样率（Hz）：/stream.wav 写 WAV 头、tee 校验 TTS 采样率都用它。"""
+        return self._sr
+
     async def start(self) -> None:
-        """启动常驻节拍任务；重复 start 视为调用方 bug。"""
-        if self._task is not None:
-            raise RuntimeError("AudioMixer already started")
+        """启动常驻节拍任务。一次性生命周期：重复 start 或 stop 后再
+        start 都是 RuntimeError（订阅者已收 None 哨兵，重启只会造出一条
+        没人听的音轨——重启 = 新建实例）。"""
+        if self._started:
+            raise RuntimeError("AudioMixer lifecycle is one-shot: already started "
+                               "(restart = create a new instance)")
+        self._started = True
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:

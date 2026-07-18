@@ -129,6 +129,62 @@ async def test_paced_loop_realtime_rate_and_sentinel_on_stop():
 
 
 @pytest.mark.anyio
+async def test_running_loop_delivers_spliced_pcm():
+    """节拍循环运行中 splice：订阅者收到的字节流里完整连续地出现语音段
+    （语音从块边界开始、跨块无缝拼接），内容级确定性。"""
+    m = AudioMixer(sr=1000, chunk_ms=10)  # 每块 20 字节
+    queue, unsubscribe = m.subscribe()
+    await m.start()
+    data = pcm(50, start=20000)  # 100 字节 = 恰 5 块
+    got = b""
+    try:
+        m.splice(data, segment_id=1)
+        for _ in range(60):
+            item = await asyncio.wait_for(queue.get(), 1.0)
+            got += item
+            if data in got:
+                break
+    finally:
+        await m.stop()
+    unsubscribe()
+    assert data in got
+
+
+@pytest.mark.anyio
+async def test_unsubscribe_stops_delivery():
+    m = AudioMixer(sr=1000, chunk_ms=10)
+    queue, unsubscribe = m.subscribe()
+    await m.start()
+    try:
+        await asyncio.wait_for(queue.get(), 1.0)  # 投递已开始
+        unsubscribe()
+        while not queue.empty():  # 清掉退订前已入队的块
+            queue.get_nowait()
+        base = m.stats()["chunks_emitted"]
+        deadline = time.monotonic() + 1.5
+        while m.stats()["chunks_emitted"] < base + 3 and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
+        assert m.stats()["chunks_emitted"] >= base + 3  # 节拍仍在跑
+        assert queue.empty()  # 但退订后不再投递
+    finally:
+        await m.stop()
+    assert queue.empty()  # stop 的哨兵也不投给已退订队列
+
+
+@pytest.mark.anyio
+async def test_lifecycle_is_one_shot():
+    """运行中重复 start 与 stop 后再 start 都必须 RuntimeError：
+    一次性生命周期，重启 = 新建实例。"""
+    m = AudioMixer(sr=1000, chunk_ms=10)
+    await m.start()
+    with pytest.raises(RuntimeError):
+        await m.start()
+    await m.stop()
+    with pytest.raises(RuntimeError):
+        await m.start()
+
+
+@pytest.mark.anyio
 async def test_slow_consumer_does_not_block_emission():
     m = AudioMixer(sr=1000, chunk_ms=10)
     queue, unsubscribe = m.subscribe()  # 从不消费 → 队列打满
