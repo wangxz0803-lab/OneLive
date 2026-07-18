@@ -62,7 +62,10 @@ class TTSResult:
     synth_ms: int  # 整个 synthesize 耗时（含网络 + 转码 + 曲线提取）
 
 
-def _resolve_ffmpeg(ffmpeg_path: str | None) -> str:
+def resolve_ffmpeg(ffmpeg_path: str | None = None) -> str:
+    """ffmpeg 路径解析：显式参数 > ONELIVE_FFMPEG > PATH > winget 默认全路径。
+    公有：streamer.resolve_ffmpeg 复用本实现（M3b 提升，原 _resolve_ffmpeg），
+    两处共用一条解析链避免两份默认路径漂移。"""
     return (
         ffmpeg_path
         or os.environ.get("ONELIVE_FFMPEG")
@@ -119,7 +122,7 @@ async def _synthesize_inner(
     text: str, voice: str, ffmpeg_path: str | None, t0: float
 ) -> TTSResult:
     mp3 = await _collect_mp3(text, voice)
-    pcm = await _mp3_to_pcm16(mp3, _resolve_ffmpeg(ffmpeg_path))
+    pcm = await _mp3_to_pcm16(mp3, resolve_ffmpeg(ffmpeg_path))
 
     try:
         audio_f32 = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0

@@ -69,6 +69,7 @@ class AudioMixer:
         self._subs: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
         self._started = False  # 一次性生命周期：start 过（含已 stop）即不可再 start
+        self._stopped = False  # stop() 已调用：晚到的 subscribe 直接给哨兵，不挂死
 
         self._chunks_emitted = 0
         self._spliced = 0
@@ -93,6 +94,7 @@ class AudioMixer:
 
     async def stop(self) -> None:
         """取消节拍任务并等它退出；订阅者由任务 finally 发 None 哨兵。"""
+        self._stopped = True  # 置于 early-return 前：此后 subscribe 一律给哨兵
         if self._task is None:
             return
         task, self._task = self._task, None
@@ -137,8 +139,20 @@ class AudioMixer:
 
         队列有界（16 块）满则丢最旧，慢消费者绝不拖慢节拍任务。
         退订回调全同步零 await，放 finally 里最先执行（同 app.py 惯例）。
+
+        stop() 之后订阅：节拍任务已终结、不会再 fanout，若给空队列则
+        /stream.wav 的 ``await queue.get()`` 永久挂死（shutdown 竞态：晚到
+        的拉流请求）。改为预置 None 哨兵——消费者立即收到正常终结信号，
+        与常规 shutdown 路径（任务 finally fanout None）行为一致。
         """
         queue: asyncio.Queue = asyncio.Queue(maxsize=_SUB_QUEUE_MAX)
+        if self._stopped:
+            queue.put_nowait(None)  # 晚到订阅：立即终结而非挂死
+
+            def unsubscribe() -> None:  # 从未入 _subs，退订是 no-op
+                pass
+
+            return queue, unsubscribe
         self._subs.add(queue)
 
         def unsubscribe() -> None:

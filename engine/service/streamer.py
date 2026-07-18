@@ -60,9 +60,9 @@ _TAIL_IN_STATUS = 5  # status() 里露出的尾行数
 
 def resolve_ffmpeg(path: str | None = None) -> str:
     """ffmpeg 路径解析：显式参数 > ONELIVE_FFMPEG > PATH > winget 默认全路径。
-    与 TTS 侧同一条解析链（translate.tts），复用其实现避免两份默认路径漂移。"""
-    from translate.tts import _resolve_ffmpeg
-    return _resolve_ffmpeg(path)
+    与 TTS 侧同一条解析链（translate.tts），复用其公有实现避免两份默认路径漂移。"""
+    from translate.tts import resolve_ffmpeg as _tts_resolve_ffmpeg
+    return _tts_resolve_ffmpeg(path)
 
 
 class _ChannelState:
