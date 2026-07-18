@@ -42,7 +42,7 @@ serve_echo.py 只喂视频帧、不带翻译/推流/uplink，console 的字幕�
 [e2e] PASS — 5/5 assertions
 ```
 
-退出码 0；端口 8920 收尾后确认 FREE；启动器进程 taskkill 收割（退出码 1 = 被强杀，预期）。
+退出码 0；启动器进程 taskkill /F /T 收割整棵进程树（退出码 1 = 被强杀，预期），端口 8920 随进程树终止归还（脚本未额外主动复探端口）。
 
 **断言 5 选型**：走"假 streams 块 → running 徽标"分支（非"无 streams → 推流未启用"），
 正向验证徽标 live 态 + HUD Streaming 组 running=yes 渲染。

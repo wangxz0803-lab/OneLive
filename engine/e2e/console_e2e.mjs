@@ -54,6 +54,8 @@ svc.stdout.pipe(svcLog);
 svc.stderr.pipe(svcLog);
 let svcExited = false;
 svc.on("exit", (code) => { svcExited = true; console.error(`[e2e] launcher exited code=${code}`); });
+// spawn 失败（如 E2E_PY 路径错→ENOENT）走 'error' 非 'exit'；无监听会抛未捕获异常绕过 try/finally
+svc.on("error", (e) => { svcExited = true; console.error(`[e2e] launcher spawn error: ${e.message}`); });
 
 async function killLauncher() {
   if (svcExited || svc.pid == null) return;
