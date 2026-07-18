@@ -64,6 +64,7 @@ _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
 _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 
 from service.audio_mixer import AudioMixer
+from service.console_api import UplinkStore
 from service.endpoints_stream import register_stream_endpoints
 from service.endpoints_translate import register_translate_endpoints
 from service.protocol import FrameHeader, pack_frame, unpack_frame
@@ -214,9 +215,14 @@ def create_app(pipeline_factory: Callable[[int], object],
             for w in workers.values():
                 w.stop()
 
+    # 上行统计（M3b）：capture 端每 2s 上报的 fps_sent/skipped/rtt_ms 落这里，
+    # /status 取快照。now 用 time.monotonic()（/ingest 记录、/status 快照一致）。
+    uplink = UplinkStore()
+
     app = FastAPI(lifespan=lifespan)
     app.state.workers = workers
     app.state.mixers = mixers
+    app.state.uplink = uplink
     # 频道 0 的 worker 单独暴露，兼容既有测试/工具的 app.state.worker 访问习惯
     app.state.worker = workers.get(0)
 
@@ -234,7 +240,10 @@ def create_app(pipeline_factory: Callable[[int], object],
         # （无脸帧也会刷新；infer 抛异常则不更新）；errors 聚合解码失败 +
         # 管线异常 + JPEG 编码失败 + 订阅者回调异常四类。
         body = {"engine": "ok",
-                "channels": {str(ch): w.stats() for ch, w in workers.items()}}
+                "channels": {str(ch): w.stats() for ch, w in workers.items()},
+                # 上行 HUD（M3b）：始终在场——无上报时为空 dict。now 与 /ingest
+                # 记录同源（monotonic），age/stale 差值口径一致。
+                "uplink": uplink.snapshot(time.monotonic())}
         if 0 in workers:  # 顶层 "channel" 别名 = 频道 0，兼容既有测试/工具
             body["channel"] = body["channels"]["0"]
         if translation_pipeline is not None:  # 没配翻译时键整体不存在
@@ -342,9 +351,26 @@ def create_app(pipeline_factory: Callable[[int], object],
                         log.warning("ingest: bad control JSON ignored: %s", e)
                         continue
                     if isinstance(ctrl, dict) and ctrl.get("type") == "ping":
-                        await ws.send_text(json.dumps({"type": "pong"}))
+                        # RTT 探测：带 t 就原样回显（capture 端 rtt = now - t）；
+                        # 不带 t 走原始纯 pong（既有 ping→pong 契约不变）。
+                        pong = {"type": "pong"}
+                        if "t" in ctrl:
+                            pong["t"] = ctrl["t"]
+                        await ws.send_text(json.dumps(pong))
                     elif isinstance(ctrl, dict) and ctrl.get("type") == "casting":
                         await _handle_casting(ws, ctrl, casting_tasks)
+                    elif isinstance(ctrl, dict) and ctrl.get("type") == "uplink_stats":
+                        # 上行统计上报（M3b）：channel 必须是真 int（复用 casting
+                        # 的守卫——不可哈希类型进 dict 键会崩接收循环；bool 也拒）。
+                        # 字段缺失只记 None，坏帧只记日志忽略，连接不死。
+                        ch = ctrl.get("channel")
+                        if not isinstance(ch, int) or isinstance(ch, bool):
+                            log.warning("ingest: uplink_stats invalid channel %r ignored", ch)
+                        else:
+                            uplink.record(ch, {"fps_sent": ctrl.get("fps_sent"),
+                                               "skipped": ctrl.get("skipped"),
+                                               "rtt_ms": ctrl.get("rtt_ms")},
+                                          time.monotonic())
                     else:
                         log.warning("ingest: unknown control message ignored: %r", ctrl)
         except WebSocketDisconnect:
