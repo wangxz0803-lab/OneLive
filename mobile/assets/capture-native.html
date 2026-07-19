@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLive capture</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font-family: Consolas, monospace;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  video { background: #000; max-width: 100%; width: 480px; border: 1px solid #333; }
+  button { font-family: inherit; font-size: 16px; padding: 8px 24px; border: 1px solid #555;
+           background: #222; color: #ddd; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #controls { display: flex; gap: 12px; }
+  #status { font-size: 14px; color: #8f8; }
+  #hud { font-size: 13px; color: #6cf; }
+  #conn { font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<h1 id="title">OneLive capture</h1>
+<video id="v" autoplay playsinline muted></video>
+<div id="controls">
+  <button id="start">Start</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="audio">Audio</button>
+</div>
+<div id="status">idle</div>
+<div id="hud">上行: - fps · 链路RTT(ws) - ms</div>
+<div id="astatus">audio: off</div>
+<div id="conn">-</div>
+<script>
+// 摄像头采集页：getUserMedia → canvas（长边 ≤640）→ JPEG → 20 字节协议头 + payload
+// → ws(s)://host/ingest。协议头与 service/protocol.py 的 <HBBQQ (LE) 严格一致。
+// 注意：getUserMedia 需要安全上下文——非 localhost 访问必须走 HTTPS（run_local --https）。
+const video = document.getElementById("v");
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const statusEl = document.getElementById("status");
+const hudEl = document.getElementById("hud");
+const connEl = document.getElementById("conn");
+
+// 配置来源（优先级）：原生注入的 window.__ONELIVE ＞ URL 参数 ＞ location 默认。
+// 注入形状：{host:"ip:port", scheme:"ws", channel:0, fps:10, autostart:true}
+const params = new URLSearchParams(location.search);
+const cfg = (typeof window !== "undefined" && window.__ONELIVE) || {};
+const fps = Math.max(1, Number(cfg.fps != null ? cfg.fps : params.get("fps")) || 10);
+const channel = (Number(cfg.channel != null ? cfg.channel : params.get("channel")) || 0) & 0xff;
+// WS 目标：注入 host/scheme 优先，否则跟随页面 location（Safari 兜底路径）。
+const WS_SCHEME = cfg.scheme || (location.protocol === "https:" ? "wss" : "ws");
+const WS_HOST = cfg.host || location.host;
+const AUTOSTART = cfg.autostart === true;
+document.getElementById("title").textContent =
+  `OneLive capture — channel ${channel} @ ${fps}fps`;
+
+const HEADER_LEN = 20;
+const MAX_SIDE = 640;            // 发送前长边压到 640，保持宽高比
+const MAX_BUFFERED = 1024 * 1024; // ws.bufferedAmount 超 1MB 就跳帧，避免无界堆积
+
+const canvas = document.createElement("canvas"); // 仅作缩放/编码用，不上屏
+const ctx = canvas.getContext("2d");
+
+let running = false;   // Start~Stop 之间为 true
+let ws = null;
+let stream = null;
+let seq = 0;           // 只随成功发送递增；重连不清零（服务端按 seq 单调判活）
+let sent = 0;
+let skipped = 0;       // ws 未连上 / bufferedAmount 过高而跳过的节拍数
+let busy = false;      // toBlob 异步；上一帧尚未编码完则本节拍跳过，不并发编码
+let t0 = 0;            // 绝对时钟起点（performance.now()）
+let n = 0;             // 自 t0 起的节拍序号；下一拍定在 t0 + n*1000/fps，误差不累积
+
+// 上行统计上报（M3b）：每 STATS_INTERVAL_S 秒上报一次窗口内 fps_sent/skipped
+// + 最近一次 RTT（ping/pong 往返测得）。窗口用累计计数的差值算，Start 时归零。
+const STATS_INTERVAL_S = 2;
+let lastRtt = null;    // 最近一次 pong 回显测得的 RTT(ms)；无则 null
+let winBaseSent = 0, winBaseSkipped = 0;  // 上一窗口边界的累计基线
+let lastFps = 0;       // 最近一窗上报的 fps_sent（供 HUD 显示）
+let statsTimer = null; // setInterval 句柄
+
+function setStatus() {
+  const c = ws == null ? "no ws"
+    : ["connecting", "connected", "closing", "closed"][ws.readyState];
+  statusEl.textContent = running
+    ? `capturing | sent: ${sent} | skipped: ${skipped} | target: ${fps}fps | seq: ${seq}`
+    : "idle";
+  connEl.textContent = `ws: ${c} | ${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ingest`;
+  // 连接态上桥给原生外壳（readyState 词：connecting/connected/closing/closed/no ws）。
+  window.ReactNativeWebView?.postMessage(JSON.stringify({ type: "state", ws: c }));
+}
+
+function updateHud() {
+  // 如实标注：链路RTT(ws) 是 WS 传输层往返，非蜂窝上行 RTT（loopback ~0ms）
+  hudEl.textContent = running
+    ? `上行: ${lastFps.toFixed(1)} fps · 链路RTT(ws) ${lastRtt == null ? "-" : Math.round(lastRtt)} ms`
+    : "上行: - fps · 链路RTT(ws) - ms";
+  // HUD 上桥给原生外壳（fps=最近一窗 fps_sent，rtt=WS 链路 RTT，running=采集中）。
+  window.ReactNativeWebView?.postMessage(JSON.stringify(
+    { type: "hud", fps: lastFps, rtt: lastRtt, running }));
+}
+
+// 每 STATS_INTERVAL_S 秒：发一个带 t 的 ping 探 RTT，并把上一窗口的
+// fps_sent/skipped + 最近 RTT 作为 uplink_stats 上报（走 /ingest 控制帧）。
+function reportUplinkStats() {
+  const winSent = sent - winBaseSent;
+  const winSkipped = skipped - winBaseSkipped;
+  winBaseSent = sent;
+  winBaseSkipped = skipped;
+  lastFps = winSent / STATS_INTERVAL_S;
+  if (running && ws && ws.readyState === WebSocket.OPEN) {
+    // t 用 performance.now()（与 pong 收据侧同源单调钟）；服务端只原样回显 t，
+    // 无需理解其含义。rtt_ms 是 ws 传输层 RTT，不是蜂窝/RAN 上行 RTT。
+    ws.send(JSON.stringify({ type: "ping", t: performance.now() }));  // RTT 探测
+    ws.send(JSON.stringify({ type: "uplink_stats", channel,
+      fps_sent: lastFps, skipped: winSkipped, rtt_ms: lastRtt }));
+  }
+  updateHud();
+}
+
+function connect() {
+  if (!running) return;
+  // WS 目标由注入配置（或 location 兜底）决定，见顶部 WS_SCHEME/WS_HOST。
+  ws = new WebSocket(`${WS_SCHEME}://${WS_HOST}/ingest`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = setStatus;
+  ws.onmessage = (e) => {        // /ingest 只回文本控制帧（pong / casting_ack）
+    if (typeof e.data !== "string") return;
+    let m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m && m.type === "pong" && typeof m.t === "number") {
+      // WS 传输层往返（ping t 与 pong 回显同源，都用 performance.now() 单调钟——
+      // Date.now() 会被 NTP 校时跳变搞成负/错值）。这是 ws 链路 RTT，非蜂窝 RTT。
+      lastRtt = performance.now() - m.t;
+    }
+  };
+  ws.onclose = () => {           // 断线 1s 后重连；seq 继续递增，不重置
+    ws = null;
+    if (running) setTimeout(connect, 1000);
+    setStatus();
+  };
+  ws.onerror = () => { if (ws) ws.close(); };
+  setStatus();
+}
+
+async function captureAndSend() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;        // 视频尚未出帧
+  const scale = Math.min(1, MAX_SIDE / Math.max(vw, vh));
+  const w = Math.max(1, Math.round(vw * scale));
+  const h = Math.max(1, Math.round(vh * scale));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  ctx.drawImage(video, 0, 0, w, h);
+  const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
+  if (!blob || !running || !ws || ws.readyState !== WebSocket.OPEN) { skipped += 1; return; }
+  const payload = new Uint8Array(await blob.arrayBuffer());
+  // 20 字节头（LE，对齐 protocol.py <HBBQQ）：
+  //   magic u16 @0 = 0x4F4C | version u8 @2 = 1 | channel u8 @3 | seq u64 @4 | ts_ms u64 @12
+  const buf = new ArrayBuffer(HEADER_LEN + payload.length);
+  const dv = new DataView(buf);
+  dv.setUint16(0, 0x4F4C, true);
+  dv.setUint8(2, 1);
+  dv.setUint8(3, channel);
+  dv.setBigUint64(4, BigInt(seq), true);
+  dv.setBigUint64(12, BigInt(Date.now()), true);
+  new Uint8Array(buf, HEADER_LEN).set(payload);
+  ws.send(buf);
+  seq += 1;
+  sent += 1;
+}
+
+function tick() {
+  if (!running) return;
+  n += 1;
+  const next = t0 + n * 1000 / fps;  // 绝对时钟定拍：单拍超时不会拖慢后续节奏
+  (async () => {
+    if (busy) { skipped += 1; }      // 上一帧还在编码，跳过本拍
+    else if (!ws || ws.readyState !== WebSocket.OPEN) { skipped += 1; }
+    else if (ws.bufferedAmount > MAX_BUFFERED) { skipped += 1; }  // 出口拥塞，跳帧保鲜
+    else {
+      busy = true;
+      try { await captureAndSend(); }
+      catch (err) { connEl.textContent = `frame error: ${err}`; }
+      finally { busy = false; }
+    }
+    setStatus();
+  })();
+  setTimeout(tick, Math.max(0, next - performance.now()));
+}
+
+startBtn.onclick = async () => {   // iOS 要求 getUserMedia 由用户手势触发
+  startBtn.disabled = true;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(
+      { video: { facingMode: "user" }, audio: false });
+  } catch (err) {
+    statusEl.textContent = `camera error: ${err}`;
+    startBtn.disabled = false;
+    return;
+  }
+  // 摄像头被系统收回/设备拔出时 track 会 ended（我们主动 stop() 不触发此事件）：
+  // 走统一停止路径释放资源，并明示原因，不让页面停在 capturing 却悄悄断流
+  const track = stream.getVideoTracks()[0];
+  if (track) track.onended = () => {
+    doStop();
+    statusEl.textContent = "camera lost — stopped";
+  };
+  video.srcObject = stream;
+  try { await video.play(); } catch (_) { /* autoplay+muted 下一般不会拒 */ }
+  running = true;
+  sent = 0;
+  skipped = 0;
+  t0 = performance.now();
+  n = 0;
+  // 上行统计基线归零 + 起周期上报（RTT 每次探测刷新，故先清 lastRtt）
+  winBaseSent = 0;
+  winBaseSkipped = 0;
+  lastFps = 0;
+  lastRtt = null;
+  statsTimer = setInterval(reportUplinkStats, STATS_INTERVAL_S * 1000);
+  updateHud();
+  stopBtn.disabled = false;
+  connect();
+  tick();
+};
+
+function doStop() {
+  running = false;
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }  // 停周期上报
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }  // 摘掉 onclose 防止重连
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }  // 释放摄像头
+  video.srcObject = null;
+  setStatus();
+  updateHud();
+}
+stopBtn.onclick = doStop;
+
+// 原生驱动：暴露 __start/__stop 供 RN injectJavaScript 调用（AppState 生命周期）；
+// cfg.autostart 时 load 自触发开播（WKWebView 相机取帧需真机安全上下文验证）。
+window.__start = () => { if (!running) startBtn.onclick(); };
+window.__stop = () => { if (running) doStop(); };
+if (AUTOSTART) window.__start();
+
+// 页面转后台时 setTimeout 被浏览器节流；回前台后重置节拍基线（t0/n），
+// 否则绝对时钟定拍会把积欠的节拍一次性补发成突发帧
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && running) {
+    t0 = performance.now();
+    n = 0;
+  }
+});
+setStatus();
+
+// ---- 音频上行（/audio，独立于视频 Start 的可选开关）----------------------
+// 二进制帧格式：[u32 LE 采样率][pcm16 s16le mono]，约每 250ms 发一块。
+// AudioContext 尽量开 16kHz（Chrome/Safari 支持构造参数；不支持就用默认率）；
+// 若实际采样率非 16k 不在前端重采样——帧头带实际值，服务端转写器只要求
+// 会话内采样率恒定（AudioContext 一经创建采样率不变，天然满足）。
+const audioBtn = document.getElementById("audio");
+const aStatusEl = document.getElementById("astatus");
+const AUDIO_CHUNK_S = 0.25;   // 累积 ~250ms 再发，避免高频小包
+let audioRunning = false;
+let audioWs = null, audioStream = null, audioCtx = null, audioSrc = null, audioProc = null;
+let audioChunks = 0;          // 已发送块数
+let pcmParts = [], pcmSamples = 0;
+
+function setAudioStatus() {
+  const c = audioWs == null ? "no ws"
+    : ["connecting", "connected", "closing", "closed"][audioWs.readyState];
+  aStatusEl.textContent = audioRunning
+    ? `audio: on @ ${audioCtx ? audioCtx.sampleRate : "?"}Hz | chunks: ${audioChunks} | ws: ${c}`
+    : "audio: off";
+}
+
+function connectAudio() {   // 断线 1s 重连，与视频 /ingest 同策略
+  if (!audioRunning) return;
+  audioWs = new WebSocket(`${WS_SCHEME}://${WS_HOST}/audio`);
+  audioWs.binaryType = "arraybuffer";
+  audioWs.onopen = setAudioStatus;
+  audioWs.onclose = (e) => {
+    audioWs = null;
+    if (e.code === 4404 || e.code === 4409) {  // 应用层致命码：停止重连并明示
+      stopAudio();
+      aStatusEl.textContent = e.code === 4404
+        ? "audio: server has no translation pipeline (4404)"
+        : "audio: 采样率变化，请重新开启音频 (4409)";  // 服务端会话内要求恒定采样率
+      return;
+    }
+    if (audioRunning) setTimeout(connectAudio, 1000);
+    setAudioStatus();
+  };
+  audioWs.onerror = () => { if (audioWs) audioWs.close(); };
+  setAudioStatus();
+}
+
+function flushAudio() {
+  const parts = pcmParts, total = pcmSamples;
+  pcmParts = []; pcmSamples = 0;
+  if (!total || !audioCtx) return;
+  if (!audioWs || audioWs.readyState !== WebSocket.OPEN) return; // 掉线期丢弃，不积压
+  const buf = new ArrayBuffer(4 + total * 2);
+  new DataView(buf).setUint32(0, audioCtx.sampleRate, true);
+  let off = 4;
+  for (const p of parts) { new Int16Array(buf, off, p.length).set(p); off += p.byteLength; }
+  audioWs.send(buf);
+  audioChunks += 1;
+  setAudioStatus();
+}
+
+async function startAudio() {
+  audioBtn.disabled = true;
+  try {
+    // 三件套显式声明（不赌浏览器默认）：回声消除 + 降噪 + 自动增益；
+    // 实际底噪表现的标定移交 Task 7 E2E 真机验证
+    audioStream = await navigator.mediaDevices.getUserMedia(
+      { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false });
+  } catch (err) {
+    aStatusEl.textContent = `mic error: ${err}`;
+    audioBtn.disabled = false;
+    return;
+  }
+  try { audioCtx = new AudioContext({ sampleRate: 16000 }); }
+  catch (_) { audioCtx = new AudioContext(); }  // 不支持指定采样率就用默认，帧头带实际值
+  audioSrc = audioCtx.createMediaStreamSource(audioStream);
+  // ScriptProcessorNode 已 deprecated 但兼容面最广；4096 样本/回调（16k 下 ~256ms）
+  audioProc = audioCtx.createScriptProcessor(4096, 1, 1);
+  audioProc.onaudioprocess = (e) => {
+    if (!audioRunning) return;
+    const f32 = e.inputBuffer.getChannelData(0);
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    pcmParts.push(i16);
+    pcmSamples += i16.length;
+    if (audioCtx && pcmSamples >= audioCtx.sampleRate * AUDIO_CHUNK_S) flushAudio();
+  };
+  audioSrc.connect(audioProc);
+  // 不接 destination 部分浏览器不触发回调；输出缓冲保持零值，不会回放麦克风
+  audioProc.connect(audioCtx.destination);
+  const track = audioStream.getAudioTracks()[0];
+  if (track) track.onended = () => {   // 设备被系统收回：走统一停止路径并明示
+    stopAudio();
+    aStatusEl.textContent = "mic lost — audio stopped";
+  };
+  audioRunning = true;
+  audioChunks = 0;
+  audioBtn.textContent = "Audio off";
+  audioBtn.disabled = false;
+  connectAudio();
+}
+
+function stopAudio() {
+  audioRunning = false;
+  if (audioProc) { audioProc.onaudioprocess = null; audioProc.disconnect(); audioProc = null; }
+  if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (audioStream) { audioStream.getTracks().forEach(t => t.stop()); audioStream = null; }
+  if (audioWs) { audioWs.onclose = null; audioWs.close(); audioWs = null; }  // 摘掉 onclose 防重连
+  pcmParts = []; pcmSamples = 0;
+  audioBtn.textContent = "Audio";
+  audioBtn.disabled = false;
+  setAudioStatus();
+}
+
+audioBtn.onclick = () => { audioRunning ? stopAudio() : startAudio(); };
+setAudioStatus();
+</script>
+</body>
+</html>
