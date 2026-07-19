@@ -100,6 +100,68 @@ spec 原选 WebRTC（`react-native-webrtc` + `getStats()`）。M4 改为复用�
 
 ---
 
+## 全量回归
+
+Task 11 逐字实测（本轮），四项全绿。
+
+### 1. `cd mobile && npm test` → 33 passed
+
+```
+> mobile@1.0.0 test
+> jest
+
+PASS src/net/endpoint.test.ts
+PASS src/net/uplinkStats.test.ts
+PASS src/storage/settings.test.ts
+PASS src/protocol/frame.test.ts
+PASS src/net/backoff.test.ts
+PASS src/net/uplinkClient.test.ts
+
+Test Suites: 6 passed, 6 total
+Tests:       33 passed, 33 total
+Snapshots:   0 total
+Time:        2.601 s
+Ran all test suites.
+```
+
+### 2. `cd mobile && npm run typecheck` → exit 0
+
+```
+> mobile@1.0.0 typecheck
+> tsc --noEmit
+
+EXIT:0
+```
+
+### 3. 引擎回归（未改，全绿）→ 171 passed
+
+`cd engine` 后
+`PYTHONPATH=. <m0-venv-python> -m pytest -q`（模型加载慢，约 2 分钟）。tail 逐字：
+
+```
+........................................................................ [ 42%]
+........................................................................ [ 84%]
+...........................                                              [100%]
+============================== warnings summary ===============================
+..\..\v2-m0-spike\engine\.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\76475\Documents\OneLive\.worktrees\v2-m0-spike\engine\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_asr.py::test_two_sentences_two_segments
+  ...UserWarning: `huggingface_hub` cache-system uses symlinks by default ... (Windows symlink 警告，无害)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+171 passed, 2 warnings in 136.55s (0:02:16)
+```
+
+（2 条 warning 均为环境无害提示：Starlette/httpx 弃用 + Windows 符号链接缓存降级。）
+
+### 4. Node 环回 E2E（另起真引擎 --port 8930）→ PASS / exit 0
+
+见上方「环回 E2E 证据」的逐字 JSON。本轮 `EXIT:0`，引擎随后已停（`/status` 返回 000）。
+
+---
+
 ## Backlog（未来升级项）
 
 - **vision-camera 原生取帧**：`react-native-vision-camera` frame processor 替代 WebView
