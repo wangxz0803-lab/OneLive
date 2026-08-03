@@ -63,6 +63,7 @@ from fastapi.responses import HTMLResponse
 _VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
 _CAPTURE_HTML = Path(__file__).resolve().parent / "capture.html"
 _CONSOLE_HTML = Path(__file__).resolve().parent / "console.html"
+_STUDIO_HTML = Path(__file__).resolve().parent / "studio.html"
 
 from service.audio_mixer import AudioMixer
 from service.console_api import UplinkStore
@@ -244,6 +245,13 @@ def create_app(pipeline_factory: Callable[[int], object],
     async def console() -> HTMLResponse:
         # 导播控制台（M3b Task 3）：单文件自包含页面，无构建步骤。
         return HTMLResponse(_CONSOLE_HTML.read_text(encoding="utf-8"))
+
+    @app.get("/studio")
+    async def studio() -> HTMLResponse:
+        # Studio 展示控制台：showcase 视觉语言 + console 同款实时接线
+        # （/out /events /status /ingest /avatars 全真实数据；无真实数据源的
+        # 模块页面内诚实标注「演示数据」）。单文件自包含，无构建步骤。
+        return HTMLResponse(_STUDIO_HTML.read_text(encoding="utf-8"))
 
     @app.get("/avatars")
     async def avatars() -> dict:
