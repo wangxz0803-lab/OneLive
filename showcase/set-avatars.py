@@ -48,7 +48,7 @@ def load_any(stem):
     return None, None
 
 
-def to_cutout(img, target=340):
+def to_cutout(img, target=480):
     """有 alpha 就用；纯绿背景自动抠；否则原样保留。返回 png data URI。"""
     if img.ndim == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
