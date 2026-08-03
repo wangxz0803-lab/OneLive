@@ -11,3 +11,5 @@ artifacts/playwright-results/
 coverage/
 certs/
 .worktrees/
+showcase/avatars/*
+!showcase/avatars/.gitkeep
