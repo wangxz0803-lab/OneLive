@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLive — 多语言数字人直播 · 演示台</title>
+<style>
+:root{
+  --bg0:#04070F; --bg1:#081027; --bg2:#0B1732;
+  --glass:rgba(13,26,54,.72); --glass2:rgba(10,20,42,.86);
+  --edge:rgba(90,170,255,.20); --edge2:rgba(90,170,255,.34);
+  --cyan:#4DA9FF; --cyan2:#28E0F0; --violet:#8B7CFF;
+  --live:#FF3B47; --ok:#3DDC97; --warn:#FFC46B; --bad:#FF7A5C;
+  --fg:#EAF2FF; --dim:#93AACB; --faint:#5E749A;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",monospace;
+  --sans:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:
+    radial-gradient(1200px 620px at 62% 4%, rgba(60,130,255,.16), transparent 62%),
+    radial-gradient(900px 520px at 10% 92%, rgba(120,90,255,.13), transparent 60%),
+    linear-gradient(170deg,var(--bg0),var(--bg1) 46%,var(--bg2));
+  min-height:100vh;color:var(--fg);font-family:var(--sans);font-size:14px;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+body::before{content:"";position:fixed;inset:auto 0 0 0;height:36vh;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(77,169,255,.09) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(77,169,255,.09) 1px,transparent 1px);
+  background-size:64px 44px;-webkit-mask-image:linear-gradient(transparent,rgba(0,0,0,.85));
+  mask-image:linear-gradient(transparent,rgba(0,0,0,.85));
+  transform:perspective(420px) rotateX(64deg);transform-origin:bottom;opacity:.45}
+.shell{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:22px 26px 30px}
+
+/* 顶部 */
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:18px;flex-wrap:wrap}
+.title{font-size:clamp(30px,3.6vw,46px);font-weight:800;line-height:1;letter-spacing:-.028em;margin:0;
+  background:linear-gradient(96deg,#FFFFFF 24%,var(--cyan) 60%,var(--violet));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.subtitle{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:14.5px;color:var(--dim)}
+.subtitle .d{width:8px;height:8px;border-radius:50%;background:var(--faint);transition:.3s}
+body.live .subtitle .d{background:var(--live);box-shadow:0 0 12px var(--live)}
+.brand{font-size:24px;font-weight:800;letter-spacing:-.02em;text-align:right;
+  background:linear-gradient(100deg,#fff,var(--cyan2),var(--violet));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{display:inline-block;margin-top:5px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  color:var(--faint);border:1px solid var(--edge);border-radius:3px;padding:2px 7px}
+
+.main{display:grid;grid-template-columns:270px minmax(0,1fr);gap:18px;align-items:start}
+@media(min-width:1420px){.main{grid-template-columns:270px minmax(0,1fr) 208px}}
+@media(max-width:1000px){.main{grid-template-columns:1fr}}
+
+/* 手机 */
+.phone{background:linear-gradient(168deg,#0F1B36,#070E20);border:1px solid var(--edge2);
+  border-radius:28px;padding:8px;box-shadow:0 20px 54px rgba(0,0,0,.6),0 0 40px rgba(77,169,255,.16)}
+.phone-in{background:#050A16;border-radius:21px;overflow:hidden;position:relative}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:88px;height:17px;
+  background:#050A16;border-radius:0 0 12px 12px;z-index:5}
+.pbar{display:flex;justify-content:space-between;align-items:center;padding:6px 14px 4px;
+  font-family:var(--mono);font-size:10px;position:relative;z-index:4}
+.pstage{position:relative;aspect-ratio:9/12.4;overflow:hidden;background:#0A1122}
+.pstage img,.pstage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 16%}
+.pov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,8,18,.72);
+  z-index:3;transition:opacity .4s;font-size:12px;color:var(--dim);text-align:center;padding:16px}
+body.live .pov{opacity:0;pointer-events:none}
+.plive{position:absolute;top:8px;left:10px;z-index:4;display:flex;gap:6px;align-items:center;
+  opacity:0;transition:opacity .35s}
+body.live .plive{opacity:1}
+.badge-live{display:inline-flex;align-items:center;gap:4px;background:var(--live);color:#fff;
+  font-size:9px;font-weight:700;letter-spacing:.09em;padding:2.5px 6px;border-radius:3px;
+  box-shadow:0 0 14px rgba(255,59,71,.55)}
+.badge-live i{width:4px;height:4px;border-radius:50%;background:#fff;display:block}
+.ptime{font-family:var(--mono);font-size:10px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+.pcards{padding:10px 11px 5px;display:flex;flex-direction:column;gap:7px}
+.pcard{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.075);border-radius:9px;padding:8px 10px}
+.pcard-t{font-size:10px;color:var(--faint);margin-bottom:4px}
+.pcard-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pv{font-family:var(--mono);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.pv small{font-size:9.5px;color:var(--dim);font-weight:400;margin-left:2px}
+.sig{display:flex;align-items:flex-end;gap:2px;height:11px}
+.sig i{width:3px;background:var(--faint);border-radius:1px;display:block;transition:background .3s}
+.sig i.on{background:var(--ok)}
+.sig.warn i.on{background:var(--warn)} .sig.bad i.on{background:var(--bad)}
+.gobtn{margin:7px 11px 10px;padding:11px;text-align:center;border-radius:10px;font-weight:600;
+  font-size:14px;color:#fff;cursor:pointer;user-select:none;border:0;width:calc(100% - 22px);
+  font-family:inherit;background:linear-gradient(96deg,#5B6CFF,#3E9BFF);
+  box-shadow:0 8px 22px rgba(62,155,255,.38);transition:.25s}
+.gobtn:hover{filter:brightness(1.12)}
+.gobtn:focus-visible{outline:2px solid var(--cyan2);outline-offset:2px}
+body.live .gobtn{background:linear-gradient(96deg,#6E2334,#8C2B2B);box-shadow:0 8px 22px rgba(160,40,50,.34)}
+.ptabs{display:flex;justify-content:space-around;padding:7px 0 10px;border-top:1px solid rgba(255,255,255,.07)}
+.ptab{font-size:9px;color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:3px}
+.ptab.on{color:var(--cyan)} .ptab svg{width:14px;height:14px}
+
+/* Studio */
+.studio{background:var(--glass);border:1px solid var(--edge2);border-radius:12px;
+  backdrop-filter:blur(14px);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.sbar{display:flex;align-items:center;gap:11px;padding:10px 14px;flex-wrap:wrap;
+  border-bottom:1px solid var(--edge);background:rgba(8,16,36,.5)}
+.slogo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14.5px}
+.slogo .mk{width:21px;height:21px;border-radius:6px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--cyan),var(--violet));font-size:10px;font-weight:800;color:#04070F}
+.sp{flex:1}
+.stat{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.stat b{color:var(--fg);font-weight:600}
+.sep{width:1px;height:12px;background:var(--edge)}
+.okdot{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--faint)}
+.okdot i{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+body.live .okdot{color:var(--ok)} body.live .okdot i{background:var(--ok);box-shadow:0 0 9px var(--ok)}
+.pushbtn{font-size:11px;font-weight:600;color:var(--faint);padding:4px 11px;border-radius:15px;
+  border:1px solid var(--edge);white-space:nowrap}
+body.live .pushbtn{color:#DCEBFF;border-color:rgba(77,169,255,.45);background:rgba(77,169,255,.13)}
+
+.sbody{display:grid;grid-template-columns:124px minmax(0,1fr);gap:12px;padding:12px}
+@media(max-width:900px){.sbody{grid-template-columns:1fr}}
+.side{display:flex;flex-direction:column;gap:13px}
+.side-t{font-size:10px;color:var(--faint);letter-spacing:.05em;margin-bottom:3px}
+.side-i{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--dim);padding:5px 7px;border-radius:6px}
+.side-i.on{background:rgba(77,169,255,.16);color:#DCEBFF;border:1px solid rgba(77,169,255,.3)}
+.side-i svg{width:11px;height:11px;flex:none;opacity:.85}
+
+.scol{display:flex;flex-direction:column;gap:11px;min-width:0}
+.row1{display:grid;grid-template-columns:minmax(0,214px) minmax(0,1fr);gap:11px}
+@media(max-width:1180px){.row1{grid-template-columns:1fr}}
+.pane{background:var(--glass2);border:1px solid var(--edge);border-radius:10px;overflow:hidden}
+.pane-t{font-size:11.5px;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--edge);
+  display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pane-b{padding:9px}
+.mini{font-family:var(--mono);font-size:9.5px;color:var(--faint);font-weight:400}
+
+.feed{position:relative;aspect-ratio:4/3.3;overflow:hidden;border-radius:7px;background:#0A1224}
+.feed img,.feed video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 16%}
+.feed .pov{font-size:11px}
+.feed-bar{position:absolute;top:7px;left:8px;display:flex;gap:6px;align-items:center;z-index:4;
+  opacity:0;transition:.35s}
+body.live .feed-bar{opacity:1}
+.vu{position:absolute;right:6px;top:10px;bottom:10px;width:7px;display:flex;flex-direction:column-reverse;gap:2px;z-index:4}
+.vu i{display:block;height:3.5px;border-radius:1px;background:rgba(255,255,255,.12);transition:background .12s}
+.vu i.on{background:var(--ok)} .vu i.pk{background:var(--warn)}
+
+/* 频道 */
+.chans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+@media(max-width:820px){.chans{grid-template-columns:1fr}}
+.chan{position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--edge);display:flex;flex-direction:column}
+.chan-hd{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;
+  background:rgba(6,12,28,.82);border-bottom:1px solid var(--edge)}
+.lang{font-size:11.5px;font-weight:700}
+.views{font-family:var(--mono);font-size:9.5px;color:var(--dim);display:flex;align-items:center;gap:3px;
+  font-variant-numeric:tabular-nums}
+.chan-st{position:relative;aspect-ratio:3/3.55;overflow:hidden;background:#0A1224}
+.chan-st video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%;
+  opacity:0}
+.chan-st img.poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%}
+.chan-st canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+.chan-st.rendering canvas{display:block} .chan-st.rendering img.poster{display:none}
+.chan-off{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,8,18,.74);z-index:3;
+  font-size:11px;color:var(--dim);transition:opacity .45s}
+.chan.on .chan-off{opacity:0;pointer-events:none}
+.chan-live{position:absolute;top:6px;left:7px;z-index:4;opacity:0;transition:.35s}
+.chan.on .chan-live{opacity:1}
+.cc{position:absolute;left:6px;right:6px;bottom:6px;z-index:4;background:rgba(4,8,18,.8);
+  border:1px solid rgba(255,255,255,.11);border-radius:6px;padding:5px 7px;font-size:10px;
+  line-height:1.35;backdrop-filter:blur(5px);opacity:0;transition:.35s;min-height:26px}
+.chan.on .cc{opacity:1}
+.chan-ft{display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(6,12,28,.82);
+  font-family:var(--mono);font-size:9.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.hrt{color:#FF6B7A}.cmt{color:var(--cyan)}
+.swap{margin-left:auto;font-size:9.5px;color:var(--dim);border:1px solid var(--edge2);border-radius:4px;
+  padding:2px 7px;cursor:pointer;background:transparent;font-family:var(--mono)}
+.swap:hover{color:#fff;border-color:var(--cyan)}
+.swap:focus-visible{outline:2px solid var(--cyan2);outline-offset:1px}
+
+.row2{display:grid;grid-template-columns:minmax(0,214px) minmax(0,1fr) minmax(0,238px);gap:11px}
+@media(max-width:1180px){.row2{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.row2{grid-template-columns:1fr}}
+.sl{display:flex;flex-direction:column;gap:8px}
+.sl-r{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--dim)}
+.sl-n{width:48px;flex:none}
+.track{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.13);position:relative}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:linear-gradient(90deg,var(--cyan),var(--cyan2))}
+.track b{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:#fff;
+  transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(77,169,255,.8)}
+.lv{display:flex;gap:1.5px;align-items:flex-end;height:9px;width:20px}
+.lv i{width:2.5px;background:var(--ok);border-radius:1px;display:block;transition:height .12s}
+
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 10px;margin-bottom:8px}
+@media(min-width:1500px){.kpis{grid-template-columns:repeat(4,1fr)}}
+.kpi{display:flex;flex-direction:column;gap:1px;min-width:0;overflow:hidden}
+.kpi .k{font-size:9px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .v{font-family:var(--mono);font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;
+  white-space:nowrap;letter-spacing:-.02em}
+.chart{width:100%;height:64px;display:block}
+
+.plat{display:flex;align-items:center;gap:7px;padding:5px 2px;font-size:11px;
+  border-bottom:1px solid rgba(90,170,255,.10);cursor:pointer}
+.plat:last-of-type{border-bottom:0}
+.plogo{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;flex:none;
+  font-size:8.5px;font-weight:800;color:#fff}
+.pname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pst{font-size:9.5px;color:var(--faint);white-space:nowrap}
+.plat.on .pst{color:var(--ok)}
+.pq{font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+
+/* 右栏：网络控制 —— 演示的核心操作 */
+.rail{display:flex;flex-direction:column;gap:10px}
+@media(max-width:1419px){.rail{flex-direction:row;flex-wrap:wrap}}
+.netbox{background:rgba(13,26,54,.7);border:1px solid var(--edge2);border-radius:10px;padding:11px;
+  display:flex;flex-direction:column;gap:8px;min-width:196px}
+.netbox h4{margin:0;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px}
+.netbox h4 svg{width:13px;height:13px;color:var(--cyan)}
+.nethint{font-size:10px;color:var(--faint);line-height:1.45}
+.netbtns{display:flex;flex-direction:column;gap:5px}
+.netbtn{font-family:inherit;font-size:11.5px;text-align:left;padding:7px 10px;border-radius:7px;cursor:pointer;
+  border:1px solid var(--edge);background:rgba(255,255,255,.03);color:var(--dim);transition:.2s}
+.netbtn:hover{border-color:var(--edge2);color:#fff}
+.netbtn:focus-visible{outline:2px solid var(--cyan2);outline-offset:1px}
+.netbtn.on{background:rgba(77,169,255,.16);border-color:rgba(77,169,255,.5);color:#EAF2FF;font-weight:600}
+.netbtn small{display:block;font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:2px}
+.netbtn.on small{color:var(--dim)}
+.cap{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;
+  background:rgba(13,26,54,.62);border:1px solid var(--edge2);font-size:11.5px;font-weight:600;white-space:nowrap}
+.cap svg{width:14px;height:14px;color:var(--cyan);flex:none}
+
+.flow{display:flex;align-items:center;gap:7px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+.step{display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;
+  background:rgba(13,26,54,.6);border:1px solid var(--edge);font-size:13px;font-weight:600;
+  color:var(--dim);transition:.4s}
+.step.hot{border-color:rgba(77,169,255,.55);color:#fff;box-shadow:0 0 22px rgba(77,169,255,.22)}
+.step svg{width:16px;height:16px;color:var(--cyan)}
+.arrow{color:var(--cyan);opacity:.55;font-size:14px}
+.foot{margin-top:14px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.85}
+
+@media (prefers-reduced-motion: no-preference){
+  .badge-live i{animation:bl 1.9s ease-in-out infinite}
+  @keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="top">
+    <div>
+      <h1 class="title">实时直播控制台</h1>
+      <div class="subtitle"><span class="d"></span><span id="hdrState">待开播 · 点击手机「开始直播」</span></div>
+    </div>
+    <div>
+      <div class="brand">OneLive</div>
+      <div class="tag">多语言数字人直播 · 演示台</div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- 手机 -->
+    <div class="phone">
+      <div class="phone-in">
+        <div class="notch"></div>
+        <div class="pbar">
+          <span>9:41</span>
+          <span style="display:flex;gap:5px;align-items:center">
+            <span class="sig" id="sigTop"><i class="on" style="height:4px"></i><i class="on" style="height:6px"></i><i class="on" style="height:8px"></i><i class="on" style="height:11px"></i></span>
+            <span id="netTag">5G</span>
+          </span>
+        </div>
+        <div class="pstage">
+          <img id="hostImg" src="assets/poster-host.png" alt="手机端主播画面">
+          <video id="hostVid" src="assets/host.mp4" muted loop playsinline></video>
+          <div class="plive"><span class="badge-live"><i></i>LIVE</span><span class="ptime" id="pTime">00:00:00</span></div>
+          <div class="pov">点击下方<br>「开始直播」</div>
+        </div>
+        <div class="pcards">
+          <div class="pcard">
+            <div class="pcard-t">网络状态</div>
+            <div class="pcard-row">
+              <span style="display:flex;align-items:center;gap:7px">
+                <span class="sig" id="sigCard"><i class="on" style="height:4px"></i><i class="on" style="height:6px"></i><i class="on" style="height:8px"></i><i class="on" style="height:11px"></i></span>
+                <b style="font-size:11.5px" id="netName">优秀</b>
+              </span>
+              <span class="pq" id="netMode" style="font-size:10px;font-family:var(--mono);color:var(--faint)">5G SA</span>
+            </div>
+          </div>
+          <div class="pcard">
+            <div class="pcard-row">
+              <div><div class="pcard-t">上行码率</div><div class="pv"><span id="pBr">0.00</span><small>Mbps</small></div></div>
+              <div style="text-align:right"><div class="pcard-t">链路延迟</div><div class="pv"><span id="pRtt">–</span><small>ms</small></div></div>
+            </div>
+          </div>
+        </div>
+        <button class="gobtn" id="goBtn">开始直播</button>
+        <div class="ptabs">
+          <span class="ptab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>直播</span>
+          <span class="ptab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>美颜</span>
+          <span class="ptab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.4 2.5a7 7 0 0 0-1.7 1l-2.3-1-2 3.5L5.1 11a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 1.7 1l.4 2.5h5l.4-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.5-2-1.5a7 7 0 0 0 .1-1Z"/></svg>设置</span>
+          <span class="ptab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>我的</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Studio -->
+    <div class="studio">
+      <div class="sbar">
+        <div class="slogo"><span class="mk">O</span>OneLive Studio</div>
+        <div class="sp"></div>
+        <span class="stat">上行 <b id="tBr">–</b> Mbps</span><span class="sep"></span>
+        <span class="stat">延迟 <b id="tRtt">–</b> ms</span><span class="sep"></span>
+        <span class="stat">丢包 <b id="tLoss">–</b>%</span><span class="sep"></span>
+        <span class="okdot"><i></i><span id="tState">未开播</span></span>
+        <span class="pushbtn" id="tPush">推流未启动</span>
+      </div>
+
+      <div class="sbody">
+        <div class="side">
+          <div>
+            <div class="side-t">场景</div>
+            <div class="side-i on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/></svg>默认场景</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/></svg>场景 02</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/></svg>场景 03</div>
+          </div>
+          <div>
+            <div class="side-t">素材库</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v13H3z"/><path d="M3 7l3-4h12l3 4"/></svg>本地素材</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m5 17 5-4 4 3 3-2 3 3"/></svg>形象库</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>音乐</div>
+          </div>
+          <div>
+            <div class="side-t">工具</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 14h4M14 14h3"/></svg>字幕</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>数据</div>
+            <div class="side-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10a4 4 0 0 1 0 4M18 7a9 9 0 0 1 0 10"/><path d="M3 10v4h4l5 4V6L7 10z"/></svg>连麦</div>
+          </div>
+        </div>
+
+        <div class="scol">
+          <div class="row1">
+            <div class="pane">
+              <div class="pane-t">原始主播画面 <span class="mini">手机上行</span></div>
+              <div class="pane-b">
+                <div class="feed">
+                  <img id="feedImg" src="assets/poster-host.png" alt="原始主播画面">
+                  <video id="feedVid" src="assets/host.mp4" muted loop playsinline></video>
+                  <div class="feed-bar"><span class="badge-live"><i></i>LIVE</span><span class="ptime" id="fTime">00:00:00</span></div>
+                  <div class="vu" id="vu"></div>
+                  <div class="pov">未开播</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-t">多语言数字人直播 <span class="mini" id="chCount">0 / 3 路在播</span></div>
+              <div class="pane-b"><div class="chans" id="chans"></div></div>
+            </div>
+          </div>
+
+          <div class="row2">
+            <div class="pane">
+              <div class="pane-t">音频控制</div>
+              <div class="pane-b">
+                <div class="sl">
+                  <div class="sl-r"><span class="sl-n">麦克风</span><span class="track"><i style="width:72%"></i><b style="left:72%"></b></span><span class="lv" id="lv1"></span></div>
+                  <div class="sl-r"><span class="sl-n">背景音乐</span><span class="track"><i style="width:38%"></i><b style="left:38%"></b></span><span class="lv" id="lv2"></span></div>
+                  <div class="sl-r"><span class="sl-n">系统音效</span><span class="track"><i style="width:55%"></i><b style="left:55%"></b></span><span class="lv" id="lv3"></span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-t">直播数据概览 <span class="mini">演示数据</span></div>
+              <div class="pane-b">
+                <div class="kpis">
+                  <div class="kpi"><span class="k">总观看人数</span><span class="v" id="kView">0</span></div>
+                  <div class="kpi"><span class="k">总点赞数</span><span class="v" id="kLike">0</span></div>
+                  <div class="kpi"><span class="k">总评论数</span><span class="v" id="kCmt">0</span></div>
+                  <div class="kpi"><span class="k">分享次数</span><span class="v" id="kShr">0</span></div>
+                </div>
+                <svg class="chart" id="chart" viewBox="0 0 420 64" preserveAspectRatio="none">
+                  <defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#4DA9FF" stop-opacity=".5"/>
+                    <stop offset="1" stop-color="#4DA9FF" stop-opacity="0"/></linearGradient></defs>
+                  <g stroke="rgba(90,170,255,.13)" stroke-width="1">
+                    <line x1="0" y1="16" x2="420" y2="16"/><line x1="0" y1="36" x2="420" y2="36"/><line x1="0" y1="56" x2="420" y2="56"/>
+                  </g>
+                  <path id="chArea" fill="url(#ar)"></path>
+                  <path id="chLine" fill="none" stroke="#4DA9FF" stroke-width="1.8" stroke-linejoin="round"></path>
+                </svg>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-t">推流平台 <span class="mini" id="platCount">0 路</span></div>
+              <div class="pane-b" style="padding:5px 9px 9px" id="plats"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右栏 -->
+    <div class="rail">
+      <div class="netbox">
+        <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="2"/><path d="M8 14a6 6 0 0 1 8 0M5 11a10 10 0 0 1 14 0"/></svg>网络条件</h4>
+        <div class="nethint">切换后，上行画面会<b style="color:var(--fg)">真实劣化</b>（丢帧、降分辨率、卡顿），不是预设动画。</div>
+        <div class="netbtns" id="netBtns"></div>
+      </div>
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8h9M9 4v4M11 16c-2.5-1-4-3.5-4-8"/><path d="M13 20l4-9 4 9M14.5 17h5"/></svg>实时语音翻译</div>
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12c3-4 13-4 16 0-3 4-13 4-16 0Z"/><path d="M8 12h8"/></svg>口型同步</div>
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15 19a5 5 0 0 1 6.5-4"/></svg>多形象切换</div>
+      <div class="cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18Z"/></svg>全球平台分发</div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="step" id="st1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>手机开播</div>
+    <span class="arrow">▶</span>
+    <div class="step" id="st2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a4 4 0 0 0-4 4v1a3 3 0 0 0 0 6v2a4 4 0 0 0 8 0v-2a3 3 0 0 0 0-6V7a4 4 0 0 0-4-4Z"/></svg>边缘 AI 处理</div>
+    <span class="arrow">▶</span>
+    <div class="step" id="st3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="9" r="2.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2 19a5 5 0 0 1 10 0M12 19a5 5 0 0 1 10 0"/></svg>三路数字人直播</div>
+    <span class="arrow">▶</span>
+    <div class="step" id="st4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18Z"/></svg>全球平台分发</div>
+  </div>
+
+  <div class="foot">
+    数字人形象为预生成素材 · 观看/点赞等运营数据为演示值<br>
+    网络劣化对画面的影响为<b style="color:var(--dim)">实时计算</b>（逐帧丢弃 / 降采样 / 抖动），非预设动画
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ---------- 频道定义 ---------- */
+const CHANNELS = [
+  { lang:"English", poster:"assets/poster1.png", video:"assets/ch1.mp4",
+    subs:["This is amazing! 🚀","Free shipping worldwide today.","Let me show you the details."],
+    views:18700, likes:12400, cmts:893, scene:"linear-gradient(160deg,#2E4E86,#132349 60%,#0A1430)" },
+  { lang:"日本語", poster:"assets/poster2.png", video:"assets/ch2.mp4",
+    subs:["すごいですね！✨","本日限定の特別価格です。","詳しくご説明します。"],
+    views:21300, likes:14200, cmts:1100, scene:"linear-gradient(160deg,#7A3A6E,#3E1E48 60%,#180E28)" },
+  { lang:"Español", poster:"assets/poster3.png", video:"assets/ch3.mp4",
+    subs:["¡Qué increíble! 😍","Envío gratis a todo el mundo.","Les muestro los detalles."],
+    views:16900, likes:11300, cmts:812, scene:"linear-gradient(160deg,#9A4A34,#4A2030 60%,#1C0F1E)" }
+];
+
+/* ---------- 网络档位：真实作用于渲染 ---------- */
+const NETS = [
+  { id:"good", name:"优秀",  mode:"5G SA",  bars:4, br:8.25, rtt:35,  loss:0,   drop:0,    scale:1,    jit:0,   q:"1080P", cls:"" },
+  { id:"fair", name:"一般",  mode:"5G NSA", bars:3, br:4.10, rtt:78,  loss:0.4, drop:0.15, scale:0.72, jit:40,  q:"1080P", cls:"" },
+  { id:"poor", name:"拥塞",  mode:"4G",     bars:2, br:1.45, rtt:180, loss:3.2, drop:0.42, scale:0.42, jit:110, q:"720P",  cls:"warn" },
+  { id:"weak", name:"弱覆盖", mode:"4G 边缘", bars:1, br:0.42, rtt:420, loss:11.5,drop:0.68, scale:0.22, jit:260, q:"480P", cls:"bad" }
+];
+let net = NETS[0];
+
+const PLATFORMS = [
+  { n:"YouTube",     c:"#FF0033", t:"▶" }, { n:"Facebook", c:"#1877F2", t:"f" },
+  { n:"TikTok",      c:"#111",    t:"♪" }, { n:"Twitch",   c:"#9146FF", t:"T" },
+  { n:"X (Twitter)", c:"#000",    t:"X" }
+];
+
+let live = false, t0 = 0, slots = [], series = [];
+
+/* ---------- 构建频道卡 ---------- */
+const chansEl = $("chans");
+CHANNELS.forEach((c, i) => {
+  const el = document.createElement("div");
+  el.className = "chan";
+  el.innerHTML =
+    `<div class="chan-hd"><span class="lang">${c.lang}</span>
+       <span class="views">👁 <span id="v${i}">0</span></span></div>
+     <div class="chan-st" id="st${i}" style="background:${c.scene}">
+       <span class="chan-live badge-live"><i></i>LIVE</span>
+       <img class="poster" id="po${i}" src="${c.poster}" alt="${c.lang} 数字人">
+       <video id="vd${i}" src="${c.video}" muted loop playsinline></video>
+       <canvas id="cv${i}"></canvas>
+       <div class="cc" id="cc${i}">—</div>
+       <div class="chan-off">未开播</div>
+     </div>
+     <div class="chan-ft"><span class="hrt">♥ <span id="lk${i}">0</span></span>
+       <span class="cmt">💬 <span id="cm${i}">0</span></span>
+       <button class="swap" data-i="${i}">换形象</button></div>`;
+  chansEl.appendChild(el);
+  slots.push({ el, st:$(`st${i}`), img:$(`po${i}`), vid:$(`vd${i}`), cv:$(`cv${i}`),
+               cc:$(`cc${i}`), v:$(`v${i}`), lk:$(`lk${i}`), cm:$(`cm${i}`),
+               cfg:c, sub:0, acc:0, lastDraw:0, hasVideo:false, posterIdx:i });
+});
+
+/* 视频可用性探测：没有素材就用海报，不报错 */
+slots.forEach(s => {
+  s.vid.addEventListener("loadeddata", () => { s.hasVideo = true; });
+  s.vid.addEventListener("error", () => { s.hasVideo = false; });
+});
+[$("hostVid"), $("feedVid")].forEach(v => {
+  v.addEventListener("loadeddata", () => { v.style.opacity = 1; v.play().catch(()=>{}); });
+  v.addEventListener("error", () => { v.style.display = "none"; });
+});
+
+/* ---------- 网络按钮 ---------- */
+const netBtns = $("netBtns");
+NETS.forEach(n => {
+  const b = document.createElement("button");
+  b.className = "netbtn" + (n.id === net.id ? " on" : "");
+  b.innerHTML = `${n.name}<small>${n.br} Mbps · ${n.rtt}ms · 丢包 ${n.loss}%</small>`;
+  b.onclick = () => { net = n; applyNet(); };
+  netBtns.appendChild(b);
+});
+
+function applyNet(){
+  [...netBtns.children].forEach((b, i) => b.classList.toggle("on", NETS[i].id === net.id));
+  $("netName").textContent = net.name;
+  $("netMode").textContent = net.mode;
+  $("netTag").textContent  = net.mode.split(" ")[0];
+  [$("sigTop"), $("sigCard")].forEach(sig => {
+    sig.className = "sig " + net.cls;
+    [...sig.children].forEach((b, i) => b.classList.toggle("on", i < net.bars));
+  });
+  renderPlats();
+  if (live) pushTele();
+}
+
+/* ---------- 推流平台 ---------- */
+const platsEl = $("plats");
+let platOn = PLATFORMS.map(() => true);
+function renderPlats(){
+  platsEl.innerHTML = "";
+  PLATFORMS.forEach((p, i) => {
+    const d = document.createElement("div");
+    d.className = "plat" + (live && platOn[i] ? " on" : "");
+    d.innerHTML = `<span class="plogo" style="background:${p.c}">${p.t}</span>
+      <span class="pname">${p.n}</span>
+      <span class="pst">${live && platOn[i] ? "推流中" : (platOn[i] ? "待开播" : "已关闭")}</span>
+      <span class="pq">${platOn[i] ? net.q : "—"}</span>`;
+    d.onclick = () => { platOn[i] = !platOn[i]; renderPlats(); };
+    platsEl.appendChild(d);
+  });
+  const n = platOn.filter(Boolean).length;
+  $("platCount").textContent = `${live ? n : 0} 路`;
+  $("tPush").textContent = live ? `多平台推流中 · ${n}` : "推流未启动";
+}
+
+/* ---------- 遥测 ---------- */
+function pushTele(){
+  $("pBr").textContent  = live ? net.br.toFixed(2) : "0.00";
+  $("pRtt").textContent = live ? net.rtt : "–";
+  $("tBr").textContent  = live ? net.br.toFixed(2) : "–";
+  $("tRtt").textContent = live ? net.rtt : "–";
+  $("tLoss").textContent= live ? net.loss.toFixed(1) : "–";
+}
+
+/* ---------- 开播 / 停播 ---------- */
+$("goBtn").onclick = () => live ? stop() : start();
+function start(){
+  live = true; t0 = Date.now(); series = [];
+  document.body.classList.add("live");
+  $("goBtn").textContent = "结束直播";
+  $("hdrState").textContent = "直播中 · 三路多语言数字人";
+  $("tState").textContent = "系统正常";
+  [$("hostVid"), $("feedVid")].forEach(v => v.play().catch(()=>{}));
+  $("st1").classList.add("hot");
+  setTimeout(() => $("st2").classList.add("hot"), 500);
+  slots.forEach((s, i) => setTimeout(() => {
+    s.el.classList.add("on");
+    if (s.hasVideo) { s.vid.play().catch(()=>{}); s.st.classList.add("rendering"); }
+    s.cc.textContent = s.cfg.subs[0];
+    $("chCount").textContent = `${slots.filter(x => x.el.classList.contains("on")).length} / 3 路在播`;
+    if (i === slots.length - 1) { $("st3").classList.add("hot"); setTimeout(() => $("st4").classList.add("hot"), 450); }
+  }, 900 + i * 550));
+  applyNet(); pushTele(); renderPlats();
+}
+function stop(){
+  live = false;
+  document.body.classList.remove("live");
+  $("goBtn").textContent = "开始直播";
+  $("hdrState").textContent = "已结束 · 点击「开始直播」重新演示";
+  $("tState").textContent = "未开播";
+  ["st1","st2","st3","st4"].forEach(id => $(id).classList.remove("hot"));
+  slots.forEach(s => { s.el.classList.remove("on"); s.st.classList.remove("rendering"); s.vid.pause(); });
+  $("chCount").textContent = "0 / 3 路在播";
+  pushTele(); renderPlats();
+}
+
+/* ---------- 换形象 ---------- */
+document.addEventListener("click", e => {
+  const b = e.target.closest(".swap"); if (!b) return;
+  const s = slots[+b.dataset.i];
+  s.posterIdx = (s.posterIdx + 1) % CHANNELS.length;
+  const alt = CHANNELS[s.posterIdx];
+  s.img.src = alt.poster;
+  s.st.style.background = alt.scene;
+  if (s.hasVideo) { s.vid.src = alt.video; s.vid.load(); s.vid.play().catch(()=>{}); }
+  s.st.animate([{opacity:.25},{opacity:1}], {duration:340, easing:"ease-out"});
+});
+
+/* ---------- 渲染循环：网络劣化真实作用于画面 ---------- */
+const off = document.createElement("canvas");
+const octx = off.getContext("2d");
+function frame(now){
+  slots.forEach(s => {
+    if (!live || !s.hasVideo || !s.el.classList.contains("on")) return;
+    // 1) 按丢包率真实丢帧
+    if (Math.random() < net.drop) return;
+    // 2) 抖动：随机推迟绘制，造成真实卡顿
+    if (net.jit && now - s.lastDraw < Math.random() * net.jit) return;
+    const v = s.vid; if (!v.videoWidth) return;
+    const W = 300, H = Math.round(W * v.videoHeight / v.videoWidth);
+    // 注意：canvas 默认宽就是 300，只比 width 会恒为假 → 高度永远设不上，画面被压扁
+    if (s.cv.width !== W || s.cv.height !== H) { s.cv.width = W; s.cv.height = H; }
+    // 3) 降采样再放大 → 真实块状劣化
+    const sw = Math.max(24, Math.round(W * net.scale)), sh = Math.max(24, Math.round(H * net.scale));
+    if (off.width !== sw) { off.width = sw; off.height = sh; }
+    octx.drawImage(v, 0, 0, sw, sh);
+    const c = s.cv.getContext("2d");
+    c.imageSmoothingEnabled = net.scale > 0.7;
+    c.drawImage(off, 0, 0, sw, sh, 0, 0, W, H);
+    s.lastDraw = now;
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- 计时 / 计数 / 电平 / 字幕 / 图表 ---------- */
+const vuEl = $("vu");
+for (let i = 0; i < 12; i++) vuEl.appendChild(document.createElement("i"));
+["lv1","lv2","lv3"].forEach(id => { for (let i = 0; i < 3; i++) $(id).appendChild(document.createElement("i")); });
+
+function hhmmss(ms){
+  const t = Math.floor(ms / 1000);
+  return [t/3600, t/60%60, t%60].map(x => String(Math.floor(x)).padStart(2,"0")).join(":");
+}
+setInterval(() => {
+  if (live) { const e = hhmmss(Date.now() - t0); $("pTime").textContent = e; $("fTime").textContent = e; }
+  // 电平：随网络质量收敛
+  const amp = live ? (0.35 + 0.65 * (net.scale)) : 0;
+  [...vuEl.children].forEach((b, i) => {
+    const on = live && (i / 12) < amp * (0.55 + Math.random() * 0.5);
+    b.className = on ? (i > 8 ? "pk" : "on") : "";
+  });
+  ["lv1","lv2","lv3"].forEach(id => [...$(id).children].forEach(b =>
+    b.style.height = (live ? 2 + Math.random() * 7 * amp : 2) + "px"));
+}, 140);
+
+setInterval(() => {
+  if (!live) return;
+  slots.forEach(s => {
+    s.sub = (s.sub + 1) % s.cfg.subs.length;
+    s.cc.textContent = s.cfg.subs[s.sub];
+  });
+}, 4200);
+
+let vw = 0, lk = 0, cm = 0, sh = 0;
+setInterval(() => {
+  if (!live) return;
+  const rate = 0.4 + net.scale * 0.9;            // 网络差 → 涨得慢（合理联动）
+  vw += Math.round((40 + Math.random() * 90) * rate);
+  lk += Math.round((30 + Math.random() * 70) * rate);
+  cm += Math.round((3 + Math.random() * 9) * rate);
+  sh += Math.round((1 + Math.random() * 5) * rate);
+  $("kView").textContent = vw.toLocaleString();
+  $("kLike").textContent = lk.toLocaleString();
+  $("kCmt").textContent  = cm.toLocaleString();
+  $("kShr").textContent  = sh.toLocaleString();
+  slots.forEach((s, i) => {
+    if (!s.el.classList.contains("on")) return;
+    s.v.textContent  = ((s.cfg.views + vw * (0.9 + i * 0.15)) / 1000).toFixed(1) + "K";
+    s.lk.textContent = ((s.cfg.likes + lk * (0.8 + i * 0.2)) / 1000).toFixed(1) + "K";
+    s.cm.textContent = Math.round(s.cfg.cmts + cm * (0.7 + i * 0.2));
+  });
+  series.push(vw); if (series.length > 40) series.shift();
+  drawChart();
+}, 1000);
+
+function drawChart(){
+  if (series.length < 2) return;
+  const max = Math.max(...series, 1), W = 420, H = 64;
+  const pts = series.map((v, i) => [i / (series.length - 1) * W, H - 4 - (v / max) * (H - 12)]);
+  const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  $("chLine").setAttribute("d", d);
+  $("chArea").setAttribute("d", d + ` L${W},${H} L0,${H} Z`);
+}
+
+applyNet(); renderPlats(); pushTele();
+</script>
+</body>
+</html>
