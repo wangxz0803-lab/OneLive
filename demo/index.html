@@ -257,12 +257,70 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 @media (prefers-reduced-motion:no-preference){.rec i{animation:blink 1.7s ease-in-out infinite}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}}
 
+/* ── 左栏真实控件 ── */
+.rt{display:flex;justify-content:space-between;align-items:baseline}
+.rt-x{font-family:var(--mono);font-size:8.5px;letter-spacing:.04em;text-transform:none;
+  color:var(--t3);font-weight:400}
+.ctls{display:flex;flex-direction:column;gap:5px}
+.ctl{display:flex;align-items:center;gap:8px;width:100%;font-family:inherit;text-align:left;
+  padding:8px 9px;border:0;border-radius:var(--r1);cursor:pointer;color:var(--t3);
+  background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+  transition:.22s var(--e)}
+.ctl:hover{background:rgba(255,255,255,.07);color:var(--t2)}
+.ctl:focus-visible{outline:2px solid var(--brand2);outline-offset:2px}
+.ctl .cd{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.45;flex:none}
+.ctl .cl{font-size:11.5px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ctl .cq{font-family:var(--mono);font-size:9px;color:var(--t3)}
+.ctl.on{background:rgba(91,157,255,.15);color:var(--t1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(91,157,255,.4)}
+.ctl.on .cd{opacity:1;color:var(--ok);box-shadow:0 0 8px currentColor}
+.ctl.on .cq{color:var(--t2)}
+.tile.dis{opacity:.16;filter:grayscale(1);pointer-events:none}
+
+/* ── 带宽账本 ── */
+.panel.bw{flex:none}
+.bwtop{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:11px}
+.bwbig{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
+.bn{font-family:var(--mono);font-size:31px;font-weight:600;letter-spacing:-.05em;
+  font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#fff,#9FB8E0);
+  -webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.bu{font-family:var(--mono);font-size:11px;color:var(--t3)}
+.bl{flex-basis:100%;font-size:9px;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;
+  font-weight:700;margin-top:3px}
+.bwcalc{font-family:var(--mono);font-size:9.5px;color:var(--t3);text-align:right;line-height:1.5}
+.bwrow{display:flex;align-items:baseline;gap:7px;font-size:10.5px;color:var(--t3);margin-bottom:6px}
+.bwrow .bk{flex:1}
+.bv{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--t1)}
+.bv.ok{color:var(--ok)} .bv.warn{color:var(--warn)} .bv.bad{color:var(--crit)}
+.bs{font-family:var(--mono);font-size:9px;color:var(--t3)}
+.bwtrack{position:relative;height:7px;border-radius:4px;background:rgba(255,255,255,.07);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.5);margin:2px 0 9px;overflow:hidden}
+.bwfill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;transition:width .5s var(--e),background .4s}
+.bwfill.ok{background:linear-gradient(90deg,var(--ok),#7BF0B4)}
+.bwfill.warn{background:linear-gradient(90deg,var(--warn),#FFD98A)}
+.bwfill.bad{background:linear-gradient(90deg,var(--crit),#FF9AA3)}
+.bwpct{position:absolute;right:5px;top:-1px;font-family:var(--mono);font-size:8px;color:rgba(255,255,255,.85)}
+.abr{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;border-radius:var(--r1);
+  background:rgba(255,181,52,.12);box-shadow:inset 0 0 0 1px rgba(255,181,52,.34);
+  font-size:10.5px;color:var(--warn);line-height:1.4;margin-top:2px}
+.abr svg{width:13px;height:13px;flex:none;margin-top:1px}
+
+/* ── 可拖动推子 ── */
+.fr{display:flex;align-items:center;gap:9px;font-size:10.5px;color:var(--t2)}
+.rng{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;cursor:pointer;
+  background:linear-gradient(90deg,var(--brand),var(--brand2));box-shadow:inset 0 1px 2px rgba(0,0,0,.5)}
+.rng::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.7);cursor:grab}
+.rng:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.1)}
+.rng:focus-visible{outline:2px solid var(--brand2);outline-offset:3px}
+.fv{font-family:var(--mono);font-size:9.5px;color:var(--t3);width:20px;text-align:right;
+  font-variant-numeric:tabular-nums}
+
 </style>
 </head>
 <body>
 <div class="app">
 
-  <!-- ═══ 顶栏：分发目标 + GO LIVE（StreamYard 动线） ═══ -->
   <header class="topbar">
     <div class="brand">
       <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v18M6 8v8M18 8v8M2 11v2M22 11v2" stroke-linecap="round"/></svg></span>
@@ -270,38 +328,36 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     </div>
     <div class="sess"><span class="dot"></span><span id="tState">未开播</span><span class="tc" id="tcMain">00:00:00</span></div>
     <div class="sp"></div>
-    <div class="dests" id="dests" aria-label="分发目标"></div>
-    <div class="linkpill" title="链路状态">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18.5" r="1.7"/><path d="M8.2 14.4a5.6 5.6 0 0 1 7.6 0M5 11a10.2 10.2 0 0 1 14 0" stroke-linecap="round"/></svg>
-      <b id="lqName">优秀</b><span id="lqBr">8.25</span><small>Mbps</small>
-    </div>
+    <div class="dests" id="dests" aria-label="分发平台开关"></div>
+    <div class="linkpill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18.5" r="1.7"/><path d="M8.2 14.4a5.6 5.6 0 0 1 7.6 0M5 11a10.2 10.2 0 0 1 14 0" stroke-linecap="round"/></svg>
+      <b id="lqName">优秀</b><span id="lqBr">8.25</span><small>Mbps</small></div>
     <button class="golive" id="go">开始直播</button>
   </header>
 
   <div class="body">
 
-    <!-- ═══ 左：场景 / 源 ═══ -->
+    <!-- 左：全部是真实控件 -->
     <aside class="rail">
-      <div class="rg"><div class="rt">场景</div>
-        <div class="ri on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/></svg>默认场景</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/></svg>产品特写</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/></svg>双人连麦</div>
+      <div class="rg">
+        <div class="rt">语言频道<span class="rt-x">影响分发路数</span></div>
+        <div class="ctls" id="chCtl"></div>
       </div>
-      <div class="rg"><div class="rt">信号源</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/></svg>手机上行</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17.5" cy="9.5" r="2.3"/></svg>数字人 ×3</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9.5 5 2.5-5 2.5z" fill="currentColor" stroke="none"/></svg>垫片素材</div>
+      <div class="rg">
+        <div class="rt">目标画质<span class="rt-x" id="qNow">1080P</span></div>
+        <div class="ctls" id="qCtl"></div>
       </div>
-      <div class="rg"><div class="rt">工具</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 14h4M14 14h3" stroke-linecap="round"/></svg>字幕翻译</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 12c3.2-4.2 12.8-4.2 16 0-3.2 4.2-12.8 4.2-16 0Z"/><path d="M8.5 12h7" stroke-linecap="round"/></svg>口型同步</div>
-        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 20V10M12 20V4M19 20v-7" stroke-linecap="round"/></svg>数据面板</div>
+      <div class="rg">
+        <div class="rt">字幕叠加</div>
+        <div class="ctls">
+          <button class="ctl on" id="subCtl" type="button" aria-pressed="true">
+            <span class="cd"></span><span class="cl">播出字幕</span><span class="cq">开</span></button>
+        </div>
       </div>
     </aside>
 
-    <!-- ═══ 中：PROGRAM 主画面 + MULTIVIEW 监看条 ═══ -->
+    <!-- 中 -->
     <main class="stagecol">
-      <section class="program" id="program">
+      <section class="program">
         <div class="pgm-tag">PROGRAM</div>
         <div class="pgm-frame">
           <canvas id="pgmBg" aria-hidden="true"></canvas>
@@ -310,24 +366,41 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
           <div class="pgm-tally"><span class="rec"><i></i>ON AIR</span><span class="tc" id="tcPgm">00:00:00</span></div>
           <div class="pgm-meta"><span id="pgmLang">English</span><span class="sepdot">·</span><span id="pgmRes">1080P</span></div>
           <div class="pgm-cc" id="pgmCC"></div>
-          <div class="pgm-veil" id="pgmVeil">点击右上「开始直播」</div>
+          <div class="pgm-veil">点击右上「开始直播」</div>
         </div>
       </section>
-
       <section class="mv">
-        <div class="mv-h"><span>MULTIVIEW</span><span class="mv-hint">点击小窗切到 PROGRAM</span></div>
+        <div class="mv-h"><span>MULTIVIEW</span><span class="mv-hint">点击小窗 / Q W E 切到 PROGRAM</span></div>
         <div class="mv-row" id="mv"></div>
       </section>
     </main>
 
-    <!-- ═══ 右：实时评论 + 观众数据 ═══ -->
+    <!-- 右：带宽账本 + 评论 -->
     <aside class="side">
+      <section class="panel bw">
+        <div class="p-h"><span class="p-t">带宽账本</span><span class="p-x" id="laneNote">3 路语言 × 5 个平台</span></div>
+        <div class="p-b">
+          <div class="bwtop">
+            <div class="bwbig"><span class="bn" id="bwEgress">0.0</span><span class="bu">Mbps</span>
+              <span class="bl">出口带宽需求</span></div>
+            <div class="bwcalc"><span id="bwLanes">0</span> 路 × <span id="bwPer">0.00</span> Mbps/路</div>
+          </div>
+          <div class="bwrow"><span class="bk">手机上行</span>
+            <span class="bv" id="bwUp">0.00</span><span class="bs">/ <span id="bwCap">8.25</span> Mbps</span></div>
+          <div class="bwtrack"><i class="bwfill ok" id="bwBar" style="width:0%"></i>
+            <span class="bwpct" id="bwPct">—</span></div>
+          <div class="bwrow"><span class="bk">链路余量</span><span class="bv ok" id="bwHead">+8.25</span>
+            <span class="bs">Mbps</span></div>
+          <div class="abr" id="abr" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4.5M12 17.5h.01"/><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span id="abrTxt"></span></div>
+        </div>
+      </section>
       <section class="panel grow">
-        <div class="p-h"><span class="p-t">实时评论</span><span class="p-x" id="cmtRate">0 条/分</span></div>
+        <div class="p-h"><span class="p-t">实时评论</span><span class="p-x">跟随播出语言</span></div>
         <div class="chat" id="chat" aria-live="polite"></div>
       </section>
       <section class="panel">
-        <div class="p-h"><span class="p-t">观众数据</span><span class="p-x">演示数据</span></div>
+        <div class="p-h"><span class="p-t">观众数据</span><span class="p-x">演示值 · 随路数与画质变化</span></div>
         <div class="p-b">
           <div class="kpis">
             <div class="kpi"><div class="k">观看</div><div class="v" id="kView">0</div></div>
@@ -348,32 +421,48 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     </aside>
   </div>
 
-  <!-- ═══ 底：音频总线 + 链路 + 分发（vMix/OBS 固定位） ═══ -->
   <footer class="dock">
     <section class="bus">
-      <div class="bus-t">音频总线<em>演示</em></div>
+      <div class="bus-t">音频总线<em>可拖动</em></div>
       <div class="faders" id="faders"></div>
     </section>
-    <section class="bus link">
-      <div class="bus-t">链路条件<em>切换后画面实时劣化</em></div>
-      <div class="netrow" id="netList" role="group" aria-label="网络条件"></div>
+    <section class="bus">
+      <div class="bus-t">链路条件<em>决定容量，触发自动降码</em></div>
+      <div class="netrow" id="netList" role="group" aria-label="链路条件"></div>
     </section>
-    <section class="bus out">
-      <div class="bus-t">分发平台<em id="platCount">0 路</em></div>
+    <section class="bus">
+      <div class="bus-t">分发平台<em>每关一个，出口带宽下降</em></div>
       <div class="outrow" id="plats"></div>
     </section>
   </footer>
 
-  <p class="legal">数字人形象为<b>预生成素材</b> · 观众数据为<b>演示值</b> · 网络劣化对画面的影响为<b>实时计算</b>　·　快捷键：空格 开播/结束 · 1–4 链路 · Q/W/E 切 PROGRAM</p>
+  <p class="legal">数字人形象为<b>预生成素材</b> · 观众数据为<b>演示值</b> · 带宽账本与画面劣化为<b>实时计算</b>　·　空格 开播 · 1–4 链路 · Q/W/E 切频道</p>
 </div>
 
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 
-/* 信号源：手机上行 + 三路数字人 */
+/* ── 画质阶梯：码率(Mbps) + 渲染缩放（真实作用于画面） ── */
+const LADDER = [
+  { id:"1080P", v:6.00, sc:1.00 },
+  { id:"720P",  v:3.00, sc:0.72 },
+  { id:"480P",  v:1.20, sc:0.45 },
+  { id:"360P",  v:0.70, sc:0.30 },
+  { id:"240P",  v:0.35, sc:0.18 }
+];
+const AUDIO_MBPS = 0.16;              // 每路音频码率
+
+/* ── 链路档位：容量 + 丢包/抖动（与画质解耦，两者都真实） ── */
+const NETS = [
+  { id:1, n:"优秀",   m:"5G SA",   cap:8.25, rtt:35,  loss:0,    drop:0,   jit:0,   st:"var(--ok)" },
+  { id:2, n:"良好",   m:"5G NSA",  cap:4.10, rtt:78,  loss:0.4,  drop:.10, jit:35,  st:"var(--ok)" },
+  { id:3, n:"拥塞",   m:"4G",      cap:1.45, rtt:180, loss:3.2,  drop:.34, jit:100, st:"var(--warn)" },
+  { id:4, n:"弱覆盖", m:"4G 边缘", cap:0.42, rtt:420, loss:11.5, drop:.62, jit:240, st:"var(--crit)" }
+];
 const SRC = [
-  { id:"host", label:"手机上行", tag:"CAM", ph:"assets/poster-host.png", vid:"assets/host.mp4", lang:"原始信号" },
+  { id:"host", label:"手机上行", tag:"CAM", ph:"assets/poster-host.png", vid:"assets/host.mp4", lang:"原始信号", always:true },
   { id:"en", label:"English", tag:"CH1", ph:"assets/poster1.png", vid:"assets/ch1.mp4", lang:"English",
     subs:["This is amazing — free shipping today!","Let me show you the details.","Limited stock, grab yours now."] },
   { id:"ja", label:"日本語", tag:"CH2", ph:"assets/poster2.png", vid:"assets/ch2.mp4", lang:"日本語",
@@ -381,213 +470,296 @@ const SRC = [
   { id:"es", label:"Español", tag:"CH3", ph:"assets/poster3.png", vid:"assets/ch3.mp4", lang:"Español",
     subs:["¡Increíble! Envío gratis hoy.","Les muestro los detalles.","Quedan pocas unidades."] }
 ];
-const NETS = [
-  { id:1, n:"优秀",  m:"5G SA",   bars:4, br:8.25, rtt:35,  loss:0,    drop:0,    sc:1,   jit:0,   q:"1080P", st:"var(--ok)" },
-  { id:2, n:"良好",  m:"5G NSA",  bars:3, br:4.10, rtt:78,  loss:0.4,  drop:.14,  sc:.72, jit:38,  q:"1080P", st:"var(--ok)" },
-  { id:3, n:"拥塞",  m:"4G",      bars:2, br:1.45, rtt:180, loss:3.2,  drop:.42,  sc:.42, jit:110, q:"720P",  st:"var(--warn)" },
-  { id:4, n:"弱覆盖", m:"4G 边缘", bars:1, br:0.42, rtt:420, loss:11.5, drop:.68,  sc:.22, jit:255, q:"480P",  st:"var(--crit)" }
-];
 const PLAT = [{n:"YouTube",c:"#FF0033",t:"▶"},{n:"Facebook",c:"#1877F2",t:"f"},
               {n:"TikTok",c:"#0F0F0F",t:"♪"},{n:"Twitch",c:"#9146FF",t:"T"},{n:"X",c:"#000",t:"X"}];
-const NAMES = ["Mia","Kenji","Sofía","Liam","Yuki","Diego","Emma","Haru","Lucía","Noah","Aoi","Mateo"];
-const CMTS = {
-  English:["Love this! 😍","Shipping to Canada?","How much is it?","Just ordered two!","She's so natural"],
-  "日本語":["かわいい！","送料は無料ですか？","もう買いました 🎉","色違いはありますか？","応援してます！"],
-  "Español":["¡Me encanta! 🔥","¿Envían a México?","Ya lo compré","¿Hay más colores?","Qué buena calidad"],
-  "原始信号":["画面很清晰","主播好厉害","支持一下 👏","什么时候发货？","已下单!"]
-};
-let net = NETS[0], live = false, pgm = 1, t0 = 0, S = [], tiles = [], cmtCount = 0;
+const NAMES=["Mia","Kenji","Sofía","Liam","Yuki","Diego","Emma","Haru","Lucía","Noah"];
+const CMTS={English:["Love this! 😍","Shipping to Canada?","How much is it?","Just ordered two!"],
+  "日本語":["かわいい！","送料は無料ですか？","もう買いました 🎉","応援してます！"],
+  "Español":["¡Me encanta! 🔥","¿Envían a México?","Ya lo compré","¿Hay más colores?"],
+  "原始信号":["画面很清晰","主播好厉害","支持一下 👏","已下单!"]};
+
+/* ── 状态 ── */
+let net = NETS[0], live = false, pgm = 1, t0 = 0, S = [];
+let targetQ = 0;                 // 目标画质（用户选）
+let actualQ = 0;                 // 实际画质（ABR 结果）
+let chOn = [true,true,true];     // 三路语言频道开关
+let platOn = PLAT.map(()=>true);
+let subsOn = true;
+let micGain = .72;
+let tiles = [], cmtN = 0;
 
 /* ── MULTIVIEW ── */
-SRC.forEach((s, i) => {
-  const d = document.createElement("div");
-  d.className = "tile off"; d.tabIndex = 0; d.setAttribute("role","button");
-  d.setAttribute("aria-label", `切换 ${s.label} 到播出`);
-  d.innerHTML = `<img src="${s.ph}" alt="${s.label} 监看画面">
-    <video src="${s.vid}" muted loop playsinline aria-hidden="true"></video>
-    <canvas aria-hidden="true"></canvas>
-    <span class="tile-b">${s.tag}</span><span class="tile-l">${s.label}</span><span class="tile-n">—</span>`;
-  const pick = () => setPgm(i);
-  d.onclick = pick;
-  d.onkeydown = e => { if(e.key===" "||e.key==="Enter"){ e.preventDefault(); pick(); } };
+SRC.forEach((s,i)=>{
+  const d=document.createElement("div");
+  d.className="tile off"; d.tabIndex=0; d.setAttribute("role","button");
+  d.setAttribute("aria-label",`切换 ${s.label} 到播出`);
+  d.innerHTML=`<img src="${s.ph}" alt="${s.label} 监看"><video src="${s.vid}" muted loop playsinline aria-hidden="true"></video>
+    <canvas aria-hidden="true"></canvas><span class="tile-b">${s.tag}</span>
+    <span class="tile-l">${s.label}</span><span class="tile-n">—</span>`;
+  d.onclick=()=>setPgm(i);
+  d.onkeydown=e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();setPgm(i);}};
   $("mv").appendChild(d);
-  tiles.push({ el:d, vd:d.querySelector("video"), cv:d.querySelector("canvas"),
-               num:d.querySelector(".tile-n"), cfg:s, ok:false, last:0, si:0 });
+  tiles.push({el:d,vd:d.querySelector("video"),cv:d.querySelector("canvas"),
+              num:d.querySelector(".tile-n"),cfg:s,ok:false,last:0,si:0});
 });
-tiles.forEach(t => { t.vd.addEventListener("loadeddata", ()=>t.ok=true);
-                     t.vd.addEventListener("error", ()=>t.ok=false); });
+tiles.forEach(t=>{t.vd.addEventListener("loadeddata",()=>t.ok=true);
+                  t.vd.addEventListener("error",()=>t.ok=false);});
 
+function chActive(i){ return i===0 ? true : chOn[i-1]; }
 function setPgm(i){
-  pgm = i;
+  if(!chActive(i)) return;                       // 关掉的频道不能切
+  pgm=i;
   tiles.forEach((t,k)=>t.el.classList.toggle("air", k===i && live));
-  const s = SRC[i];
-  $("pgmLang").textContent = s.label;
-  $("pgmPh").src = s.ph;
-  $("pgmCC").textContent = live ? (s.subs ? s.subs[0] : "原始上行信号 · 未叠加字幕") : "";
-  $("program").querySelector(".pgm-frame").classList.toggle("rd", live && tiles[i].ok);
+  $("pgmLang").textContent=SRC[i].label;
+  $("pgmPh").src=SRC[i].ph;
+  $("pgmCC").textContent = live && SRC[i].subs ? SRC[i].subs[0] : "";
+  document.querySelector(".pgm-frame").classList.toggle("rd", live && tiles[i].ok);
 }
 
-/* ── 分发目标 chips ── */
-let up = PLAT.map(()=>true);
-function dests(){
-  $("dests").innerHTML = "";
-  PLAT.forEach((p,i)=>{
-    const b = document.createElement("button");
-    b.className = "dchip" + (live && up[i] ? " up" : ""); b.style.background = p.c;
-    b.textContent = p.t; b.title = p.n; b.setAttribute("aria-label", p.n + (up[i]?" 已启用":" 已关闭"));
-    b.setAttribute("aria-pressed", up[i]);
-    b.onclick = ()=>{ up[i]=!up[i]; dests(); plats(); };
-    $("dests").appendChild(b);
+/* ── 左栏：频道开关（真实影响分发路数与带宽） ── */
+function renderChans(){
+  const h=$("chCtl"); h.innerHTML="";
+  SRC.slice(1).forEach((s,k)=>{
+    const on=chOn[k];
+    const b=document.createElement("button");
+    b.className="ctl"+(on?" on":""); b.type="button"; b.setAttribute("aria-pressed",on);
+    b.innerHTML=`<span class="cd"></span><span class="cl">${s.label}</span>
+      <span class="cq">${on?"在播":"已关"}</span>`;
+    b.onclick=()=>{
+      chOn[k]=!chOn[k];
+      if(!chOn[k] && pgm===k+1){ const nx=[1,2,3].find(i=>chActive(i)); setPgm(nx!==undefined?nx:0); }
+      renderChans(); syncTiles(); recompute();
+    };
+    h.appendChild(b);
   });
 }
-function plats(){
-  const h = $("plats"); h.innerHTML = "";
+function syncTiles(){
+  tiles.forEach((t,i)=>{
+    const act = chActive(i) && live;
+    t.el.classList.toggle("off", !act);
+    t.el.classList.toggle("dis", !chActive(i));
+    if(act){ if(t.ok){ t.vd.play().catch(()=>{}); t.el.classList.add("rd"); } }
+    else { t.vd.pause(); t.el.classList.remove("rd","air"); }
+  });
+  if(live) tiles[pgm] && tiles[pgm].el.classList.add("air");
+}
+
+/* ── 左栏：目标画质（真实改码率+清晰度） ── */
+function renderQ(){
+  const h=$("qCtl"); h.innerHTML="";
+  [0,1,2].forEach(k=>{
+    const q=LADDER[k], on=targetQ===k;
+    const b=document.createElement("button");
+    b.className="ctl"+(on?" on":""); b.type="button"; b.setAttribute("aria-pressed",on);
+    b.innerHTML=`<span class="cd"></span><span class="cl">${q.id}</span><span class="cq">${q.v.toFixed(1)}M</span>`;
+    b.onclick=()=>{ targetQ=k; renderQ(); recompute(); };
+    h.appendChild(b);
+  });
+}
+/* ── 左栏：字幕开关（真实显隐） ── */
+function renderSubs(){
+  const b=$("subCtl");
+  b.className="ctl"+(subsOn?" on":""); b.setAttribute("aria-pressed",subsOn);
+  b.querySelector(".cq").textContent=subsOn?"开":"关";
+  $("pgmCC").style.display=subsOn?"":"none";
+}
+$("subCtl").onclick=()=>{ subsOn=!subsOn; renderSubs(); };
+
+/* ── 链路档位 ── */
+NETS.forEach(n=>{
+  const b=document.createElement("button");
+  b.className="net"; b.type="button"; b.setAttribute("aria-pressed",n.id===net.id);
+  b.innerHTML=`<span class="nm"><span class="nd" style="color:${n.st}"></span>${n.n}</span>
+    <span class="ns">容量 ${n.cap} Mbps<br>${n.rtt}ms · 丢包 ${n.loss}%</span>`;
+  b.onclick=()=>{ net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
+    document.documentElement.style.setProperty("--st",n.st); recompute(); };
+  $("netList").appendChild(b);
+});
+
+/* ── 平台 ── */
+function renderPlat(){
+  const h=$("plats"); h.innerHTML="";
   PLAT.forEach((p,i)=>{
-    const d = document.createElement("div");
-    d.className = "pl" + (live && up[i] ? " up" : ""); d.tabIndex = 0; d.setAttribute("role","button");
-    d.setAttribute("aria-pressed", up[i]);
-    d.innerHTML = `<span class="lg" style="background:${p.c}">${p.t}</span><span class="nm2">${p.n}</span>
-      <span class="stt">${live&&up[i]?'<i></i>推流中':(up[i]?'待开播':'已关闭')}</span>
-      <span class="q">${up[i]?net.q:"—"}</span>`;
-    const t=()=>{ up[i]=!up[i]; plats(); dests(); };
+    const d=document.createElement("div");
+    d.className="pl"+(live&&platOn[i]?" up":""); d.tabIndex=0; d.setAttribute("role","button");
+    d.setAttribute("aria-pressed",platOn[i]);
+    const lanes = platOn[i] ? chOn.filter(Boolean).length : 0;
+    d.innerHTML=`<span class="lg" style="background:${p.c}">${p.t}</span><span class="nm2">${p.n}</span>
+      <span class="stt">${live&&platOn[i]?'<i></i>'+lanes+' 路':(platOn[i]?'待开播':'已关闭')}</span>
+      <span class="q">${platOn[i]?LADDER[actualQ].id:"—"}</span>`;
+    const t=()=>{ platOn[i]=!platOn[i]; renderPlat(); dests(); recompute(); };
     d.onclick=t; d.onkeydown=e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();t();}};
     h.appendChild(d);
   });
-  $("platCount").textContent = (live ? up.filter(Boolean).length : 0) + " 路";
+}
+function dests(){
+  $("dests").innerHTML="";
+  PLAT.forEach((p,i)=>{
+    const b=document.createElement("button");
+    b.className="dchip"+(live&&platOn[i]?" up":""); b.style.background=p.c; b.textContent=p.t;
+    b.title=p.n; b.setAttribute("aria-label",p.n); b.setAttribute("aria-pressed",platOn[i]);
+    b.onclick=()=>{ platOn[i]=!platOn[i]; dests(); renderPlat(); recompute(); };
+    $("dests").appendChild(b);
+  });
 }
 
-/* ── 推子 + VU ── */
-["麦克风","背景音乐","音效"].forEach((n,i)=>{
-  const w = [72,38,55][i];
-  const r = document.createElement("div"); r.className = "fr";
-  r.innerHTML = `<span class="fn">${n}</span><span class="rail-s"><i style="width:${w}%"></i><b style="left:${w}%"></b></span>
-    <span class="vu" id="vu${i}"></span>`;
+/* ══ 核心：带宽账本 + ABR 自动降码 ══ */
+function recompute(){
+  // 1) ABR：上行需求 ≤ 链路容量，否则逐级降码
+  actualQ = targetQ;
+  while (actualQ < LADDER.length-1 && LADDER[actualQ].v + AUDIO_MBPS > net.cap) actualQ++;
+  const q = LADDER[actualQ], perLane = q.v + AUDIO_MBPS;
+
+  // 2) 出口：路数 = 在播频道 × 开启平台
+  const chN = chOn.filter(Boolean).length, plN = platOn.filter(Boolean).length;
+  const lanes = live ? chN*plN : 0;
+  const egress = lanes*perLane;
+  const uplink = live ? perLane : 0;
+  const head = net.cap - uplink;
+
+  // 3) 上屏
+  $("bwUp").textContent = uplink.toFixed(2);
+  $("bwCap").textContent = net.cap.toFixed(2);
+  $("bwLanes").textContent = lanes;
+  $("bwPer").textContent = perLane.toFixed(2);
+  $("bwEgress").textContent = egress.toFixed(1);
+  $("bwHead").textContent = (head>=0?"+":"")+head.toFixed(2);
+  $("bwHead").className = "bv " + (head<0?"bad":head<1?"warn":"ok");
+  const pct = clamp(uplink/net.cap*100, 0, 100);
+  $("bwBar").style.width = pct+"%";
+  $("bwBar").className = "bwfill " + (uplink>net.cap?"bad":uplink>net.cap*.8?"warn":"ok");
+  $("bwPct").textContent = live ? Math.round(pct)+"%" : "—";
+
+  const abr = actualQ!==targetQ;
+  $("abr").hidden = !abr || !live;
+  if(abr) $("abrTxt").textContent = `链路容量不足 ${LADDER[targetQ].id}，已自动降至 ${q.id}`;
+  $("pgmRes").textContent = q.id;
+  $("qNow").textContent = q.id;
+  $("lqName").textContent = net.n; $("lqBr").textContent = net.cap.toFixed(2);
+  $("laneNote").textContent = `${chN} 路语言 × ${plN} 个平台`;
+  // 平台行的路数/画质就地刷新（不重建，避免与其自身的 toggle 递归）
+  [...$("plats").children].forEach((el,i)=>{
+    const stt=el.querySelector(".stt"), qq=el.querySelector(".q");
+    if(stt) stt.innerHTML = live&&platOn[i] ? '<i></i>'+chN+' 路' : (platOn[i]?'待开播':'已关闭');
+    if(qq)  qq.textContent = platOn[i] ? q.id : "—";
+  });
+}
+
+/* ── 音频推子：可拖动，真实驱动 VU 与麦克风增益 ── */
+[["麦克风",.72,"mic"],["背景音乐",.38,"bgm"],["音效",.55,"sfx"]].forEach(([n,v,id])=>{
+  const r=document.createElement("div"); r.className="fr";
+  r.innerHTML=`<span class="fn">${n}</span>
+    <input class="rng" type="range" min="0" max="100" value="${v*100}" aria-label="${n}音量">
+    <span class="fv" id="fv-${id}">${Math.round(v*100)}</span><span class="vu" id="vu-${id}"></span>`;
   $("faders").appendChild(r);
   for(let k=0;k<7;k++) r.querySelector(".vu").appendChild(document.createElement("i"));
+  const inp=r.querySelector(".rng");
+  inp.oninput=()=>{ const val=+inp.value; $("fv-"+id).textContent=val;
+    if(id==="mic"){ micGain=val/100; } };
 });
-
-/* ── 链路 ── */
-NETS.forEach(n=>{
-  const b = document.createElement("button");
-  b.className="net"; b.type="button"; b.setAttribute("aria-pressed", n.id===net.id);
-  b.innerHTML = `<span class="nm"><span class="nd" style="color:${n.st}"></span>${n.n}</span>
-    <span class="ns">${n.br} Mbps<br>${n.rtt}ms · 丢包 ${n.loss}%</span>`;
-  b.onclick = ()=>setNet(n);
-  $("netList").appendChild(b);
-});
-function setNet(n){
-  net = n;
-  [...$("netList").children].forEach((b,i)=>b.setAttribute("aria-pressed", NETS[i].id===n.id));
-  document.documentElement.style.setProperty("--st", n.st);
-  $("lqName").textContent = n.n; $("lqBr").textContent = n.br.toFixed(2);
-  $("pgmRes").textContent = n.q;
-  plats();
-}
 
 /* ── 开播 ── */
-$("go").onclick = ()=> live ? stop() : start();
+$("go").onclick=()=>live?stop():start();
 function start(){
-  live = true; t0 = Date.now(); S = []; cmtCount = 0;
+  live=true; t0=Date.now(); S=[]; cmtN=0;
   document.body.classList.add("live");
-  $("go").textContent = "结束直播"; $("tState").textContent = "直播中";
-  tiles.forEach((t,i)=>setTimeout(()=>{
-    t.el.classList.remove("off");
-    if(t.ok){ t.vd.play().catch(()=>{}); t.el.classList.add("rd"); }
-    if(i===pgm) setPgm(pgm);
-  }, 180 + i*140));
-  setNet(net); dests(); plats();
+  $("go").textContent="结束直播"; $("tState").textContent="直播中";
+  tiles.forEach((t,i)=>setTimeout(()=>{ syncTiles(); if(i===pgm) setPgm(pgm); }, 160+i*130));
+  dests(); renderPlat(); recompute();
 }
 function stop(){
-  live = false; document.body.classList.remove("live");
-  $("go").textContent = "开始直播"; $("tState").textContent = "已结束";
-  tiles.forEach(t=>{ t.el.classList.add("off"); t.el.classList.remove("rd","air"); t.vd.pause(); });
-  $("program").querySelector(".pgm-frame").classList.remove("rd");
-  $("chD").setAttribute("opacity","0"); dests(); plats();
+  live=false; document.body.classList.remove("live");
+  $("go").textContent="开始直播"; $("tState").textContent="已结束";
+  syncTiles(); document.querySelector(".pgm-frame").classList.remove("rd");
+  $("chD").setAttribute("opacity","0"); $("abr").hidden=true;
+  dests(); renderPlat(); recompute();
 }
-addEventListener("keydown", e=>{
+addEventListener("keydown",e=>{
   if(e.target.matches("input,textarea")) return;
-  if(e.code==="Space"){ e.preventDefault(); live?stop():start(); }
-  const n = NETS.find(x=>String(x.id)===e.key); if(n) setNet(n);
-  const k = {q:1,w:2,e:3}[e.key.toLowerCase()]; if(k!==undefined && live) setPgm(k);
+  if(e.code==="Space"){e.preventDefault(); live?stop():start();}
+  const n=NETS.find(x=>String(x.id)===e.key);
+  if(n){ net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
+         document.documentElement.style.setProperty("--st",n.st); recompute(); }
+  const k={q:1,w:2,e:3}[e.key.toLowerCase()]; if(k!==undefined&&live) setPgm(k);
 });
 
-/* ── 渲染：网络劣化真实作用于画面 ── */
-const off = document.createElement("canvas"), oc = off.getContext("2d");
-function paint(cv, v, now, slot){
-  if (Math.random() < net.drop) return false;
-  if (net.jit && now - slot.last < Math.random()*net.jit) return false;
-  if (!v.videoWidth) return false;
-  const W = 320, H = Math.round(W * v.videoHeight / v.videoWidth);
-  if (cv.width !== W || cv.height !== H){ cv.width = W; cv.height = H; }
-  const sw = Math.max(24, Math.round(W*net.sc)), sh = Math.max(24, Math.round(H*net.sc));
-  if (off.width !== sw || off.height !== sh){ off.width = sw; off.height = sh; }
-  oc.drawImage(v, 0, 0, sw, sh);
-  const c = cv.getContext("2d"); c.imageSmoothingEnabled = net.sc > .7;
-  c.drawImage(off, 0, 0, sw, sh, 0, 0, W, H);
-  slot.last = now; return true;
+/* ── 渲染：画质(ABR) + 丢包/抖动(链路) 双重真实作用 ── */
+const off=document.createElement("canvas"), oc=off.getContext("2d");
+function paint(cv,v,now,slot){
+  if(Math.random()<net.drop) return false;
+  if(net.jit && now-slot.last < Math.random()*net.jit) return false;
+  if(!v.videoWidth) return false;
+  const sc=LADDER[actualQ].sc;
+  const W=320, H=Math.round(W*v.videoHeight/v.videoWidth);
+  if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
+  const sw=Math.max(20,Math.round(W*sc)), sh=Math.max(20,Math.round(H*sc));
+  if(off.width!==sw||off.height!==sh){off.width=sw;off.height=sh;}
+  oc.drawImage(v,0,0,sw,sh);
+  const c=cv.getContext("2d"); c.imageSmoothingEnabled=sc>.7;
+  c.drawImage(off,0,0,sw,sh,0,0,W,H);
+  slot.last=now; return true;
 }
 requestAnimationFrame(function loop(now){
-  if (live) tiles.forEach((t,i)=>{
-    if (!t.ok || t.el.classList.contains("off")) return;
-    paint(t.cv, t.vd, now, t);
-    if (i === pgm && paint($("pgmCv"), t.vd, now, t)){
-      const src=$("pgmCv"), bg=$("pgmBg");
-      if(bg.width!==src.width||bg.height!==src.height){bg.width=src.width;bg.height=src.height;}
-      bg.getContext("2d").drawImage(src,0,0);
+  if(live) tiles.forEach((t,i)=>{
+    if(!t.ok||t.el.classList.contains("off")) return;
+    paint(t.cv,t.vd,now,t);
+    if(i===pgm && paint($("pgmCv"),t.vd,now,t)){
+      const s=$("pgmCv"), bg=$("pgmBg");
+      if(bg.width!==s.width||bg.height!==s.height){bg.width=s.width;bg.height=s.height;}
+      bg.getContext("2d").drawImage(s,0,0);
     }
   });
   requestAnimationFrame(loop);
 });
 
-/* ── 时钟 / VU ── */
-const pad = x => String(Math.floor(x)).padStart(2,"0");
+/* ── 时钟 / VU（受推子与画质影响） ── */
+const pad=x=>String(Math.floor(x)).padStart(2,"0");
 setInterval(()=>{
-  if(live){ const t=(Date.now()-t0)/1000, s=`${pad(t/3600)}:${pad(t/60%60)}:${pad(t%60)}`;
-    $("tcMain").textContent=s; $("tcPgm").textContent=s; }
-  const amp = live ? .35+.65*net.sc : 0;
-  [0,1,2].forEach(i=>[...$("vu"+i).children].forEach((b,k)=>{
-    const on = live && (k/7) < amp*(.5+Math.random()*.55);
-    b.className = on ? (k>4?"hi":"on") : "";
-  }));
+  if(live){const t=(Date.now()-t0)/1000,s=`${pad(t/3600)}:${pad(t/60%60)}:${pad(t%60)}`;
+    $("tcMain").textContent=s; $("tcPgm").textContent=s;}
+  const base=live?(.3+.7*LADDER[actualQ].sc):0;
+  [["mic",micGain],["bgm",.5],["sfx",.5]].forEach(([id,g])=>{
+    const el=$("vu-"+id); if(!el) return;
+    [...el.children].forEach((b,k)=>{
+      const on=live&&(k/7)<base*g*(.6+Math.random()*.7);
+      b.className=on?(k>4?"hi":"on"):"";
+    });
+  });
 },140);
+setInterval(()=>{ if(!live)return; const t=tiles[pgm]; if(!t.cfg.subs)return;
+  t.si=(t.si+1)%t.cfg.subs.length; $("pgmCC").textContent=t.cfg.subs[t.si]; },4600);
 
-/* ── 字幕轮播 ── */
-setInterval(()=>{ if(!live) return;
-  const t = tiles[pgm]; if(!t.cfg.subs) return;
-  t.si = (t.si+1) % t.cfg.subs.length; $("pgmCC").textContent = t.cfg.subs[t.si];
-}, 4600);
-
-/* ── 实时评论流 ── */
-const HUE = ["#5B9DFF","#FF7A8A","#31E08A","#FFB534","#8F72FF","#28E4F5"];
+/* ── 评论（跟随播出语言；网络差则变慢） ── */
+const HUE=["#5B9DFF","#FF7A8A","#31E08A","#FFB534","#8F72FF"];
 setInterval(()=>{
   if(!live) return;
-  const lang = SRC[pgm].lang, pool = CMTS[lang] || CMTS["原始信号"];
-  const nm = NAMES[Math.floor(Math.random()*NAMES.length)];
-  const d = document.createElement("div"); d.className = "msg";
-  d.innerHTML = `<span class="av" style="background:${HUE[Math.floor(Math.random()*HUE.length)]}">${nm[0]}</span>
+  if(Math.random() > .35+LADDER[actualQ].sc*.6) return;
+  const lang=SRC[pgm].lang, pool=CMTS[lang]||CMTS["原始信号"];
+  const nm=NAMES[Math.floor(Math.random()*NAMES.length)];
+  const d=document.createElement("div"); d.className="msg";
+  d.innerHTML=`<span class="av" style="background:${HUE[Math.floor(Math.random()*HUE.length)]}">${nm[0]}</span>
     <span class="msg-b"><span class="msg-u">${nm}<span class="flag">${lang}</span></span>
     <span class="msg-t">${pool[Math.floor(Math.random()*pool.length)]}</span></span>`;
-  const c = $("chat"); c.appendChild(d);
-  while (c.children.length > 7) c.removeChild(c.firstChild);
-  cmtCount++;
-}, 1500);
-setInterval(()=>{ $("cmtRate").textContent = live ? Math.round(cmtCount*(0.6+net.sc*0.8)) + " 条/分" : "0 条/分"; }, 1000);
+  const c=$("chat"); c.appendChild(d); while(c.children.length>6) c.removeChild(c.firstChild);
+  cmtN++;
+},1300);
 
-/* ── 计数 + 图表 ── */
-let vw=0, lk=0, cm=0, sh2=0;
+/* ── 观众数据：与在播路数、画质挂钩 ── */
+let vw=0,lk=0,cm=0,sh2=0;
 setInterval(()=>{
   if(!live) return;
-  const r = .4 + net.sc*.9;
-  vw += Math.round((40+Math.random()*90)*r); lk += Math.round((30+Math.random()*70)*r);
-  cm += Math.round((3+Math.random()*9)*r);   sh2 += Math.round((1+Math.random()*5)*r);
-  $("kView").textContent = vw.toLocaleString(); $("kLike").textContent = lk.toLocaleString();
-  $("kCmt").textContent = cm.toLocaleString(); $("kShr").textContent = sh2.toLocaleString();
+  const lanes=chOn.filter(Boolean).length*platOn.filter(Boolean).length;
+  const r=(lanes/15)*(0.45+LADDER[actualQ].sc*0.75);
+  vw+=Math.round((60+Math.random()*120)*r); lk+=Math.round((45+Math.random()*95)*r);
+  cm+=Math.round((4+Math.random()*12)*r);  sh2+=Math.round((2+Math.random()*7)*r);
+  $("kView").textContent=vw.toLocaleString(); $("kLike").textContent=lk.toLocaleString();
+  $("kCmt").textContent=cm.toLocaleString(); $("kShr").textContent=sh2.toLocaleString();
   tiles.forEach((t,i)=>{ if(!t.el.classList.contains("off"))
-    t.num.textContent = ((12000+vw*(0.8+i*0.25))/1000).toFixed(1)+"K"; });
-  S.push(vw); if(S.length>36) S.shift();
+    t.num.textContent=((9000+vw*(.8+i*.25))/1000).toFixed(1)+"K"; });
+  S.push(vw); if(S.length>36)S.shift();
   if(S.length>1){
-    const mx=Math.max(...S,1), W=300, H=54;
-    const p=S.map((v,i)=>[i/(S.length-1)*W, H-4-(v/mx)*(H-11)]);
+    const mx=Math.max(...S,1),W=300,H=54;
+    const p=S.map((v,i)=>[i/(S.length-1)*W,H-4-(v/mx)*(H-11)]);
     const d=p.map((q,i)=>(i?"L":"M")+q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ");
     $("chL").setAttribute("d",d); $("chA").setAttribute("d",d+` L${W},${H} L0,${H} Z`);
     const e=p[p.length-1]; $("chD").setAttribute("cx",e[0]); $("chD").setAttribute("cy",e[1]);
@@ -595,7 +767,7 @@ setInterval(()=>{
   }
 },1000);
 
-setNet(net); setPgm(pgm); dests(); plats();
+renderChans(); renderQ(); renderSubs(); dests(); renderPlat(); setPgm(1); recompute();
 
 </script>
 </body>
