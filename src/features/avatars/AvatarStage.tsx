@@ -9,6 +9,7 @@ const THEME = {
   cobalt: { accent: '#55dce7', secondary: '#4b7dff', cloth: '#15273b', skin: '#ceb7aa' },
   violet: { accent: '#a78cff', secondary: '#e1d9ff', cloth: '#26213b', skin: '#d8bba8' },
   amber: { accent: '#e7b66a', secondary: '#ff7f72', cloth: '#38261f', skin: '#cba58d' },
+  teal: { accent: '#54dce7', secondary: '#72f0c1', cloth: '#143033', skin: '#c7a58e' },
 } as const;
 
 class CanvasBoundary extends Component<
@@ -236,7 +237,7 @@ function AvatarFallback({ market }: { market: MarketProfile }) {
           opacity=".4"
         />
       </svg>
-      <span className="renderer-badge">2D SAFE RENDERER</span>
+      <span className="renderer-badge">2D 安全渲染</span>
     </div>
   );
 }
@@ -286,12 +287,8 @@ export function AvatarStage({
           role={channel.status === 'paused' ? 'alert' : 'status'}
         >
           <Icon name={channel.status === 'paused' ? 'alert' : 'signal'} size={28} />
-          <strong>{channel.status === 'paused' ? 'SIGNAL PAUSED' : 'AUDIO ONLY'}</strong>
-          <span>
-            {channel.status === 'paused'
-              ? 'Waiting for uplink capacity'
-              : 'Voice channel remains protected'}
-          </span>
+          <strong>{channel.status === 'paused' ? '信号已暂停' : '仅保留音频'}</strong>
+          <span>{channel.status === 'paused' ? '等待上行链路恢复' : '语音通道继续受到保障'}</span>
           <div className="audio-bars" aria-hidden="true">
             {Array.from({ length: 14 }, (_, i) => (
               <i key={i} />
@@ -328,12 +325,12 @@ export function AvatarStage({
       )}
       <div className="avatar-watermark">
         <Icon name="shield" size={12} />
-        <span>AUTHORIZED AI AVATAR</span>
+        <span>数字人模拟 · EMULATED</span>
       </div>
       {channel.status === 'buffering' && (
         <div className="buffering-indicator">
           <span />
-          <strong>BUFFERING</strong>
+          <strong>缓冲中</strong>
         </div>
       )}
       {channel.quality === 'low' && <div className="low-res-grid" aria-hidden="true" />}

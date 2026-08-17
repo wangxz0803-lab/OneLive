@@ -1,4 +1,5 @@
 import { MARKET_PROFILES } from '@/config/markets';
+import { localizedAudioDelayMs } from '@/core/playback';
 import type {
   ChannelExperience,
   ChannelQuality,
@@ -15,9 +16,9 @@ import type {
 export const NETWORK_PROFILES: Record<NetworkProfileId, NetworkProfile> = {
   premium: {
     id: 'premium',
-    label: 'Premium 5G',
+    label: '优享 5G',
     shortLabel: '5G',
-    description: 'High-capacity cellular uplink',
+    description: '高容量蜂窝上行',
     uplinkKbps: 20_000,
     rttMs: 38,
     jitterMs: 6,
@@ -25,9 +26,9 @@ export const NETWORK_PROFILES: Record<NetworkProfileId, NetworkProfile> = {
   },
   congested: {
     id: 'congested',
-    label: 'Congested Network',
-    shortLabel: 'CONGESTED',
-    description: 'Competing traffic, jitter and light loss',
+    label: '网络拥塞',
+    shortLabel: '拥塞',
+    description: '竞争流量、抖动与轻度丢包',
     uplinkKbps: 3200,
     rttMs: 180,
     jitterMs: 75,
@@ -35,9 +36,9 @@ export const NETWORK_PROFILES: Record<NetworkProfileId, NetworkProfile> = {
   },
   weak: {
     id: 'weak',
-    label: 'Weak Coverage',
-    shortLabel: 'WEAK',
-    description: 'Cell-edge capacity and packet loss',
+    label: '弱覆盖',
+    shortLabel: '弱覆盖',
+    description: '小区边缘容量受限并伴随丢包',
     uplinkKbps: 850,
     rttMs: 460,
     jitterMs: 180,
@@ -45,9 +46,9 @@ export const NETWORK_PROFILES: Record<NetworkProfileId, NetworkProfile> = {
   },
   latency: {
     id: 'latency',
-    label: 'High Latency',
-    shortLabel: 'HIGH RTT',
-    description: 'Capacity remains high, responsiveness does not',
+    label: '高时延',
+    shortLabel: '高 RTT',
+    description: '带宽仍然充足，但响应速度下降',
     uplinkKbps: 16_000,
     rttMs: 880,
     jitterMs: 110,
@@ -162,13 +163,14 @@ export function deriveExperience({
   const pathRtt = deployment === 'edge' ? profile.rttMs * 0.55 : profile.rttMs;
   const baseLatency = Math.round(pathRtt + Math.max(processing.poseMs, processing.translationMs));
   const baseOffset = Math.round(profile.jitterMs * 0.8 + profile.rttMs * 0.14 + (deployment === 'cloud' ? 28 : 8));
+  const playbackAudioDelay = localizedAudioDelayMs(profileId, deployment);
 
   const channels: ChannelExperience[] = MARKET_PROFILES.map((market) => {
     const status = statusFor(profileId, qod, market);
     const quality = qualityFor(status, profileId, market.priority, qod);
     const { fps, resolution } = metricsForQuality(quality);
     const latencyMs = baseLatency + market.priority * 12;
-    const avOffsetMs = baseOffset + market.priority * 6;
+    const avOffsetMs = profileId === 'latency' ? playbackAudioDelay : baseOffset + market.priority * 6;
     return {
       marketId: market.id,
       status,
@@ -179,7 +181,7 @@ export function deriveExperience({
       latencyMs,
       avOffsetMs,
       viewers: market.viewers,
-      syncWarning: avOffsetMs > 140 || profileId === 'latency',
+      syncWarning: avOffsetMs > 140,
     };
   });
 

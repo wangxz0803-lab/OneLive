@@ -2,11 +2,11 @@ import { Icon } from '@/components/Icon';
 import { OneLiveMark } from '@/components/OneLiveLogo';
 
 const EQUATION = [
-  ['1', '真人主播'],
-  ['3', '种语言'],
-  ['3', '数字分身'],
-  ['3', '直播市场'],
-  ['1', '次内容生产'],
+  ['1', '位真人主播'],
+  ['1', '台AI直播终端'],
+  ['3', '路本地化直播'],
+  ['3', '个海外市场'],
+  ['1', '套5G + QoD保障'],
 ];
 
 export function BusinessView() {
@@ -14,22 +14,23 @@ export function BusinessView() {
     <main id="main-content" className="business-view" data-testid="business-summary">
       <div className="business-orbit business-orbit--one" />
       <div className="business-orbit business-orbit--two" />
+
       <section className="business-hero">
         <span className="business-eyebrow">
           <OneLiveMark size={24} />
-          ONE SOURCE. MANY MARKETS. LIVE.
+          真人主源 · 端侧生成 · 三路上行
         </span>
         <h1 lang="zh-CN">
-          一次直播，
+          一个真人，
           <br />
-          <em>多市场同时开播。</em>
+          <em>三个市场同时开播。</em>
         </h1>
         <p>
-          One human performance becomes three locally relevant live experiences — synchronized by
-          5G, Edge AI and assured network capability.
+          OneLive不是用预制数字人替代主播，而是让真人通过AI直播终端实时生成日语、西班牙语和英语三路直播，同时保留真人主导的直播内容。
         </p>
       </section>
-      <section className="business-equation" aria-label="OneLive commercial outcome">
+
+      <section className="business-equation" aria-label="OneLive应用场景">
         {EQUATION.map(([number, label], index) => (
           <div key={label} className="equation-item">
             <span>
@@ -40,32 +41,34 @@ export function BusinessView() {
           </div>
         ))}
       </section>
+
       <section className="business-value">
         <article lang="zh-CN">
-          <span>FOR GLOBAL COMMERCE</span>
-          <h2>一次采集，多语本地化，同步分发</h2>
+          <span>行业痛点与应用场景</span>
+          <h2>保留真人可信度，AI只负责多语言扩展</h2>
           <ul>
-            <li>减少重复开播与多语主播组织复杂度</li>
-            <li>让跨境内容更快进入目标市场</li>
-            <li>让中小商家拥有本地化直播能力</li>
+            <li>预制和循环式数字人容易被识别为非实时内容，平台治理风险更高</li>
+            <li>一个中文主播即可同时服务日本、拉美和印度三个直播间</li>
+            <li>真人持续主导讲解与互动，AI只负责语言、音色、口型和画面本地化</li>
           </ul>
         </article>
         <article lang="zh-CN">
-          <span>FOR NETWORK OPERATORS</span>
-          <h2>从连接到可保障的实时体验</h2>
+          <span>网络诉求与商业价值</span>
+          <h2>端侧AI把一路内容变成三路上行，也创造新的网络产品</h2>
           <ul>
-            <li>蜂窝视频上行与多频道下行</li>
-            <li>边缘 AI 推理和会话级编排</li>
-            <li>QoD 网络保障成为体验差异化能力</li>
+            <li>端侧AI缩短翻译、音色和口型处理路径，但不会凭空增加带宽</li>
+            <li>三路直播共享同一上行，拥塞时需要QoD保障核心直播体验</li>
+            <li>运营商可组合AI终端、5G上行、QoD和本地化服务形成新套餐</li>
           </ul>
         </article>
       </section>
+
       <footer className="business-footer">
-        <span>ONE LIVE SESSION</span>
+        <span>不是让AI替代真人</span>
         <i />
-        <span>THREE LOCAL EXPERIENCES</span>
+        <span>而是让一个真人进入三个市场</span>
         <i />
-        <strong>BUILT ON THE NETWORK</strong>
+        <strong>让网络保障三路实时生意</strong>
       </footer>
     </main>
   );

@@ -1,6 +1,6 @@
 export function OneLiveMark({ size = 34 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" role="img" aria-label="OneLive signal mark">
+    <svg width={size} height={size} viewBox="0 0 40 40" role="img" aria-label="OneLive 信号标识">
       <defs>
         <linearGradient id="one-live-gradient" x1="5" y1="5" x2="35" y2="35">
           <stop stopColor="#6cf2ea" />
@@ -25,7 +25,7 @@ export function OneLiveLogo({ compact = false }: { compact?: boolean }) {
       <OneLiveMark size={compact ? 30 : 36} />
       <div className="brand-wordmark">
         <strong>ONE<span>LIVE</span></strong>
-        {!compact && <small>GLOBAL BROADCAST INTELLIGENCE</small>}
+        {!compact && <small>全球直播智能引擎</small>}
       </div>
     </div>
   );

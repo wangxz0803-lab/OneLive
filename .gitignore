@@ -11,5 +11,10 @@ artifacts/playwright-results/
 coverage/
 certs/
 .worktrees/
+.tmp/
+artifacts/action-analysis/
+artifacts/design-audit-ai-feel/
+artifacts/leadership-visual-pass/
+artifacts/product-audit-current-demo-*/
 showcase/avatars/*
 !showcase/avatars/.gitkeep

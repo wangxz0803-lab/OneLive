@@ -1,9 +1,10 @@
 export type NetworkProfileId = 'premium' | 'congested' | 'weak' | 'latency';
 export type DeploymentMode = 'cloud' | 'edge';
 export type ViewMode = 'control' | 'comparison' | 'business';
+export type ControlStageMode = 'video' | 'avatar';
 export type SourceKind = 'phone' | 'local-camera' | 'mock';
 export type Provenance = 'LIVE' | 'EMULATED';
-export type MarketId = 'north-america' | 'japan' | 'spanish';
+export type MarketId = 'japan' | 'latam' | 'india';
 export type ChannelStatus = 'live' | 'low-res' | 'buffering' | 'audio-only' | 'paused';
 export type ChannelQuality = 'uhd' | 'hd' | 'sd' | 'low' | 'audio' | 'none';
 
@@ -25,8 +26,8 @@ export interface MarketProfile {
   id: MarketId;
   market: string;
   language: string;
-  locale: 'en-US' | 'ja-JP' | 'es-ES';
-  visualTheme: 'cobalt' | 'violet' | 'amber';
+  locale: 'ja-JP' | 'es-MX' | 'en-IN';
+  visualTheme: 'violet' | 'amber' | 'teal';
   avatarTheme: string;
   stageTheme: string;
   platformName: string;

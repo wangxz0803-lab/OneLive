@@ -53,6 +53,7 @@ export function NetworkDrawer() {
     deployment,
     qod,
     view,
+    controlStageMode,
     networkOverrides,
     setDrawerOpen,
     setProfile,
@@ -60,6 +61,7 @@ export function NetworkDrawer() {
     toggleDeployment,
     toggleQod,
     setView,
+    setControlStageMode,
     reset,
   } = useOneLiveStore();
   useDialogFocus(drawerOpen, drawerRef, () => setDrawerOpen(false));
@@ -74,19 +76,19 @@ export function NetworkDrawer() {
         className="network-drawer"
         role="dialog"
         aria-modal="true"
-        aria-label="Network experience controls"
+        aria-label="网络体验设置"
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
           <div>
-            <span className="section-kicker">NETWORK EXPERIENCE LAB</span>
-            <h2>Control plane</h2>
+            <span className="section-kicker">网络体验实验室</span>
+            <h2>网络控制面板</h2>
           </div>
           <button
             type="button"
             onClick={() => setDrawerOpen(false)}
-            aria-label="Close network controls"
+            aria-label="关闭网络设置"
             data-dialog-initial-focus
           >
             <Icon name="close" />
@@ -95,7 +97,7 @@ export function NetworkDrawer() {
         <section>
           <div className="drawer-section-title">
             <span>01</span>
-            <strong>Deployment profile</strong>
+            <strong>网络场景</strong>
           </div>
           <div className="profile-list">
             {PROFILE_IDS.map((id, index) => {
@@ -123,7 +125,7 @@ export function NetworkDrawer() {
         <section>
           <div className="drawer-section-title">
             <span>02</span>
-            <strong>Network capability</strong>
+            <strong>网络能力</strong>
           </div>
           <button
             className="capability-toggle"
@@ -136,8 +138,8 @@ export function NetworkDrawer() {
             <span>
               <Icon name={deployment === 'edge' ? 'server' : 'cloud'} />
               <span>
-                <strong>{deployment === 'edge' ? 'Edge AI' : 'Cloud AI'}</strong>
-                <small>Deployment simulation</small>
+                <strong>{deployment === 'edge' ? '端侧AI直播终端' : '云端AI生成'}</strong>
+                <small>生成位置与上行拓扑模拟</small>
               </span>
             </span>
             <i>{deployment === 'edge' ? 'EDGE' : 'CLOUD'}</i>
@@ -153,20 +155,20 @@ export function NetworkDrawer() {
             <span>
               <Icon name="shield" />
               <span>
-                <strong>Quality on Demand</strong>
-                <small>Session resource assurance</small>
+                <strong>QoD 按需保障</strong>
+                <small>会话级资源保障</small>
               </span>
             </span>
-            <i>{qod ? 'ON' : 'OFF'}</i>
+            <i>{qod ? '开启' : '关闭'}</i>
           </button>
         </section>
         <section>
           <div className="drawer-section-title">
             <span>03</span>
-            <strong>Manual emulation</strong>
+            <strong>手动模拟</strong>
           </div>
           <RangeControl
-            label="Uplink"
+            label="上行带宽"
             value={Math.round(profile.uplinkKbps / 100) / 10}
             min={0.5}
             max={25}
@@ -175,7 +177,7 @@ export function NetworkDrawer() {
             onChange={(value) => setNetworkOverride('uplinkKbps', value * 1000)}
           />
           <RangeControl
-            label="Round-trip time"
+            label="往返时延 RTT"
             value={profile.rttMs}
             min={20}
             max={1200}
@@ -184,7 +186,7 @@ export function NetworkDrawer() {
             onChange={(value) => setNetworkOverride('rttMs', value)}
           />
           <RangeControl
-            label="Jitter"
+            label="网络抖动"
             value={profile.jitterMs}
             min={0}
             max={250}
@@ -193,7 +195,7 @@ export function NetworkDrawer() {
             onChange={(value) => setNetworkOverride('jitterMs', value)}
           />
           <RangeControl
-            label="Packet loss"
+            label="丢包率"
             value={profile.lossPct}
             min={0}
             max={20}
@@ -205,8 +207,29 @@ export function NetworkDrawer() {
         <section>
           <div className="drawer-section-title">
             <span>04</span>
-            <strong>Experience view</strong>
+            <strong>演示视图</strong>
           </div>
+          <div className="stage-mode-switcher" role="group" aria-label="主控制台演示内容">
+            <button
+              className={controlStageMode === 'video' && view === 'control' ? 'active' : ''}
+              type="button"
+              onClick={() => setControlStageMode('video')}
+              aria-pressed={controlStageMode === 'video' && view === 'control'}
+              data-testid="stage-mode-video"
+            >
+              视频样例
+            </button>
+            <button
+              className={controlStageMode === 'avatar' && view === 'control' ? 'active' : ''}
+              type="button"
+              onClick={() => setControlStageMode('avatar')}
+              aria-pressed={controlStageMode === 'avatar' && view === 'control'}
+              data-testid="stage-mode-avatar"
+            >
+              数字人技术视图
+            </button>
+          </div>
+          <div className="drawer-view-caption">其他页面</div>
           <div className="view-switcher">
             <button
               className={view === 'control' ? 'active' : ''}
@@ -214,7 +237,7 @@ export function NetworkDrawer() {
               onClick={() => setView('control')}
               aria-pressed={view === 'control'}
             >
-              Control room
+              主控制台
             </button>
             <button
               className={view === 'comparison' ? 'active' : ''}
@@ -223,7 +246,7 @@ export function NetworkDrawer() {
               aria-pressed={view === 'comparison'}
               data-testid="comparison-toggle"
             >
-              Compare
+              对比
             </button>
             <button
               className={view === 'business' ? 'active' : ''}
@@ -231,16 +254,16 @@ export function NetworkDrawer() {
               onClick={() => setView('business')}
               aria-pressed={view === 'business'}
             >
-              Business
+              业务总结
             </button>
           </div>
         </section>
         <footer>
           <button type="button" onClick={reset} data-testid="director-reset">
             <Icon name="reset" size={16} />
-            Reset demo
+            重置演示
           </button>
-          <small>All injected capabilities are explicitly marked EMULATED.</small>
+          <small>所有注入的网络能力均标记为模拟 EMULATED。</small>
         </footer>
       </aside>
     </div>

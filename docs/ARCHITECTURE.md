@@ -9,6 +9,7 @@ OneLive 的架构首先服务于现场可靠性：
 - 每个指标携带 LIVE 或 EMULATED 来源语义。
 - 增加第四个市场时主要修改配置，不重写控制台。
 - 运营商 QoD、MEC 和真实 AI Provider 通过接口替换，而不是侵入 UI。
+- 比赛 Mock Demo 的四段预生成视频完全本地加载，不依赖网络、AI API 或浏览器 TTS。
 
 ## 2. 系统视图
 
@@ -32,7 +33,7 @@ flowchart LR
         N["Network Experience Emulator"]
         P["Provider contracts + fallbacks"]
         M["MarketProfile config"]
-        V["React / Three.js presentation"]
+        V["React media presentation"]
     end
 
     B -->|"Socket.IO presence + SDP/ICE"| S
@@ -57,6 +58,7 @@ flowchart LR
 | 路径                           | 职责                                                               |
 | ------------------------------ | ------------------------------------------------------------------ |
 | src/config/markets.ts          | 三市场的语言、视觉、优先级和带宽需求                               |
+| src/config/demoMedia.ts        | 中文原视频与三个本地化视频、海报和来源标签                         |
 | src/config/scripts.ts          | 中文演示台词与三语预置翻译                                         |
 | src/core/types.ts              | 网络、频道、姿态和导演状态的领域类型                               |
 | src/core/network.ts            | Network Profile、资源分配、频道降级、体验快照与 sender constraints |
@@ -64,6 +66,7 @@ flowchart LR
 | src/providers/contracts.ts     | Speech、Translation、TTS、Avatar、Network Capability 接口          |
 | src/providers/demoProviders.ts | 预置翻译、浏览器 TTS、程序化姿态和模拟 QoD Provider                |
 | src/store/useOneLiveStore.ts   | 会话、源、网络、部署模式、QoD、视图和导演状态                      |
+| src/features/control-room      | 左侧原视频、右侧市场切换舞台、网络路径和保留的 Source Tools        |
 | src/realtime/protocol.ts       | Socket.IO 与 WebRTC 信令的类型化协议                               |
 | server/session-registry.ts     | control / broadcaster 短期会话存在状态                             |
 | server/signaling.ts            | 加入会话、角色约束、SDP/ICE 转发和 source command/state            |
@@ -84,6 +87,8 @@ flowchart LR
 - TTS：浏览器 voice 可用时在本机播放；缺失时保留字幕和口型。
 - Network：NETWORK_PROFILES 与 deriveExperience，EMULATED。
 - QoD：SimulatedNetworkCapabilityProvider，EMULATED。
+- Media：`public/demo-media` 中的原视频与本地化视频；右侧同一时间只呈现一个选中市场。
+- Playback：左右预录视频互斥播放，避免双重音轨干扰现场讲解。
 
 ### Live Device Mode
 

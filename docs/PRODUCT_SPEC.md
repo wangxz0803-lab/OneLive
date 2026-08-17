@@ -2,26 +2,26 @@
 
 ## 1. 产品定义
 
-OneLive 是一个面向跨境直播场景的演示型 MVP：
+OneLive 是一个面向跨境直播场景的演示型 MVP。当前比赛 Demo 使用四段预生成视频，稳定展示“一个内容源、多市场本地化”的核心概念：
 
-> 一名中国主播使用一部手机，以中文完成一次直播；系统同时生成面向北美、日本和西语市场的本地化数字分身直播体验。
+> 左侧播放 15 秒中文原始录屏；右侧通过标签依次切换日本（日语）、拉美（西班牙语）和印度（英语）三个本地化版本。
 
 正式副标题：
 
-> 基于 5G 与边缘 AI 的多语言、多形象、跨平台实时数字分身直播
+> 基于 5G 与边缘 AI 的多语言、多市场本地化直播
 
 品牌表达：
 
 > ONE SOURCE. MANY MARKETS. LIVE.
 
-OneLive 不是普通翻译器、视频会议或真实直播平台。核心价值是把一次真人内容生产，转化为多个市场可同时观看的本地化数字分身体验，并清楚展示无线网络能力对实时体验的影响。
+OneLive 不是普通翻译器、视频会议或真实直播平台。核心价值是把一次真人内容生产，转化为多个市场可观看的本地化内容体验，并清楚展示无线网络能力对实时体验的影响。比赛版 UI 使用确定性的本地视频资产；真实采集、实时通信与 Provider 接口作为保留能力和后续扩展入口。
 
 ## 2. 产品目标
 
 ### P0：现场演示主链路
 
 - 在没有手机、互联网或 API Key 时完整运行 Mock Demo。
-- 同屏呈现一个主播源和三个差异化市场直播间。
+- 同屏呈现一个中文原视频和一个可点击切换的本地化市场舞台，三个市场状态始终可见。
 - 让不同网络 Profile 在一秒内产生肉眼可见的画质、动作、字幕和频道状态变化。
 - 让 Edge AI 与 QoD 的增益同时体现在视觉结果、指标和数据路径上。
 - 使用 Demo Director 稳定完成 Connect → Congestion → Latency → Edge → QoD → Business 六步叙事。
@@ -97,11 +97,11 @@ OneLive 不是普通翻译器、视频会议或真实直播平台。核心价值
 
 三市场采用配置驱动的 MarketProfile，默认包含：
 
-| 市场 | 语言 | 视觉主题 | 优先级 |
-| --- | --- | --- | --- |
-| North America | English / en-US | Cobalt | 1 |
-| Japan | 日本語 / ja-JP | Violet | 2 |
-| LATAM + Spain | Español / es-ES | Amber | 3 |
+| 市场          | 语言            | 视觉主题 | 优先级 |
+| ------------- | --------------- | -------- | ------ |
+| North America | English / en-US | Cobalt   | 1      |
+| Japan         | 日本語 / ja-JP  | Violet   | 2      |
+| LATAM + Spain | Español / es-ES | Amber    | 3      |
 
 市场模板由产品配置选择，不根据主播外貌推断国籍、种族或文化。
 
@@ -184,14 +184,14 @@ OneLive 不是普通翻译器、视频会议或真实直播平台。核心价值
 
 ## 7. Demo Director
 
-| 步骤 | 状态 | 评委应看到 |
-| --- | --- | --- |
-| 1 Connect | Premium 5G / Cloud / QoD Off | 一源驱动三市场，三频道在线 |
-| 2 Congestion | Congested / Cloud / QoD Off | 像素化、卡顿、频道降级、指标转差 |
-| 3 Latency | High Latency / Cloud / QoD Off | 清晰但滞后，字幕/口型错位，A/V warning |
-| 4 Edge | High Latency / Edge / QoD Off | 路径缩短，动作和字幕响应改善 |
-| 5 QoD | Congested / Edge / QoD On | 带宽重分配，核心频道恢复，三频道重新稳定 |
-| 6 Business | 商业收尾 | 1 主播、3 语言、3 数字分身、3 市场、1 次生产 |
+| 步骤         | 状态                           | 评委应看到                                   |
+| ------------ | ------------------------------ | -------------------------------------------- |
+| 1 Connect    | Premium 5G / Cloud / QoD Off   | 一源驱动三市场，三频道在线                   |
+| 2 Congestion | Congested / Cloud / QoD Off    | 像素化、卡顿、频道降级、指标转差             |
+| 3 Latency    | High Latency / Cloud / QoD Off | 清晰但滞后，字幕/口型错位，A/V warning       |
+| 4 Edge       | High Latency / Edge / QoD Off  | 路径缩短，动作和字幕响应改善                 |
+| 5 QoD        | Congested / Edge / QoD On      | 带宽重分配，核心频道恢复，三频道重新稳定     |
+| 6 Business   | 商业收尾                       | 1 主播、3 语言、3 数字分身、3 市场、1 次生产 |
 
 ## 8. 数据来源与标记
 

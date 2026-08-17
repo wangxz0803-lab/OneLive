@@ -34,19 +34,19 @@
 
 当前边界：
 
-| 能力 | 默认来源 | 标记 |
-| --- | --- | --- |
-| 手机/桌面摄像头画面 | 浏览器 getUserMedia 成功时 | LIVE |
-| Socket.IO presence | 当前本地会话 | LIVE |
-| WebRTC stats | 仅实际 getStats 成功时 | LIVE |
-| Network Profile | 应用配置 | EMULATED |
-| RTT/jitter/loss 手动参数 | Network Emulator | EMULATED |
-| Edge / Cloud 处理延时 | Deployment Profile | EMULATED |
-| QoD | SimulatedNetworkCapabilityProvider | EMULATED |
-| 预置三语翻译 | DemoTranslationProvider | EMULATED |
-| 程序化姿态 | SeededPoseProvider | EMULATED |
-| 观众数、平台名、体验评分 | 演示配置/推导 | EMULATED |
-| 浏览器 TTS | 当前设备 speechSynthesis 实际调用 | LIVE local playback；不是声音克隆，是否可听仍需现场确认 |
+| 能力                     | 默认来源                           | 标记                                                    |
+| ------------------------ | ---------------------------------- | ------------------------------------------------------- |
+| 手机/桌面摄像头画面      | 浏览器 getUserMedia 成功时         | LIVE                                                    |
+| Socket.IO presence       | 当前本地会话                       | LIVE                                                    |
+| WebRTC stats             | 仅实际 getStats 成功时             | LIVE                                                    |
+| Network Profile          | 应用配置                           | EMULATED                                                |
+| RTT/jitter/loss 手动参数 | Network Emulator                   | EMULATED                                                |
+| Edge / Cloud 处理延时    | Deployment Profile                 | EMULATED                                                |
+| QoD                      | SimulatedNetworkCapabilityProvider | EMULATED                                                |
+| 预置三语翻译             | DemoTranslationProvider            | EMULATED                                                |
+| 程序化姿态               | SeededPoseProvider                 | EMULATED                                                |
+| 观众数、平台名、体验评分 | 演示配置/推导                      | EMULATED                                                |
+| 浏览器 TTS               | 当前设备 speechSynthesis 实际调用  | LIVE local playback；不是声音克隆，是否可听仍需现场确认 |
 
 若对应客户端调用尚未接入，仅有类型或 Provider 接口不能标记为 LIVE。
 
@@ -253,6 +253,29 @@
 - 真实 WebRTC 限速只有在 sender constraints 成功应用时才成立。
 - Experience score 是演示模型，不是行业标准 KPI。
 - 虚构平台、观众数和业务画面不代表外部平台数据。
+
+## D-014：比赛主视觉采用预录双舞台
+
+决定：
+
+- Mock Demo 左侧固定原始中文录屏，右侧一次只展示一个 Japan / LATAM / India 本地化视频。
+- 市场通过显式 tab 切换；所有三路网络状态仍由同一网络模型计算。
+- Comparison 使用当前市场的预录视频，不再在主流程挂载三个 WebGL Avatar Canvas。
+- 原视频保留“原始录屏 · 本地素材”；本地化视频只显示市场与 locale，素材性质由演示者口头说明；缺失素材使用明确的原片回退。
+- 第 3 步通过浏览器 Web Audio 将本地化视频声音延迟 1000 ms，第 4 步收敛到 100 ms；A/V SYNC 遥测与警告使用相同数值。1000 ms 在领导演示距离下仍能识别错位，同时避免呈现为过度夸张的严重故障。
+
+原因：
+
+- 真实视频比三个相似程序化头像更直接地证明本地化差异。
+- 一次只展示一个目标市场，可在 1440 × 900 内保留网络路径和六步 Director，同时提高字号与可读性。
+- 移除主流程 WebGL 依赖可降低启动体积和现场 GPU 风险。
+
+限制：
+
+- 预录资产不是实时生成，不得标记 LIVE。
+- 1000 ms / 100 ms 音画偏移由导演状态驱动，属于 EMULATED，不是实际网络测量或真实 Edge 推理结果。
+- India 成片缺失时只能演示 fallback，不得声称印度版本已经完成。
+- 原有 Avatar Provider 与历史能力接口可保留，但不再承担比赛主链路视觉。
 
 ## 变更原则
 

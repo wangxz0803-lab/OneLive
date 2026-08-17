@@ -24,9 +24,7 @@ describe('network profiles', () => {
     expect(NETWORK_PROFILES.premium.uplinkKbps).toBeGreaterThan(
       NETWORK_PROFILES.congested.uplinkKbps,
     );
-    expect(NETWORK_PROFILES.weak.uplinkKbps).toBeLessThan(
-      NETWORK_PROFILES.congested.uplinkKbps,
-    );
+    expect(NETWORK_PROFILES.weak.uplinkKbps).toBeLessThan(NETWORK_PROFILES.congested.uplinkKbps);
     expect(NETWORK_PROFILES.latency.uplinkKbps).toBeGreaterThan(
       NETWORK_PROFILES.congested.uplinkKbps,
     );
@@ -77,7 +75,10 @@ describe('edge and cloud processing', () => {
 
     expect(edge.profile).toEqual(cloud.profile);
     expect(edge.e2eLatencyMs).toBeLessThan(cloud.e2eLatencyMs);
-    expect(edge.avOffsetMs).toBeLessThan(cloud.avOffsetMs);
+    expect(cloud.avOffsetMs).toBe(1000);
+    expect(edge.avOffsetMs).toBe(100);
+    expect(cloud.channels.every((channel) => channel.syncWarning)).toBe(true);
+    expect(edge.channels.every((channel) => !channel.syncWarning)).toBe(true);
     expect(edge.score).toBeGreaterThan(cloud.score);
   });
 });
@@ -96,9 +97,9 @@ describe('QoD allocation and visible channel degradation', () => {
     const withoutQod = allocateChannelResources(network, MARKET_PROFILES, false);
     const withQod = allocateChannelResources(network, MARKET_PROFILES, true);
 
-    expect(withQod['north-america']).toBeGreaterThan(withoutQod['north-america']);
-    expect(withQod['north-america']).toBeGreaterThan(withQod.japan);
-    expect(withQod.japan).toBeGreaterThan(withQod.spanish);
+    expect(withQod.japan).toBeGreaterThan(withoutQod.japan);
+    expect(withQod.japan).toBeGreaterThan(withQod.latam);
+    expect(withQod.latam).toBeGreaterThan(withQod.india);
   });
 
   it('turns congestion into visible channel states and recovers them with QoD', () => {
@@ -128,10 +129,8 @@ describe('QoD allocation and visible channel degradation', () => {
       qod: false,
     });
     const withQod = deriveExperience({ profileId: 'weak', deployment: 'edge', qod: true });
-    const thirdWithoutQod = withoutQod.channels.find(
-      (channel) => channel.marketId === 'spanish',
-    );
-    const thirdWithQod = withQod.channels.find((channel) => channel.marketId === 'spanish');
+    const thirdWithoutQod = withoutQod.channels.find((channel) => channel.marketId === 'india');
+    const thirdWithQod = withQod.channels.find((channel) => channel.marketId === 'india');
 
     expect(thirdWithoutQod).toMatchObject({ status: 'paused', quality: 'none', fps: 0 });
     expect(thirdWithQod).toMatchObject({ status: 'audio-only', quality: 'audio', fps: 0 });
