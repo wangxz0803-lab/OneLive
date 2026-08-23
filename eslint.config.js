@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'artifacts'] },
+  // .worktrees 各带一份 tsconfig.json（当前 9 个），会让 typescript-eslint 判不出
+  // tsconfigRootDir 而对全仓库报 parsing error。.gitignore 已忽略它，这里必须同步。
+  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'artifacts', '.worktrees'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:demo": "playwright test --config demo/playwright.config.ts",
     "format": "prettier --write .",
     "preview": "vite preview --host 0.0.0.0"
   },

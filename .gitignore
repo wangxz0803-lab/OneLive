@@ -4,6 +4,8 @@ playwright-report/
 test-results/
 artifacts/playwright-report/
 artifacts/playwright-results/
+artifacts/demo-playwright-results/
+artifacts/demo-walkthrough/
 .env
 *.local
 *.log
@@ -13,3 +15,4 @@ certs/
 .worktrees/
 showcase/avatars/*
 !showcase/avatars/.gitkeep
+.superpowers/

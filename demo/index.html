@@ -36,11 +36,22 @@ body::before{content:"";position:fixed;inset:-15%;pointer-events:none;z-index:0;
 @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-2%,2%,0) scale(1.06)}}
 body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.03;mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>")}
-.app{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:14px 18px 18px;
-  display:flex;flex-direction:column;gap:12px;min-height:100vh}
+/* 竖向预算的总闸：顶栏 + 三栏 + 机架 + 法务行必须收在 100vh 内，
+   底部机架才不会被裁掉；剩下的余量由 .body{flex:1} 全部喂给舞台。 */
+.app{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:10px 16px 12px;
+  display:flex;flex-direction:column;gap:10px;min-height:100vh}
+/* 桌面/投影尺寸下把高度钉死：.body{flex:1} 才拿得到确定高度，
+   .program → .pgm-body → .pgm-frame{height:100%} 一路自上而下解析。
+   否则舞台宽度(由高推出) ↔ 副列宽度 ↔ MULTIVIEW 高度 会互相求解并发散。
+   隐式栅格行默认按 max-content 撑高，会顶穿 .body 的确定高度，必须一起钉成 1fr。
+   矮视口和窄视口留给内容撑高，宁可滚动也不裁切。 */
+@media(min-width:901px) and (min-height:660px){
+  .app{height:100vh}
+  .body{grid-template-rows:minmax(0,1fr)}
+}
 
 /* ── 顶栏 ── */
-.topbar{display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:var(--r3);
+.topbar{display:flex;align-items:center;gap:14px;padding:8px 14px;border-radius:var(--r3);
   background:var(--glass);backdrop-filter:blur(24px) saturate(160%);
   -webkit-backdrop-filter:blur(24px) saturate(160%);box-shadow:var(--lift);flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;font-size:14.5px;font-weight:500;color:var(--t2)}
@@ -81,10 +92,17 @@ body.live .sess .dot{background:var(--live);box-shadow:0 0 0 4px color-mix(in sr
 .golive:focus-visible{outline:2px solid var(--brand2);outline-offset:3px}
 body.live .golive{background:linear-gradient(150deg,rgba(255,255,255,.11),rgba(255,255,255,.05));
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+.capbar{display:flex;gap:14px;align-items:center;padding:0 4px}
+.capcell{display:flex;flex-direction:column;line-height:1.35}
+.capcell b{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;color:var(--t3);font-weight:600}
+.capcell em{font-style:normal;font-size:10.5px;color:var(--t2);white-space:nowrap}
 
 /* ── 主体三栏 ── */
-.body{display:grid;grid-template-columns:172px minmax(0,1fr) 292px;gap:12px;flex:1;min-height:0}
-@media(max-width:1280px){.body{grid-template-columns:minmax(0,1fr) 280px}.rail{display:none}}
+.body{display:grid;grid-template-columns:172px minmax(0,1fr) 292px;gap:10px;flex:1;min-height:0}
+/* 左栏装着「生成位置」——演示第 4 步的转折点全靠它。窄屏收窄，绝不隐藏：
+   原设定 .rail{display:none} 会让 1280px 投影仪上整段动线无法演示。 */
+@media(max-width:1280px){.body{grid-template-columns:150px minmax(0,1fr) 262px}
+  .rail{padding:10px}}
 @media(max-width:900px){.body{grid-template-columns:1fr}}
 
 .rail{border-radius:var(--r3);padding:12px;background:var(--glass);
@@ -101,15 +119,27 @@ body.live .golive{background:linear-gradient(150deg,rgba(255,255,255,.11),rgba(2
   box-shadow:inset 0 0 0 1px rgba(91,157,255,.3),inset 2px 0 0 var(--brand)}
 
 /* ── PROGRAM ── */
-.stagecol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.stagecol{display:flex;flex-direction:column;gap:10px;min-width:0}
 .program{position:relative;border-radius:var(--r3);padding:12px;background:var(--glass);
   backdrop-filter:blur(22px) saturate(155%);-webkit-backdrop-filter:blur(22px) saturate(155%);
   box-shadow:var(--lift);flex:1;display:flex;flex-direction:column;min-height:0}
 .pgm-tag{position:absolute;top:14px;left:16px;z-index:6;font-family:var(--mono);font-size:9px;
   letter-spacing:.22em;color:var(--t3);font-weight:600}
-.pgm-frame{position:relative;flex:1;min-height:330px;border-radius:var(--r2);overflow:hidden;
-  background:var(--void);margin-top:16px;
+/* min-height 是舞台的地板：≤900px 时 .body 变单列、栅格行改为内容撑高，
+   .pgm-frame 的 height:100% 会解析成 auto，而它的子元素全是绝对定位——
+   没有这个地板，舞台会算出 0 高再由 9:16 推出 0 宽，整块消失。 */
+.pgm-body{display:flex;gap:12px;flex:1;min-height:330px;margin-top:14px;align-items:stretch}
+.pgm-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.pgm-side{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;gap:9px}
+.pgm-frame{position:relative;flex:0 0 auto;height:100%;aspect-ratio:9/16;min-height:0;border-radius:var(--r2);overflow:hidden;
+  background:var(--void);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 0 0 1px rgba(0,0,0,.6)}
+/* 必须排在 .pgm-frame 之后：同等特异性下后写的赢。写在前面时 height:auto
+   会被上面的 height:100% 覆盖，侧栏一有内容就把舞台撑到整个 body 高度。 */
+@media(max-width:900px){.pgm-body{flex-direction:column;align-items:center}
+  .pgm-frame{height:auto;width:min(100%,248px)}
+  .pgm-col{width:100%;flex:none}
+  .pgm-side{width:100%;flex:none}}
 .pgm-frame canvas,.pgm-frame img{position:absolute;inset:0;width:100%;height:100%}
 .pgm-frame img{object-fit:cover;object-position:50% 18%}
 #pgmBg{object-fit:cover;filter:blur(34px) saturate(150%) brightness(.62);transform:scale(1.18)}
@@ -141,22 +171,49 @@ body.live .pgm-cc{opacity:1;transform:none}
 .pgm-veil{position:absolute;inset:0;z-index:6;display:grid;place-items:center;font-size:12.5px;
   color:var(--t2);background:rgba(3,6,13,.7);backdrop-filter:blur(6px);transition:opacity .5s var(--e)}
 body.live .pgm-veil{opacity:0;pointer-events:none}
+/* 本地化文案对照：竖屏留白的主要承载物 */
+.lz{border-radius:var(--r2);padding:9px 12px;background:var(--glass);
+  backdrop-filter:blur(18px) saturate(150%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+  display:flex;flex-direction:column;gap:6px;overflow:auto;flex:1;min-height:0}
+.lz-h{display:flex;align-items:baseline;justify-content:space-between}
+.lz-h b{font-family:var(--mono);font-size:9px;letter-spacing:.22em;color:var(--t3);font-weight:600}
+.lz-h em{font-style:normal;font-size:10px;color:var(--t3)}
+.lz-row{padding:6px 0;border-top:1px dashed rgba(255,255,255,.09)}
+.lz-row:first-of-type{border-top:none}
+.lz-zh{font-size:11.5px;line-height:1.5;color:var(--t2)}
+.lz-tt{font-size:12.5px;line-height:1.55;margin-top:4px}
+.lz-k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;color:var(--t3);
+  display:block;margin-bottom:3px}
+
+/* ── PROGRAM 指标条 ── */
+.mbar{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;flex:none}
+.mcell{border-radius:var(--r2);padding:9px 11px;background:var(--glass);
+  backdrop-filter:blur(18px) saturate(150%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+/* 键/值用 mtk/mtv：.mk 是品牌标记、.mv 是 MULTIVIEW 卡片，两个名字都已被占 */
+.mcell .mtk{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;color:var(--t3);display:block}
+.mcell .mtv{font-family:var(--mono);font-size:16px;margin-top:3px;display:block}
+.mcell .mtv.ok{color:var(--ok)} .mcell .mtv.warn{color:var(--warn)} .mcell .mtv.bad{color:var(--crit)}
 
 /* ── MULTIVIEW ── */
-.mv{border-radius:var(--r3);padding:11px 12px 12px;background:var(--glass);
-  backdrop-filter:blur(22px) saturate(155%);-webkit-backdrop-filter:blur(22px) saturate(155%);
-  box-shadow:var(--lift);flex:none}
-.mv-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+/* 已嵌在 .program 这张玻璃卡里，用与 .lz / .mcell 同级的浅描边，不再叠一层 --lift 大卡 */
+.mv{border-radius:var(--r2);padding:9px 11px 11px;background:var(--glass);
+  backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);flex:none}
+.mv-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
 .mv-h span:first-child{font-family:var(--mono);font-size:9px;letter-spacing:.22em;color:var(--t3);font-weight:600}
 .mv-hint{font-size:10px;color:var(--t3)}
-.mv-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
-@media(max-width:640px){.mv-row{grid-template-columns:repeat(2,1fr)}}
+/* 竖屏素材：四窗等分副列宽度，高度由 9:16 推出——宽度先定，行右侧不留空档。 */
+.mv-row{display:flex;gap:9px;align-items:flex-start}
 .tile{position:relative;border-radius:var(--r1);overflow:hidden;cursor:pointer;background:var(--void);
-  aspect-ratio:16/10;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:.28s var(--e)}
+  aspect-ratio:9/16;flex:1 1 0;min-width:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:.28s var(--e)}
+/* 必须排在 .tile 之后：同等特异性下后写的赢。写在前面时 flex:1 1 0 会盖掉
+   这里的固定窗高，换行后四窗仍去等分整行宽度。 */
+@media(max-width:640px){.mv-row{flex-wrap:wrap;justify-content:center}
+  .tile{flex:0 0 auto;height:178px}}
 .tile:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);transform:translateY(-2px)}
 .tile:focus-visible{outline:2px solid var(--brand2);outline-offset:2px}
 .tile img,.tile video,.tile canvas{position:absolute;inset:0;width:100%;height:100%;
-  object-fit:cover;object-position:50% 20%}
+  object-fit:cover;object-position:50% 50%}
 .tile video{opacity:0} .tile canvas{display:none} .tile.rd canvas{display:block} .tile.rd img{display:none}
 .tile::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(0,0,0,.42),transparent 42%,rgba(0,0,0,.68))}
@@ -173,17 +230,21 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .tile.off{opacity:.34}
 
 /* ── 右栏 ── */
-.side{display:flex;flex-direction:column;gap:12px;min-height:0}
+/* 高度被 .app{height:100vh} 钉死后，矮视口装不下三块面板：让右栏自己滚，
+   而不是靠 flex 压扁面板——.panel{overflow:hidden} 压扁就是直接裁掉内容。 */
+.side{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;overflow-x:hidden}
 .panel{border-radius:var(--r3);background:var(--glass);backdrop-filter:blur(22px) saturate(155%);
-  -webkit-backdrop-filter:blur(22px) saturate(155%);box-shadow:var(--lift);
+  -webkit-backdrop-filter:blur(22px) saturate(155%);box-shadow:var(--lift);flex:0 0 auto;
   display:flex;flex-direction:column;overflow:hidden}
-.panel.grow{flex:1;min-height:210px}
-.p-h{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;
+/* 有余量时评论区吃掉全部余量；余量为负时（1366×768 这类矮屏）它先让位，
+   把高度留给下面的平台流量表——余量总得有个去处，评论区是最合适的那个。 */
+.panel.grow{flex:1 1 auto;min-height:112px}
+.p-h{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;
   box-shadow:inset 0 -1px 0 rgba(255,255,255,.06);flex:none}
 .p-t{font-size:12px;font-weight:600}
 .p-x{font-family:var(--mono);font-size:9.5px;color:var(--t3)}
-.p-b{padding:12px}
-.chat{flex:1;overflow:hidden;padding:9px 11px;display:flex;flex-direction:column;gap:8px;
+.p-b{padding:10px 12px 11px}
+.chat{flex:1;overflow:hidden;padding:8px 11px;display:flex;flex-direction:column;gap:8px;
   justify-content:flex-end}
 .msg{display:flex;gap:8px;align-items:flex-start;animation:rise .42s var(--e) both}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -194,21 +255,28 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .flag{font-family:var(--mono);font-size:8px;padding:0 4px;border-radius:3px;
   background:rgba(255,255,255,.08);color:var(--t2)}
 .msg-t{font-size:11.5px;color:var(--t1);word-break:break-word;line-height:1.4}
-.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:9px 12px;margin-bottom:10px}
-.kpi .k{font-size:8.5px;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;font-weight:700}
-.kpi .v{font-family:var(--mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;
-  letter-spacing:-.045em;margin-top:2px;background:linear-gradient(180deg,#fff,#A7BCE0);
-  -webkit-background-clip:text;background-clip:text;color:transparent}
-.chart{width:100%;height:54px;display:block}
+.flowtop{display:flex;align-items:baseline;gap:5px;margin-bottom:7px}
+.flowbig{font-family:var(--mono);font-size:20px}
+.flowu{font-size:10px;color:var(--t3)}
+.flowl{margin-left:auto;font-size:10px;color:var(--t3)}
+.flowrow{display:flex;align-items:center;gap:8px;padding:4px 0;
+  border-top:1px solid rgba(255,255,255,.06);font-size:11.5px}
+.flowrow:first-child{border-top:none}
+.flowrow .fw-d{width:7px;height:7px;border-radius:2px;flex:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.flowrow .fw-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t1)}
+.flowrow .fw-v{font-family:var(--mono);font-size:11.5px}
+.flowrow .fw-q{font-family:var(--mono);font-size:9.5px;color:var(--t3);min-width:42px;text-align:right}
+.flowrow.off{opacity:.35}
 
 /* ── 底部机架 ── */
-.dock{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr);gap:12px;flex:none}
-@media(max-width:1100px){.dock{grid-template-columns:1fr}}
-.bus{border-radius:var(--r3);padding:11px 13px 12px;background:var(--glass);
+.dock{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.3fr);gap:10px;flex:none}
+@media(max-width:900px){.dock{grid-template-columns:1fr}}
+.bus{border-radius:var(--r3);padding:9px 13px 10px;background:var(--glass);
   backdrop-filter:blur(22px) saturate(155%);-webkit-backdrop-filter:blur(22px) saturate(155%);
   box-shadow:var(--lift)}
 .bus-t{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
-  color:var(--t3);font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between}
+  color:var(--t3);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between}
 .bus-t em{font-style:normal;letter-spacing:.02em;text-transform:none;font-family:var(--ui);font-size:9.5px}
 .faders{display:flex;flex-direction:column;gap:9px}
 .fr{display:flex;align-items:center;gap:9px;font-size:10.5px;color:var(--t2)}
@@ -237,7 +305,9 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(91,157,255,.42),
              0 0 22px -10px var(--brand)}
 .net[aria-pressed="true"] .nd{opacity:1;box-shadow:0 0 9px currentColor}
-.outrow{display:flex;flex-direction:column;gap:6px}
+/* 五个平台原来竖排五行，是机架里最高的一块，把整页顶出视口。
+   改成两列后只剩三行，五个平台一个不少。 */
+.outrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 10px}
 .pl{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:var(--r1);cursor:pointer;
   font-size:11.5px;transition:.2s var(--e)}
 .pl:hover{background:rgba(255,255,255,.05)}
@@ -250,8 +320,12 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .pl.up .stt{color:var(--ok)}
 .pl .stt i{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
 .pl .q{font-family:var(--mono);font-size:9px;color:var(--t3);min-width:3em;text-align:right}
+.qodrow{display:flex;align-items:center;gap:10px;margin-top:7px}
+.qodrow .ctl{flex:none;width:auto;min-width:168px}
+.qodrow .ctl[disabled]{opacity:.4;cursor:not-allowed}
+.qodnote{flex:1;min-width:0;font-size:10.5px;color:var(--t3);line-height:1.5}
 
-.legal{margin:0;text-align:center;font-size:10px;color:var(--t3);line-height:1.9}
+.legal{margin:0;text-align:center;font-size:10px;color:var(--t3);line-height:1.6}
 .legal b{color:var(--t2);font-weight:500}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
 @media (prefers-reduced-motion:no-preference){.rec i{animation:blink 1.7s ease-in-out infinite}
@@ -279,22 +353,22 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 
 /* ── 带宽账本 ── */
 .panel.bw{flex:none}
-.bwtop{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:11px}
+.bwtop{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:8px}
 .bwbig{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
-.bn{font-family:var(--mono);font-size:31px;font-weight:600;letter-spacing:-.05em;
+.bn{font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:-.05em;
   font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#fff,#9FB8E0);
   -webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
 .bu{font-family:var(--mono);font-size:11px;color:var(--t3)}
 .bl{flex-basis:100%;font-size:9px;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;
   font-weight:700;margin-top:3px}
 .bwcalc{font-family:var(--mono);font-size:9.5px;color:var(--t3);text-align:right;line-height:1.5}
-.bwrow{display:flex;align-items:baseline;gap:7px;font-size:10.5px;color:var(--t3);margin-bottom:6px}
+.bwrow{display:flex;align-items:baseline;gap:7px;font-size:10.5px;color:var(--t3);margin-bottom:4px}
 .bwrow .bk{flex:1}
 .bv{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--t1)}
 .bv.ok{color:var(--ok)} .bv.warn{color:var(--warn)} .bv.bad{color:var(--crit)}
 .bs{font-family:var(--mono);font-size:9px;color:var(--t3)}
 .bwtrack{position:relative;height:7px;border-radius:4px;background:rgba(255,255,255,.07);
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.5);margin:2px 0 9px;overflow:hidden}
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.5);margin:2px 0 7px;overflow:hidden}
 .bwfill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;transition:width .5s var(--e),background .4s}
 .bwfill.ok{background:linear-gradient(90deg,var(--ok),#7BF0B4)}
 .bwfill.warn{background:linear-gradient(90deg,var(--warn),#FFD98A)}
@@ -304,6 +378,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
   background:rgba(255,181,52,.12);box-shadow:inset 0 0 0 1px rgba(255,181,52,.34);
   font-size:10.5px;color:var(--warn);line-height:1.4;margin-top:2px}
 .abr svg{width:13px;height:13px;flex:none;margin-top:1px}
+.abr[hidden]{display:none}   /* display:flex 会盖掉 UA 的 [hidden]，必须显式复位 */
 
 /* ── 可拖动推子 ── */
 .fr{display:flex;align-items:center;gap:9px;font-size:10.5px;color:var(--t2)}
@@ -316,6 +391,28 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .fv{font-family:var(--mono);font-size:9.5px;color:var(--t3);width:20px;text-align:right;
   font-variant-numeric:tabular-nums}
 
+/* ── 证据抽屉 ── */
+.evbtn{margin-left:10px;font:inherit;font-size:10.5px;color:var(--brand2);background:none;
+  border:1px solid color-mix(in srgb,var(--brand2) 40%,transparent);border-radius:5px;
+  padding:2px 9px;cursor:pointer}
+.evbtn:hover{background:color-mix(in srgb,var(--brand2) 12%,transparent)}
+/* 抽屉改成浮层：整页已经收在 100vh 内，抽屉若参与文档流会立刻把机架顶出视口，
+   评委一点按钮反而什么都看不到。position:fixed 贴底，不进 scrollHeight。
+   bottom 必须让开法务行——抽屉盖住自己的「实测证据」按钮，评委就再也关不掉了。 */
+.evidence{position:fixed;z-index:60;left:50%;transform:translateX(-50%);bottom:48px;
+  width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 70px);overflow:auto;
+  padding:12px 15px;border-radius:var(--r2);
+  background:linear-gradient(180deg,rgba(18,24,42,.97),rgba(9,13,26,.97));
+  backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 28px 60px -18px rgba(0,0,0,.92);
+  animation:evrise .28s var(--e) both}
+@keyframes evrise{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+.evidence[hidden]{display:none}  /* 与 .abr 同一个坑：自定义 display 会盖掉 UA 的 [hidden] */
+.ev-h{font-size:10.5px;color:var(--t3);margin-bottom:8px}
+.evidence ul{margin:0;padding-left:16px}
+.evidence li{font-size:11.5px;line-height:1.75;color:var(--t2)}
+.evidence li span{font-family:var(--mono);font-size:9.5px;color:var(--t3);margin-left:8px}
+
 </style>
 </head>
 <body>
@@ -327,6 +424,12 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
       <span><b>OneLive</b> Studio<em>多语言数字人直播</em></span>
     </div>
     <div class="sess"><span class="dot"></span><span id="tState">未开播</span><span class="tc" id="tcMain">00:00:00</span></div>
+    <div class="capbar" id="capBar" aria-label="能力边界">
+      <span class="capcell"><b>输入</b><em>预生成素材 · 模拟</em></span>
+      <span class="capcell"><b>网络</b><em id="capNet">优秀 5G SA · 模拟</em></span>
+      <span class="capcell"><b>推理</b><em id="capInfer">云端 · 模拟</em></span>
+      <span class="capcell"><b>QoD</b><em id="capQod">未启用 · 模拟</em></span>
+    </div>
     <div class="sp"></div>
     <div class="dests" id="dests" aria-label="分发平台开关"></div>
     <div class="linkpill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18.5" r="1.7"/><path d="M8.2 14.4a5.6 5.6 0 0 1 7.6 0M5 11a10.2 10.2 0 0 1 14 0" stroke-linecap="round"/></svg>
@@ -338,6 +441,15 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 
     <!-- 左：全部是真实控件 -->
     <aside class="rail">
+      <div class="rg">
+        <div class="rt">生成位置<span class="rt-x" id="topoNow">云端</span></div>
+        <div class="ctls" id="topoCtl">
+          <button class="ctl on" type="button" data-topo="cloud" aria-pressed="true">
+            <span class="cd"></span><span class="cl">云端生成</span><span class="cq">上行 ×1</span></button>
+          <button class="ctl" type="button" data-topo="edge" aria-pressed="false">
+            <span class="cd"></span><span class="cl">端侧生成</span><span class="cq">上行 ×N</span></button>
+        </div>
+      </div>
       <div class="rg">
         <div class="rt">语言频道<span class="rt-x">影响分发路数</span></div>
         <div class="ctls" id="chCtl"></div>
@@ -359,19 +471,29 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     <main class="stagecol">
       <section class="program">
         <div class="pgm-tag">PROGRAM</div>
-        <div class="pgm-frame">
-          <canvas id="pgmBg" aria-hidden="true"></canvas>
-          <canvas id="pgmCv" aria-label="播出画面"></canvas>
-          <img id="pgmPh" src="assets/poster1.png" alt="播出画面">
-          <div class="pgm-tally"><span class="rec"><i></i>ON AIR</span><span class="tc" id="tcPgm">00:00:00</span></div>
-          <div class="pgm-meta"><span id="pgmLang">English</span><span class="sepdot">·</span><span id="pgmRes">1080P</span></div>
-          <div class="pgm-cc" id="pgmCC"></div>
-          <div class="pgm-veil">点击右上「开始直播」</div>
+        <div class="pgm-body">
+          <div class="pgm-frame">
+            <canvas id="pgmBg" aria-hidden="true"></canvas>
+            <canvas id="pgmCv" aria-label="播出画面"></canvas>
+            <img id="pgmPh" src="assets/japan-ja.jpg" alt="播出画面">
+            <div class="pgm-tally"><span class="rec"><i></i>ON AIR</span><span class="tc" id="tcPgm">00:00:00</span></div>
+            <div class="pgm-meta"><span id="pgmLang">日本語</span><span class="sepdot">·</span><span id="pgmRes">1080P</span></div>
+            <div class="pgm-cc" id="pgmCC"></div>
+            <div class="pgm-veil">点击右上「开始直播」</div>
+          </div>
+          <audio id="pgmAudio" loop preload="auto" aria-hidden="true"></audio>
+          <!-- 舞台右侧的副列：文案对照在上、MULTIVIEW 在下。MULTIVIEW 从 .stagecol
+               的纵向堆叠里挪进来，是为了同时解决两件事——把整页的竖向预算还给
+               .program（舞台宽度只能由竖向空间推出），并让小窗行的宽度收敛到副列
+               宽度，四窗才填得满、右侧不再留几百像素空白。 -->
+          <div class="pgm-col">
+            <div class="pgm-side" id="pgmSide"></div>
+            <section class="mv">
+              <div class="mv-h"><span>MULTIVIEW</span><span class="mv-hint">点击小窗 / Q W E 切到 PROGRAM</span></div>
+              <div class="mv-row" id="mv"></div>
+            </section>
+          </div>
         </div>
-      </section>
-      <section class="mv">
-        <div class="mv-h"><span>MULTIVIEW</span><span class="mv-hint">点击小窗 / Q W E 切到 PROGRAM</span></div>
-        <div class="mv-row" id="mv"></div>
       </section>
     </main>
 
@@ -385,10 +507,14 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
               <span class="bl">出口带宽需求</span></div>
             <div class="bwcalc"><span id="bwLanes">0</span> 路 × <span id="bwPer">0.00</span> Mbps/路</div>
           </div>
-          <div class="bwrow"><span class="bk">手机上行</span>
+          <div class="bwrow"><span class="bk">上行需求 <small id="bwUpLanes">1</small> 路</span>
+            <span class="bv" id="bwNeed">0.00</span><span class="bs">Mbps</span></div>
+          <div class="bwrow"><span class="bk">实际上行</span>
             <span class="bv" id="bwUp">0.00</span><span class="bs">/ <span id="bwCap">8.25</span> Mbps</span></div>
           <div class="bwtrack"><i class="bwfill ok" id="bwBar" style="width:0%"></i>
             <span class="bwpct" id="bwPct">—</span></div>
+          <div class="bwrow"><span class="bk">容量缺口</span><span class="bv ok" id="bwGap">+8.25</span>
+            <span class="bs">Mbps</span></div>
           <div class="bwrow"><span class="bk">链路余量</span><span class="bv ok" id="bwHead">+8.25</span>
             <span class="bs">Mbps</span></div>
           <div class="abr" id="abr" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4.5M12 17.5h.01"/><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
@@ -400,22 +526,11 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
         <div class="chat" id="chat" aria-live="polite"></div>
       </section>
       <section class="panel">
-        <div class="p-h"><span class="p-t">观众数据</span><span class="p-x">演示值 · 随路数与画质变化</span></div>
+        <div class="p-h"><span class="p-t">平台流量数据</span><span class="p-x">出口 = 语言 × 平台 × 码率</span></div>
         <div class="p-b">
-          <div class="kpis">
-            <div class="kpi"><div class="k">观看</div><div class="v" id="kView">0</div></div>
-            <div class="kpi"><div class="k">点赞</div><div class="v" id="kLike">0</div></div>
-            <div class="kpi"><div class="k">评论</div><div class="v" id="kCmt">0</div></div>
-            <div class="kpi"><div class="k">分享</div><div class="v" id="kShr">0</div></div>
-          </div>
-          <svg class="chart" id="chart" viewBox="0 0 300 54" preserveAspectRatio="none" role="img" aria-label="观看趋势">
-            <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#5B9DFF" stop-opacity=".45"/>
-              <stop offset="1" stop-color="#5B9DFF" stop-opacity="0"/></linearGradient></defs>
-            <path id="chA" fill="url(#g1)"></path>
-            <path id="chL" fill="none" stroke="#5B9DFF" stroke-width="1.6" stroke-linejoin="round"></path>
-            <circle id="chD" r="2.4" fill="#28E4F5" opacity="0"></circle>
-          </svg>
+          <div class="flowtop"><span class="flowbig" id="flowTotal">0.0</span><span class="flowu">Mbps</span>
+            <span class="flowl">出口合计</span></div>
+          <div id="flowList"></div>
         </div>
       </section>
     </aside>
@@ -429,6 +544,11 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     <section class="bus">
       <div class="bus-t">链路条件<em>决定容量，触发自动降码</em></div>
       <div class="netrow" id="netList" role="group" aria-label="链路条件"></div>
+      <div class="qodrow">
+        <button class="ctl" id="qodCtl" type="button" aria-pressed="false">
+          <span class="cd"></span><span class="cl">QoD 保障</span><span class="cq" id="qodCap">—</span></button>
+        <span class="qodnote" id="qodNote">为关键业务流提供确定性上行保障</span>
+      </div>
     </section>
     <section class="bus">
       <div class="bus-t">分发平台<em>每关一个，出口带宽下降</em></div>
@@ -436,7 +556,20 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     </section>
   </footer>
 
-  <p class="legal">数字人形象为<b>预生成素材</b> · 观众数据为<b>演示值</b> · 带宽账本与画面劣化为<b>实时计算</b>　·　空格 开播 · 1–4 链路 · Q/W/E 切频道</p>
+  <p class="legal">成片为<b>预生成素材</b> · 网络 / Edge / QoD / 时延为<b>可控模拟</b>，不代表生产部署或商用 SLA · 画面劣化与带宽账本为<b>实时计算</b>
+    　·　空格 开播 · 1–4 链路 · Q/W/E 切频道
+    <button class="evbtn" id="evToggle" type="button" aria-expanded="false" aria-controls="evidence">实测证据</button></p>
+  <div class="evidence" id="evidence" hidden>
+    <div class="ev-h">以下为本项目真实可运行部分的实测记录，均可在仓库中追溯</div>
+    <ul>
+      <li>真实 RTMP 推流：数字人 + 语音推出 h264/aac 直播流<span>docs/superpowers/m3a-results.md</span></li>
+      <li>推流韧性：sink 被杀 1.3s 检出、10.3s 自动恢复<span>docs/superpowers/m3a-results.md</span></li>
+      <li>真实网络损伤：clumsy WinDivert 内核级丢包 / 限速 / 乱序<span>engine/netlab/README.md</span></li>
+      <li>双端实测 RTT：WS ping/pong 传输层往返，非蜂窝 RTT<span>docs/superpowers/m3b-results.md</span></li>
+      <li>引擎端到端时延：中位 674ms（浏览器采集全链路）<span>docs/superpowers/m1c-results.md</span></li>
+      <li>回归网：Python 171 项 + 控制台 E2E 5/5 + 手机传输 33/33<span>docs/superpowers/m4-results.md</span></li>
+    </ul>
+  </div>
 </div>
 
 <script>
@@ -462,24 +595,41 @@ const NETS = [
   { id:4, n:"弱覆盖", m:"4G 边缘", cap:0.42, rtt:420, loss:11.5, drop:.62, jit:240, st:"var(--crit)" }
 ];
 const SRC = [
-  { id:"host", label:"手机上行", tag:"CAM", ph:"assets/poster-host.png", vid:"assets/host.mp4", lang:"原始信号", always:true },
-  { id:"en", label:"English", tag:"CH1", ph:"assets/poster1.png", vid:"assets/ch1.mp4", lang:"English",
-    subs:["This is amazing — free shipping today!","Let me show you the details.","Limited stock, grab yours now."] },
-  { id:"ja", label:"日本語", tag:"CH2", ph:"assets/poster2.png", vid:"assets/ch2.mp4", lang:"日本語",
-    subs:["すごいですね！本日限定価格です。","詳しくご説明します。","在庫がわずかです、お早めに。"] },
-  { id:"es", label:"Español", tag:"CH3", ph:"assets/poster3.png", vid:"assets/ch3.mp4", lang:"Español",
-    subs:["¡Increíble! Envío gratis hoy.","Les muestro los detalles.","Quedan pocas unidades."] }
+  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh.mp4",
+    lang:"原始信号", always:true,
+    subs:["梅特德菲多功能电气锅，插上电源即可轻松烹饪。手柄触控面板配备九种功能。",
+          "炒、蒸、火锅、汤、粥、煮饭、预约和保温，选择想做的料理即可。",
+          "一台锅覆盖日常多种料理，操作直观，也更适合轻松展示。"] },
+  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja.mp4",
+    lang:"日本語",
+    subs:["メテドフィの多機能電気鍋です。コンセントにつなぐだけで簡単に調理できます。ハンドルのタッチパネルには9つの機能を搭載。",
+          "炒め物、蒸し料理、鍋、スープ、おかゆ、炊飯、予約、保温まで、作りたい料理を選ぶだけです。",
+          "一台で毎日のさまざまな料理に対応。操作も直感的で、手軽に使えます。"] },
+  { id:"es", label:"拉美 · 西语", tag:"CH2", ph:"assets/latam-es.jpg", vid:"assets/latam-es.mp4",
+    lang:"Español",
+    subs:["Esta es la olla eléctrica multifunción Metedfi. Solo tienes que enchufarla para cocinar fácilmente. El panel táctil del mango incluye nueve funciones.",
+          "Elige saltear, cocinar al vapor, olla caliente, sopa, avena, arroz, programación o conservación del calor.",
+          "Una sola olla cubre muchas comidas diarias, con controles sencillos y una presentación clara."] },
+  { id:"en", label:"印度 · 英语", tag:"CH3", ph:"assets/india-en.jpg", vid:"assets/india-en.mp4",
+    lang:"English (IN)",
+    subs:["This is Metedfi’s multifunction electric pot. Just plug it in and start cooking. The handle’s touch panel offers nine cooking modes.",
+          "Choose stir-fry, steaming, hot pot, soup, porridge, rice, scheduling or keep-warm mode.",
+          "One compact pot handles everyday meals with simple controls and an easy live demonstration."] }
 ];
+
+/* 中文原文，供 PROGRAM 侧栏做逐句对照（索引与各路 subs 对齐） */
+const ZH_LINES = SRC[0].subs;
 const PLAT = [{n:"YouTube",c:"#FF0033",t:"▶"},{n:"Facebook",c:"#1877F2",t:"f"},
               {n:"TikTok",c:"#0F0F0F",t:"♪"},{n:"Twitch",c:"#9146FF",t:"T"},{n:"X",c:"#000",t:"X"}];
 const NAMES=["Mia","Kenji","Sofía","Liam","Yuki","Diego","Emma","Haru","Lucía","Noah"];
-const CMTS={English:["Love this! 😍","Shipping to Canada?","How much is it?","Just ordered two!"],
-  "日本語":["かわいい！","送料は無料ですか？","もう買いました 🎉","応援してます！"],
-  "Español":["¡Me encanta! 🔥","¿Envían a México?","Ya lo compré","¿Hay más colores?"],
-  "原始信号":["画面很清晰","主播好厉害","支持一下 👏","已下单!"]};
+const CMTS={
+  "原始信号":["这个锅看着好实用","多少钱呀主播","有没有优惠券","已下单，期待"],
+  "日本語":["便利そうですね！","お値段はいくらですか","日本にも発送できますか","注文しました！"],
+  "Español":["¡Qué práctica se ve!","¿Cuánto cuesta?","¿Envían a México?","¡Ya la pedí!"],
+  "English (IN)":["This looks so useful!","What's the price?","Do you ship to India?","Just ordered one!"]};
 
 /* ── 状态 ── */
-let net = NETS[0], live = false, pgm = 1, t0 = 0, S = [];
+let net = NETS[0], live = false, pgm = 1, t0 = 0;
 let targetQ = 0;                 // 目标画质（用户选）
 let actualQ = 0;                 // 实际画质（ABR 结果）
 let chOn = [true,true,true];     // 三路语言频道开关
@@ -487,6 +637,25 @@ let platOn = PLAT.map(()=>true);
 let subsOn = true;
 let micGain = .72;
 let tiles = [], cmtN = 0;
+
+/* 拓扑与 QoD 状态（Task 5/6 接线） */
+let topo = "cloud", qod = false;
+const QOD_GUARANTEE = { "5G SA": 22.0, "5G NSA": 12.0 };
+function qodAvailable(){ return QOD_GUARANTEE[net.m] !== undefined; }
+function capEffective(){ return (qod && qodAvailable()) ? QOD_GUARANTEE[net.m] : net.cap; }
+function upLanes(){ return topo === "edge" ? chOn.filter(Boolean).length : 1; }
+function perLaneAt(qi){ return LADDER[qi].v + AUDIO_MBPS; }
+function uplinkNeedMbps(){ return live ? upLanes()*perLaneAt(targetQ) : 0; }
+function uplinkRealMbps(){ return live ? upLanes()*perLaneAt(actualQ) : 0; }
+/* ── 时延与音画同步模型 ──
+   E2E 端侧 = 链路 RTT + 端侧本地化推理
+   E2E 云端 = 链路 RTT + 跨洲往返 + 云端本地化推理 + 分发
+   音画错位不由 RTT 直接决定：它来自视频路径与语音链路(ASR/翻译/TTS)处理长度不一致，
+   抖动会在此基础上继续放大。端侧的段级流水线把这个差值压到 40ms 量级。 */
+const LAT = { edge:{ infer:180, extra:0 }, cloud:{ infer:420, extra:250+155 } };
+const AV_BASE = { edge:40, cloud:440 };
+function e2eMs(){ const L = LAT[topo]; return Math.round(net.rtt + L.infer + L.extra); }
+function avSkewMs(){ return Math.round(AV_BASE[topo] + net.jit*0.6); }
 
 /* ── MULTIVIEW ── */
 SRC.forEach((s,i)=>{
@@ -506,6 +675,131 @@ tiles.forEach(t=>{t.vd.addEventListener("loadeddata",()=>t.ok=true);
                   t.vd.addEventListener("error",()=>t.ok=false);});
 
 function chActive(i){ return i===0 ? true : chOn[i-1]; }
+
+/* ── PROGRAM 侧栏：中文原文 ↔ 目标语译文逐句对照 ── */
+function renderPgmSide(){
+  const s = SRC[pgm], isSrc = pgm === 0;
+  // 标签只在表头出现一次：逐行重复「ZH-CN · 原文 / 目标语 · 本地化文案」会吃掉
+  // 约 84px 高，在 1440×900 下导致三对里只看得到一对。行内改由明暗与字号区分。
+  const rows = ZH_LINES.map((zh,i)=>`
+    <div class="lz-row">
+      <div class="lz-zh">${zh}</div>
+      ${isSrc ? "" : `<div class="lz-tt">${s.subs[i]}</div>`}
+    </div>`).join("");
+  $("pgmSide").innerHTML = `
+    <div class="mbar">
+      <div class="mcell"><span class="mtk">E2E 时延</span><span class="mtv" id="mE2E">— ms</span></div>
+      <div class="mcell"><span class="mtk">A-V SYNC</span><span class="mtv" id="mAV">— ms</span></div>
+      <div class="mcell"><span class="mtk">上行码率</span><span class="mtv" id="mBr">— M</span></div>
+    </div>
+    <div class="lz">
+      <div class="lz-h"><b>本地化文案对照</b><em>${isSrc ? "原始信号" : "ZH-CN 原文 ↕ " + s.lang}</em></div>
+      ${rows}
+    </div>`;
+  paintMetrics();
+}
+
+/* 指标条数值：与带宽账本同源，避免两处各算一遍 */
+function paintMetrics(){
+  if(!$("mE2E")) return;
+  if(pgm===0){                          // 原始信号=本地监看，没有交付路径可言
+    $("mE2E").textContent = "本地"; $("mE2E").className = "mtv ok";
+    $("mAV").textContent  = "本地"; $("mAV").className  = "mtv ok";
+    $("mBr").textContent  = uplinkRealMbps().toFixed(2) + " M";
+    $("mBr").className    = "mtv";
+    return;
+  }
+  const e = e2eMs(), a = avSkewMs();
+  const cls = (v,good,warn)=> v<=good ? "mtv ok" : v<=warn ? "mtv warn" : "mtv bad";
+  $("mE2E").textContent = e + " ms";  $("mE2E").className = cls(e,300,700);
+  $("mAV").textContent  = a + " ms";  $("mAV").className  = cls(a,80,250);
+  $("mBr").textContent  = uplinkRealMbps().toFixed(2) + " M";
+  $("mBr").className    = "mtv";
+}
+
+/* ── 右栏：平台流量数据（运维口径，非宣传板） ── */
+function renderFlow(){
+  const chN = chOn.filter(Boolean).length, perLane = perLaneAt(actualQ);
+  const per = live ? chN*perLane : 0;
+  /* 品牌色只能当色块用，不能当文字色：TikTok #0F0F0F / X #000 在深色底上是隐形的
+     （下方「分发平台」列表同理，那里也是把品牌色刷成 .lg 的背景而非文字色）。 */
+  $("flowList").innerHTML = PLAT.map((p,i)=>`
+    <div class="flowrow${platOn[i]?"":" off"}">
+      <i class="fw-d" style="background:${p.c}"></i>
+      <span class="fw-n">${p.n}</span>
+      <span class="fw-v">${(platOn[i]?per:0).toFixed(2)}</span>
+      <span class="fw-q">${platOn[i] ? (live ? LADDER[actualQ].id : "待开播") : "已关闭"}</span>
+    </div>`).join("");
+  const total = per * platOn.filter(Boolean).length;
+  $("flowTotal").textContent = total.toFixed(1);
+  // 小窗数字标签：显示该路上行码率（原为观众数，与流量叙事无关）
+  tiles.forEach((t,i)=>{
+    const on = !t.el.classList.contains("off");
+    // 端侧模式下 CAM 不占上行（生成在本地）；云端模式下它正是那唯一一路
+    t.num.textContent = (live && on)
+      ? ((i===0 && topo==="edge") ? "本地" : perLane.toFixed(2)+"M") : "—";
+  });
+}
+
+/* ── 音频通路：单元素承载 PROGRAM 路声音，currentTime 落后画面 avSkew ──
+   file:// 下 WebAudio 对本地媒体输出全零（CORS），故不用 DelayNode。
+   对齐一律用 playbackRate 比例牵引，只有换源那种秒级失配才 seek：
+   实测 file:// 下一次 seek 会让音频停顿约 0.4s（readyState 掉到 1），
+   所以任何亚秒级的 seek 门限都会自激——seek 停顿本身又把偏差顶回门限之上，
+   于是每 250ms 再 seek 一次，永不收敛且声音全程卡顿。 */
+function syncAudioSource(){
+  const a = $("pgmAudio"), want = SRC[pgm].vid;
+  if(a.getAttribute("src") !== want){
+    a.setAttribute("src", want);
+    a.load();
+    if(live) a.play().catch(()=>{});
+  }
+}
+let lastSeek = 0;
+/* CAM 是本地监看：主播自己的信号没有语音链路要等，错位恒为 0。
+   440ms/40ms 只属于跨网交付的三路。 */
+function audioSkewS(){ return pgm===0 ? 0 : avSkewMs()/1000; }
+/* 拓扑切换=交付路径重建：一次性硬重同步（短暂静默后立即对齐），
+   而不是让比例回路用 1.35 倍速追一秒多——变速追赶听起来像故障，
+   路径重建的"咔哒一下就对上"才是真实系统的声音。 */
+function resyncAudio(){
+  const a = $("pgmAudio"), v = tiles[pgm] && tiles[pgm].vd;
+  if(!live || !v || !v.duration || !a.duration) return;
+  const D = a.duration;
+  a.currentTime = ((v.currentTime - audioSkewS()) % D + D) % D;
+  a.playbackRate = 1; lastSeek = Date.now();
+}
+function alignAudio(){
+  const a = $("pgmAudio"), v = tiles[pgm] && tiles[pgm].vd;
+  if(!live || !v || !v.duration || !a.duration) return;
+  /* 换源/seek 期间 currentTime 是冻结的：此时算出来的偏差全是假的，
+     照着它调倍速会一路上冲到上限，等数据回来又要花几秒退回去。等就绪再动。 */
+  if(a.seeking || a.readyState < 3) return;
+  /* 素材是 loop 的：目标位置按时长取模，而不是在 0 处截断。
+     截断会让回环后音频被硬拉到 0、错位塌成 0 并需十几秒才爬回来——
+     取模则让音频自然接着播上一轮的尾巴，回环处零抖动。 */
+  const D = a.duration;
+  const target = ((v.currentTime - audioSkewS()) % D + D) % D;
+  let drift = a.currentTime - target;             // >0 表示音频跑快了
+  if(drift >  D/2) drift -= D;                    // 回环两侧取最短路
+  if(drift < -D/2) drift += D;
+  /* 只有换源那种秒级失配才 seek（此时音频刚 load 回到 0，倍速追不动）。
+     亚秒级一律不 seek——试过：seek 门限设 0.25/0.4 都会自激，声音全程卡顿。
+     2s 冷却是结构性保险：一次 seek 的停顿本身能攒出 1.4s 偏差，逼近门限，
+     没有冷却就可能在慢机器上「停顿→超门限→再 seek」滚起来。 */
+  if(Math.abs(drift) > 1.5 && Date.now()-lastSeek > 2000){
+    a.currentTime = target; a.playbackRate = 1; lastSeek = Date.now(); return;
+  }
+  /* 其余交给比例牵引：rate = 1 - k·drift，偏差按 e 指数收敛(τ=1/k≈1s)。
+     开播时音画同在 0，这条回路要把 0.44s 的错位「拉开」；切端侧时又要把它「收掉」，
+     两次都在 2s 内完成，且越接近对齐倍速越贴回 1，不过冲、不抖动。
+     死区 30ms 只是避免视频 currentTime 帧级量化(~33ms)引起的无谓赋值。 */
+  const k = 1.0, lim = 0.35;
+  a.playbackRate = Math.abs(drift) <= 0.03
+    ? 1 : Math.min(1+lim, Math.max(1-lim, 1 - k*drift));
+}
+setInterval(alignAudio, 250);
+
 function setPgm(i){
   if(!chActive(i)) return;                       // 关掉的频道不能切
   pgm=i;
@@ -514,7 +808,37 @@ function setPgm(i){
   $("pgmPh").src=SRC[i].ph;
   $("pgmCC").textContent = live && SRC[i].subs ? SRC[i].subs[0] : "";
   document.querySelector(".pgm-frame").classList.toggle("rd", live && tiles[i].ok);
+  renderPgmSide();
+  syncAudioSource();
 }
+
+/* ── 左栏：生成位置（端侧 / 云端）——只改上行侧公式 ── */
+function renderTopo(){
+  $("topoCtl").querySelectorAll("button").forEach(b=>{
+    const on = b.dataset.topo === topo;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+  $("topoNow").textContent = topo === "edge" ? "端侧" : "云端";
+}
+$("topoCtl").querySelectorAll("button").forEach(b=>{
+  b.onclick = ()=>{ topo = b.dataset.topo; renderTopo(); recompute(); resyncAudio(); };
+});
+
+/* ── QoD 保障：不凭空造带宽，依赖接入制式的保障能力 ── */
+function renderQod(){
+  const ok = qodAvailable();
+  const btn = $("qodCtl");
+  btn.disabled = !ok;
+  if(!ok) qod = false;
+  btn.classList.toggle("on", qod);
+  btn.setAttribute("aria-pressed", String(qod));
+  $("qodCap").textContent = ok ? QOD_GUARANTEE[net.m].toFixed(2) + "M" : "不可用";
+  $("qodNote").textContent = ok
+    ? `${net.m} 可为关键业务流保障 ${QOD_GUARANTEE[net.m].toFixed(2)} Mbps 上行`
+    : `当前接入制式不支持 QoD 保障（${net.m}）`;
+}
+$("qodCtl").onclick = ()=>{ if(!qodAvailable()) return; qod = !qod; renderQod(); recompute(); };
 
 /* ── 左栏：频道开关（真实影响分发路数与带宽） ── */
 function renderChans(){
@@ -542,6 +866,9 @@ function syncTiles(){
     else { t.vd.pause(); t.el.classList.remove("rd","air"); }
   });
   if(live) tiles[pgm] && tiles[pgm].el.classList.add("air");
+  // 小窗数字标签由 renderFlow() 写，而它读的是 .off——开播时 recompute() 跑在
+  // 这里的 setTimeout 之前，只靠 recompute() 会让标签永久停在「—」。
+  renderFlow();
 }
 
 /* ── 左栏：目标画质（真实改码率+清晰度） ── */
@@ -572,7 +899,7 @@ NETS.forEach(n=>{
   b.innerHTML=`<span class="nm"><span class="nd" style="color:${n.st}"></span>${n.n}</span>
     <span class="ns">容量 ${n.cap} Mbps<br>${n.rtt}ms · 丢包 ${n.loss}%</span>`;
   b.onclick=()=>{ net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
-    document.documentElement.style.setProperty("--st",n.st); recompute(); };
+    document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute(); };
   $("netList").appendChild(b);
 });
 
@@ -605,37 +932,48 @@ function dests(){
 
 /* ══ 核心：带宽账本 + ABR 自动降码 ══ */
 function recompute(){
-  // 1) ABR：上行需求 ≤ 链路容量，否则逐级降码
+  const cap = capEffective(), ul = upLanes();
+  // 1) ABR：上行总需求 ≤ 有效容量，否则逐级降码
   actualQ = targetQ;
-  while (actualQ < LADDER.length-1 && LADDER[actualQ].v + AUDIO_MBPS > net.cap) actualQ++;
-  const q = LADDER[actualQ], perLane = q.v + AUDIO_MBPS;
+  while (actualQ < LADDER.length-1 && ul*perLaneAt(actualQ) > cap) actualQ++;
+  const q = LADDER[actualQ], perLane = perLaneAt(actualQ);
 
-  // 2) 出口：路数 = 在播频道 × 开启平台
+  // 2) 出口：路数 = 在播频道 × 开启平台（与拓扑无关）
   const chN = chOn.filter(Boolean).length, plN = platOn.filter(Boolean).length;
   const lanes = live ? chN*plN : 0;
   const egress = lanes*perLane;
-  const uplink = live ? perLane : 0;
-  const head = net.cap - uplink;
 
-  // 3) 上屏
+  // 3) 上行：目标需求（触发 ABR 的原因）与实际发送分开显示
+  const uplinkNeed = uplinkNeedMbps();
+  const uplink = uplinkRealMbps();
+  const gap  = cap - uplinkNeed;
+  const head = cap - uplink;
+
+  // 4) 上屏
   $("bwUp").textContent = uplink.toFixed(2);
-  $("bwCap").textContent = net.cap.toFixed(2);
+  $("bwCap").textContent = cap.toFixed(2);
   $("bwLanes").textContent = lanes;
   $("bwPer").textContent = perLane.toFixed(2);
   $("bwEgress").textContent = egress.toFixed(1);
   $("bwHead").textContent = (head>=0?"+":"")+head.toFixed(2);
   $("bwHead").className = "bv " + (head<0?"bad":head<1?"warn":"ok");
-  const pct = clamp(uplink/net.cap*100, 0, 100);
+  $("bwNeed").textContent = uplinkNeed.toFixed(2);
+  $("bwGap").textContent  = (gap>=0?"+":"") + gap.toFixed(2);
+  $("bwGap").className    = "bv " + (gap<0?"bad":gap<1?"warn":"ok");
+  $("bwUpLanes").textContent = ul;
+  const pct = clamp(uplink/cap*100, 0, 100);
   $("bwBar").style.width = pct+"%";
-  $("bwBar").className = "bwfill " + (uplink>net.cap?"bad":uplink>net.cap*.8?"warn":"ok");
+  $("bwBar").className = "bwfill " + (uplink>cap?"bad":uplink>cap*.8?"warn":"ok");
   $("bwPct").textContent = live ? Math.round(pct)+"%" : "—";
 
   const abr = actualQ!==targetQ;
   $("abr").hidden = !abr || !live;
-  if(abr) $("abrTxt").textContent = `链路容量不足 ${LADDER[targetQ].id}，已自动降至 ${q.id}`;
+  if(abr) $("abrTxt").textContent =
+    `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出容量 ${cap.toFixed(2)} Mbps，已自动降至 ${q.id}`;
   $("pgmRes").textContent = q.id;
   $("qNow").textContent = q.id;
-  $("lqName").textContent = net.n; $("lqBr").textContent = net.cap.toFixed(2);
+  $("lqName").textContent = net.n + (qod && qodAvailable() ? " · QoD" : "");
+  $("lqBr").textContent = cap.toFixed(2);
   $("laneNote").textContent = `${chN} 路语言 × ${plN} 个平台`;
   // 平台行的路数/画质就地刷新（不重建，避免与其自身的 toggle 递归）
   [...$("plats").children].forEach((el,i)=>{
@@ -643,6 +981,11 @@ function recompute(){
     if(stt) stt.innerHTML = live&&platOn[i] ? '<i></i>'+chN+' 路' : (platOn[i]?'待开播':'已关闭');
     if(qq)  qq.textContent = platOn[i] ? q.id : "—";
   });
+  paintMetrics();
+  renderFlow();
+  $("capNet").textContent   = `${net.n} ${net.m} · 模拟`;
+  $("capInfer").textContent = `${topo === "edge" ? "端侧" : "云端"} · 模拟`;
+  $("capQod").textContent   = qod ? "已启用 · 模拟" : "未启用 · 模拟";
 }
 
 /* ── 音频推子：可拖动，真实驱动 VU 与麦克风增益 ── */
@@ -661,54 +1004,85 @@ function recompute(){
 /* ── 开播 ── */
 $("go").onclick=()=>live?stop():start();
 function start(){
-  live=true; t0=Date.now(); S=[]; cmtN=0;
+  live=true; t0=Date.now(); cmtN=0;
   document.body.classList.add("live");
   $("go").textContent="结束直播"; $("tState").textContent="直播中";
   tiles.forEach((t,i)=>setTimeout(()=>{ syncTiles(); if(i===pgm) setPgm(pgm); }, 160+i*130));
   dests(); renderPlat(); recompute();
+  const a = $("pgmAudio");
+  a.muted = false; a.volume = 1;
+  syncAudioSource();
+  a.play().catch(()=>{});          // 由「开始直播」点击手势触发，满足自动播放策略
 }
 function stop(){
   live=false; document.body.classList.remove("live");
   $("go").textContent="开始直播"; $("tState").textContent="已结束";
   syncTiles(); document.querySelector(".pgm-frame").classList.remove("rd");
-  $("chD").setAttribute("opacity","0"); $("abr").hidden=true;
+  $("abr").hidden=true;
   dests(); renderPlat(); recompute();
+  const a = $("pgmAudio");
+  a.pause(); a.currentTime = 0;
 }
 addEventListener("keydown",e=>{
   if(e.target.matches("input,textarea")) return;
   if(e.code==="Space"){e.preventDefault(); live?stop():start();}
   const n=NETS.find(x=>String(x.id)===e.key);
   if(n){ net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
-         document.documentElement.style.setProperty("--st",n.st); recompute(); }
+         document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute(); }
   const k={q:1,w:2,e:3}[e.key.toLowerCase()]; if(k!==undefined&&live) setPgm(k);
 });
 
-/* ── 渲染：画质(ABR) + 丢包/抖动(链路) 双重真实作用 ── */
-const off=document.createElement("canvas"), oc=off.getContext("2d");
-function paint(cv,v,now,slot){
-  if(Math.random()<net.drop) return false;
-  if(net.jit && now-slot.last < Math.random()*net.jit) return false;
+/* ── 路径损伤：拓扑决定实时性预算 ──
+   云端 E2E 860ms，播放端要维持互动就只能压小缓冲，网络抖动吸收不掉、直接表现为卡顿；
+   跨洲多跳还带来额外丢包。端侧 215ms 有充足余量，同一条接入链路下画面是流畅的。
+   这是端侧生成相对云端最先被眼睛捕捉到的收益——比清晰度更直观。 */
+const PATH = { edge:{ jit:0, drop:0 }, cloud:{ jit:120, drop:.07 } };
+function effJit(){ return net.jit + PATH[topo].jit; }
+function effDrop(){ return 1 - (1-net.drop)*(1-PATH[topo].drop); }
+
+/* ── 渲染：画质(ABR) + 丢包/抖动(链路 × 拓扑) 双重真实作用 ──
+   例外：CAM(原始信号) 是主播本地采集，不经过任何网络路径——
+   它永远满帧、满清晰、零错位。劣化只发生在跨网交付的三路上。
+   这不只是正确性：原始 vs 交付的同屏对比本身就是"网络在挤压交付"的证据。 */
+function mkOff(){ const c=document.createElement("canvas"); return {c:c, x:c.getContext("2d")}; }
+const offT=mkOff(), offP=mkOff();          // 小窗与大画面各自离屏，避免每帧来回改尺寸
+function paint(cv,v,now,slot,W,o,pristine){
+  if(!pristine){
+    if(Math.random()<effDrop()) return false;
+    const jit=effJit();
+    if(jit && now-slot.last < Math.random()*jit) return false;
+  }
   if(!v.videoWidth) return false;
-  const sc=LADDER[actualQ].sc;
-  const W=320, H=Math.round(W*v.videoHeight/v.videoWidth);
+  const sc=pristine ? 1 : LADDER[actualQ].sc;
+  const H=Math.round(W*v.videoHeight/v.videoWidth);
   if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
   const sw=Math.max(20,Math.round(W*sc)), sh=Math.max(20,Math.round(H*sc));
-  if(off.width!==sw||off.height!==sh){off.width=sw;off.height=sh;}
-  oc.drawImage(v,0,0,sw,sh);
+  if(o.c.width!==sw||o.c.height!==sh){o.c.width=sw;o.c.height=sh;}
+  o.x.drawImage(v,0,0,sw,sh);
   const c=cv.getContext("2d"); c.imageSmoothingEnabled=sc>.7;
-  c.drawImage(off,0,0,sw,sh,0,0,W,H);
+  c.drawImage(o.c,0,0,sw,sh,0,0,W,H);
   slot.last=now; return true;
 }
+/* PROGRAM 必须有独立 slot：与小窗共用时第二次 paint 的抖动判据恒为 0，
+   jit>0 时大画面会整个冻住而不是卡顿。 */
+const pgmSlot={last:0};
+let tileTick=0, bgTick=0;
 requestAnimationFrame(function loop(now){
-  if(live) tiles.forEach((t,i)=>{
-    if(!t.ok||t.el.classList.contains("off")) return;
-    paint(t.cv,t.vd,now,t);
-    if(i===pgm && paint($("pgmCv"),t.vd,now,t)){
-      const s=$("pgmCv"), bg=$("pgmBg");
-      if(bg.width!==s.width||bg.height!==s.height){bg.width=s.width;bg.height=s.height;}
-      bg.getContext("2d").drawImage(s,0,0);
-    }
-  });
+  if(live){
+    const doTiles = now-tileTick >= 80;    // 小窗是监看画面，12fps 足够
+    if(doTiles) tileTick = now;
+    tiles.forEach((t,i)=>{
+      if(!t.ok||t.el.classList.contains("off")) return;
+      const pristine = i===0;            // CAM=本地采集，见上
+      if(doTiles) paint(t.cv,t.vd,now,t,180,offT,pristine);
+      if(i===pgm && paint($("pgmCv"),t.vd,now,pgmSlot,360,offP,pristine) && now-bgTick>=160){
+        bgTick = now;                      // 垫底虚化是 blur(34px)，每帧重算极贵且看不出
+        const sc2=$("pgmCv"), bg=$("pgmBg");
+        if(bg.width!==sc2.width||bg.height!==sc2.height){bg.width=sc2.width;bg.height=sc2.height;}
+        bg.getContext("2d").drawImage(sc2,0,0);
+      }
+    });
+  }
   requestAnimationFrame(loop);
 });
 
@@ -744,30 +1118,30 @@ setInterval(()=>{
   cmtN++;
 },1300);
 
-/* ── 观众数据：与在播路数、画质挂钩 ── */
-let vw=0,lk=0,cm=0,sh2=0;
-setInterval(()=>{
-  if(!live) return;
-  const lanes=chOn.filter(Boolean).length*platOn.filter(Boolean).length;
-  const r=(lanes/15)*(0.45+LADDER[actualQ].sc*0.75);
-  vw+=Math.round((60+Math.random()*120)*r); lk+=Math.round((45+Math.random()*95)*r);
-  cm+=Math.round((4+Math.random()*12)*r);  sh2+=Math.round((2+Math.random()*7)*r);
-  $("kView").textContent=vw.toLocaleString(); $("kLike").textContent=lk.toLocaleString();
-  $("kCmt").textContent=cm.toLocaleString(); $("kShr").textContent=sh2.toLocaleString();
-  tiles.forEach((t,i)=>{ if(!t.el.classList.contains("off"))
-    t.num.textContent=((9000+vw*(.8+i*.25))/1000).toFixed(1)+"K"; });
-  S.push(vw); if(S.length>36)S.shift();
-  if(S.length>1){
-    const mx=Math.max(...S,1),W=300,H=54;
-    const p=S.map((v,i)=>[i/(S.length-1)*W,H-4-(v/mx)*(H-11)]);
-    const d=p.map((q,i)=>(i?"L":"M")+q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ");
-    $("chL").setAttribute("d",d); $("chA").setAttribute("d",d+` L${W},${H} L0,${H} Z`);
-    const e=p[p.length-1]; $("chD").setAttribute("cx",e[0]); $("chD").setAttribute("cy",e[1]);
-    $("chD").setAttribute("opacity","1");
-  }
-},1000);
+renderTopo(); renderQod(); renderChans(); renderQ(); renderSubs(); dests(); renderPlat(); setPgm(1); recompute();
 
-renderChans(); renderQ(); renderSubs(); dests(); renderPlat(); setPgm(1); recompute();
+/* ── 证据抽屉：默认收起，评委质疑真实性时展开 ── */
+$("evToggle").onclick = ()=>{
+  const d = $("evidence"), open = d.hidden;
+  d.hidden = !open;
+  $("evToggle").setAttribute("aria-expanded", String(open));
+};
+
+/* ── 测试钩子：只读状态快照，供 demo/e2e 断言（不影响演示逻辑） ── */
+window.__demo = {
+  state(){
+    return {
+      topo, qod, qodAvailable: qodAvailable(), live,
+      quality: LADDER[actualQ].id,
+      cap: +capEffective().toFixed(2),
+      uplinkNeed: +uplinkNeedMbps().toFixed(2),
+      uplinkReal: +uplinkRealMbps().toFixed(2),
+      gap:  +(capEffective() - uplinkNeedMbps()).toFixed(2),
+      head: +(capEffective() - uplinkRealMbps()).toFixed(2),
+      e2e: e2eMs(), av: avSkewMs()
+    };
+  }
+};
 
 </script>
 </body>
