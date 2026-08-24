@@ -40,10 +40,10 @@ export function TopBar({ experience }: { experience: ExperienceSnapshot }) {
   const realSourceConnected = sourceConnected && sourceKind !== 'mock';
   const sourceLabel =
     sourceKind === 'mock'
-      ? 'MOCK · EMULATED'
+      ? '真人直播样例 · 模拟 EMULATED'
       : sourceConnected
-        ? `${sourceKind === 'phone' ? 'PHONE WEBRTC' : 'LOCAL CAMERA'} · LIVE`
-        : 'STANDBY';
+        ? `${sourceKind === 'phone' ? '手机 WEBRTC' : '本机摄像头'} · 实时 LIVE`
+        : '待机';
 
   const toggleFullscreen = async () => {
     try {
@@ -63,30 +63,30 @@ export function TopBar({ experience }: { experience: ExperienceSnapshot }) {
   return (
     <header className="top-bar">
       <OneLiveLogo />
-      <div className="status-rail" role="group" aria-label="System status">
+      <div className="status-rail" role="group" aria-label="系统状态">
         <StatusRailItem
-          label="PROGRAM"
-          value={realSourceConnected ? 'LIVE INPUT' : 'DEMO'}
+          label="场景"
+          value={realSourceConnected ? '真人实时直播 LIVE' : '真人跨境直播'}
           state={realSourceConnected ? 'live' : 'neutral'}
         />
         <StatusRailItem
-          label="SOURCE"
+          label="主直播源"
           value={sourceLabel}
           state={realSourceConnected ? 'live' : sourceKind === 'mock' ? 'neutral' : 'warning'}
         />
         <StatusRailItem
-          label="NETWORK"
-          value={`${profileId === 'premium' ? 'PREMIUM 5G' : experience.profile.shortLabel} · SIM`}
+          label="网络"
+          value={`${profileId === 'premium' ? '优享 5G' : experience.profile.shortLabel} · 模拟`}
           state={profileId === 'weak' ? 'warning' : 'neutral'}
         />
         <StatusRailItem
-          label="INFERENCE"
-          value={deployment === 'edge' ? 'EDGE SIM' : 'CLOUD SIM'}
+          label="AI生成位置"
+          value={deployment === 'edge' ? '端侧AI终端 · 模拟' : '云端生成 · 模拟'}
           state={deployment === 'edge' ? 'edge' : 'neutral'}
         />
         <StatusRailItem
           label="QoD"
-          value={qod ? 'PROTECTED · SIM' : 'OFF · SIM'}
+          value={qod ? '已保障 · 模拟' : '未启用 · 模拟'}
           state={qod ? 'edge' : 'neutral'}
         />
       </div>
@@ -96,22 +96,20 @@ export function TopBar({ experience }: { experience: ExperienceSnapshot }) {
           data-testid="director-start"
           type="button"
           onClick={runDirector}
-          aria-label={
-            directorRunning ? 'Pause automatic demo director' : 'Start automatic demo director'
-          }
+          aria-label={directorRunning ? '暂停自动演示' : '开始自动演示'}
         >
           <Icon name={directorRunning ? 'pause' : 'play'} size={16} />
           <span>
             {directorRunning
-              ? `STEP ${directorStep + 1} · ${DIRECTOR_PRESETS[directorStep].label}`
-              : 'RUN DEMO'}
+              ? `第 ${directorStep + 1} 步 · ${DIRECTOR_PRESETS[directorStep].label}`
+              : '开始演示'}
           </span>
         </button>
         <button
           className="icon-button"
           type="button"
           onClick={() => setDrawerOpen(!drawerOpen)}
-          aria-label="Open network controls"
+          aria-label="打开网络设置"
           aria-expanded={drawerOpen}
           aria-controls="network-drawer"
           aria-haspopup="dialog"
@@ -122,14 +120,14 @@ export function TopBar({ experience }: { experience: ExperienceSnapshot }) {
           className="icon-button"
           type="button"
           onClick={toggleFullscreen}
-          aria-label="Toggle fullscreen"
+          aria-label="切换全屏"
         >
           <Icon name="fullscreen" />
         </button>
       </div>
       {fullscreenError && (
         <div className="toast" role="status">
-          Fullscreen was blocked. Presenter mode remains active.
+          浏览器阻止了全屏，演示模式仍可继续。
         </div>
       )}
     </header>

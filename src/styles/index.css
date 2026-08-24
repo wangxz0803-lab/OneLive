@@ -1,14 +1,13 @@
 :root {
   color-scheme: dark;
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
+  --font-ui:
+    'Segoe UI Variable Text',
     'Segoe UI',
     'PingFang SC',
-    'Microsoft YaHei',
+    'Microsoft YaHei UI',
     sans-serif;
+  --font-data: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--font-ui);
   --bg-0: #05070b;
   --bg-1: #080c12;
   --surface-0: #0c121a;
@@ -159,14 +158,13 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: linear-gradient(145deg, rgba(17, 25, 37, 0.97), rgba(8, 13, 20, 0.98));
+  background: rgba(12, 18, 26, 0.98);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.035),
-    0 16px 45px rgba(0, 0, 0, 0.17);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
 }
 .panel::after {
+  display: none;
   content: '';
   position: absolute;
   inset: 0;
@@ -177,12 +175,8 @@ button:disabled {
 .section-kicker {
   display: block;
   color: var(--text-2);
-  font:
-    600 10px/1.2 ui-monospace,
-    SFMono-Regular,
-    Consolas,
-    monospace;
-  letter-spacing: 0.12em;
+  font: 600 11px/1.2 var(--font-ui);
+  letter-spacing: 0.04em;
 }
 
 .brand-lockup {
@@ -246,24 +240,21 @@ button:disabled {
   gap: 2px;
   border-right: 1px solid var(--line);
 }
+.status-rail-item:nth-child(2) {
+  flex-grow: 1.25;
+}
 .status-rail-item:last-child {
   border-right: 0;
 }
 .status-rail-item span {
   color: var(--text-2);
-  font:
-    600 9px/1 ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.1em;
+  font: 600 11px/1.1 var(--font-ui);
+  letter-spacing: 0.02em;
 }
 .status-rail-item strong {
   overflow: hidden;
   color: var(--text-1);
-  font:
-    650 11px/1.2 ui-monospace,
-    Consolas,
-    monospace;
+  font: 650 12px/1.2 var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -690,9 +681,10 @@ button:disabled {
 .source-telemetry {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.12);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 .source-telemetry > div {
   min-width: 0;
@@ -1308,10 +1300,7 @@ button:disabled {
   align-items: center;
   gap: 14px;
   color: var(--text-2);
-  font:
-    600 8px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 600 11px/1 var(--font-ui);
 }
 .network-legend span {
   display: flex;
@@ -1332,7 +1321,7 @@ button:disabled {
   position: relative;
   min-height: 0;
 }
-.network-path__body svg {
+.network-path__body > svg {
   position: absolute;
   z-index: 1;
   inset: 0;
@@ -1353,7 +1342,7 @@ button:disabled {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-dasharray: 4 18;
-  filter: drop-shadow(0 0 4px rgba(84, 220, 231, 0.7));
+  filter: none;
   animation: path-flow 1.5s linear infinite;
 }
 .network-path--stressed .path-line--energy {
@@ -1396,10 +1385,10 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: rgba(9, 15, 22, 0.94);
-  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.22);
+  border: 0;
+  border-radius: 7px;
+  background: rgba(9, 15, 22, 0.76);
+  box-shadow: none;
 }
 .path-node > span {
   width: 28px;
@@ -1418,20 +1407,20 @@ button:disabled {
 .path-node strong {
   display: block;
   overflow: hidden;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .path-node small {
   color: var(--text-2);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
 }
 .path-node strong {
   margin-top: 4px;
   color: #cbd7e0;
-  font-size: 8px;
+  font-size: 11px;
 }
 .path-node--live > span {
   color: var(--cyan);
@@ -1797,12 +1786,10 @@ button:disabled {
   align-items: center;
   gap: 13px;
   transform: translateX(-50%);
-  border: 1px solid rgba(151, 137, 255, 0.3);
+  border: 1px solid var(--line-strong);
   border-radius: 15px;
   background: rgba(11, 17, 25, 0.93);
-  box-shadow:
-    0 18px 70px rgba(0, 0, 0, 0.42),
-    0 0 28px rgba(146, 123, 255, 0.08);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(18px);
   animation: hud-in 0.28s ease-out both;
 }
@@ -1828,26 +1815,26 @@ button:disabled {
 .director-hud__copy span,
 .director-hud__copy small {
   display: block;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-ui);
 }
 .director-hud__copy span {
-  color: #a898ff;
-  font-size: 8px;
+  color: var(--cyan);
+  font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.03em;
 }
 .director-hud__copy strong {
   display: block;
   margin: 4px 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 580;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .director-hud__copy small {
   color: var(--text-2);
-  font-size: 8px;
+  font-size: 11px;
 }
 .director-hud__controls {
   display: flex;
@@ -1904,11 +1891,8 @@ button:disabled {
   justify-content: center;
   gap: 12px;
   color: var(--text-2);
-  font:
-    650 9px/1 ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.11em;
+  font: 650 11px/1 var(--font-ui);
+  letter-spacing: 0.04em;
 }
 .comparison-title strong {
   color: var(--text-0);
@@ -1926,7 +1910,7 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 176px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 156px minmax(0, 1fr);
   gap: 14px;
 }
 .scenario-panel {
@@ -1965,11 +1949,8 @@ button:disabled {
   gap: 5px;
   border: 1px solid currentColor;
   border-radius: 7px;
-  font:
-    650 8px/1 ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.05em;
+  font: 650 11px/1 var(--font-ui);
+  letter-spacing: 0.02em;
 }
 .scenario-state--good {
   color: var(--success);
@@ -2003,15 +1984,12 @@ button:disabled {
 }
 .scenario-caption span {
   color: var(--cyan);
-  font:
-    600 7px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 600 10px/1 var(--font-data);
 }
 .scenario-caption p {
   margin: 4px 0 0;
   color: #edf4f7;
-  font-size: 10px;
+  font-size: 13px;
 }
 .scenario-caption--backlog {
   left: 35px;
@@ -2028,10 +2006,7 @@ button:disabled {
   top: 11px;
   right: 12px;
   color: var(--text-1);
-  font:
-    600 8px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 600 10px/1 var(--font-data);
 }
 .comparison-channel-rail {
   display: grid;
@@ -2041,34 +2016,35 @@ button:disabled {
 .comparison-channel-rail div {
   min-width: 0;
   padding: 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.018);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 .comparison-channel-rail div[data-status='buffering'] {
-  border-color: rgba(241, 138, 85, 0.35);
+  border-top-color: rgba(241, 138, 85, 0.48);
 }
 .comparison-channel-rail span,
 .comparison-channel-rail strong,
 .comparison-channel-rail small {
   display: block;
   overflow: hidden;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .comparison-channel-rail span {
   color: var(--text-2);
-  font-size: 7px;
+  font-size: 11px;
 }
 .comparison-channel-rail strong {
   margin: 5px 0;
   color: var(--text-0);
-  font-size: 8px;
+  font-size: 12px;
 }
 .comparison-channel-rail small {
   color: var(--text-2);
-  font-size: 7px;
+  font: 10px/1 var(--font-data);
 }
 .scenario-panel > footer {
   display: flex;
@@ -2077,10 +2053,7 @@ button:disabled {
   gap: 8px;
   color: var(--text-2);
   border-top: 1px solid var(--line);
-  font:
-    550 8px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 550 11px/1 var(--font-ui);
 }
 .scenario-panel > footer span {
   display: flex;
@@ -2097,51 +2070,36 @@ button:disabled {
   min-height: 0;
   padding: 13px 10px 10px;
   display: grid;
-  grid-template-rows: 53px minmax(0, 1fr) 37px;
+  grid-template-rows: 72px minmax(0, 1fr) 44px;
   overflow: hidden;
-  border: 1px solid rgba(146, 123, 255, 0.3);
-  border-radius: 17px;
-  background: linear-gradient(180deg, rgba(146, 123, 255, 0.1), rgba(9, 14, 21, 0.94) 24%);
+  border: 0;
+  border-inline: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 .delta-spine > header {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  grid-template-rows: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  column-gap: 7px;
+  justify-content: center;
+  gap: 5px;
+  text-align: center;
 }
 .delta-spine > header > span {
-  grid-row: 1 / 3;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  color: #cabfff;
-  border: 1px solid rgba(146, 123, 255, 0.35);
-  border-radius: 9px;
-  font-size: 19px;
+  display: none;
 }
 .delta-spine > header strong {
-  align-self: end;
-  font:
-    700 9px/1 ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.08em;
+  font: 700 13px/1.2 var(--font-ui);
+  letter-spacing: 0.02em;
 }
 .delta-spine > header small {
-  align-self: start;
-  margin-top: 4px;
   color: var(--text-2);
-  font:
-    600 7px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 600 11px/1.2 var(--font-ui);
 }
 .delta-list {
   min-height: 0;
   display: grid;
-  grid-template-rows: repeat(5, 1fr);
+  grid-template-rows: repeat(3, 1fr);
 }
 .delta-list > div {
   min-height: 0;
@@ -2153,26 +2111,17 @@ button:disabled {
 }
 .delta-list span {
   color: var(--text-2);
-  font:
-    600 7px/1 ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.07em;
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: 0.02em;
 }
 .delta-list small {
   margin: 5px 0 3px;
   color: #8b98aa;
-  font:
-    550 7px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 550 10px/1 var(--font-data);
 }
 .delta-list strong {
   color: var(--cyan-soft);
-  font:
-    700 15px/1 ui-monospace,
-    Consolas,
-    monospace;
+  font: 700 18px/1 var(--font-data);
 }
 .delta-spine > footer {
   display: flex;
@@ -2181,11 +2130,8 @@ button:disabled {
   gap: 6px;
   color: var(--cyan);
   border-top: 1px solid var(--line);
-  font:
-    650 7px/1 ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.07em;
+  font: 650 11px/1 var(--font-ui);
+  letter-spacing: 0.02em;
 }
 
 .business-view {

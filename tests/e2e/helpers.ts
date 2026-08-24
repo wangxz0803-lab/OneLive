@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 
 export const DEMO_URL = '/?mock=1&skipIntro=1&session=E2E-ONELIVE';
 export const MOBILE_URL = '/broadcast/E2E-ONELIVE?mock=1&skipIntro=1';
-export const MARKET_IDS = ['north-america', 'japan', 'spanish'] as const;
+export const MARKET_IDS = ['japan', 'latam', 'india'] as const;
 
 type MarketId = (typeof MARKET_IDS)[number];
 type ChannelStatus = 'live' | 'low-res' | 'buffering' | 'audio-only' | 'paused';
@@ -65,17 +65,14 @@ export async function expectChannelStatuses(
   statuses: Record<MarketId, ChannelStatus>,
 ): Promise<void> {
   for (const marketId of MARKET_IDS) {
-    await expect(page.getByTestId(`channel-card-${marketId}`)).toHaveAttribute(
+    await expect(page.getByTestId(`channel-tab-${marketId}`)).toHaveAttribute(
       'data-status',
       statuses[marketId],
     );
   }
 }
 
-export async function expectDirectorState(
-  page: Page,
-  expected: DirectorFlowState,
-): Promise<void> {
+export async function expectDirectorState(page: Page, expected: DirectorFlowState): Promise<void> {
   const shell = page.getByTestId('app-shell');
   await expect(page.getByTestId('director-step')).toHaveAttribute(
     'data-step',
@@ -101,11 +98,11 @@ export async function startManualDirector(page: Page): Promise<void> {
   const directorControl = page.getByTestId('director-start');
   await directorControl.click();
   await expectDirectorState(page, DIRECTOR_FLOW[0]);
-  await expect(directorControl).toHaveAccessibleName('Pause automatic demo director');
+  await expect(directorControl).toHaveAccessibleName('暂停自动演示');
 
   // Pause the 5.2 s timer so the test, rather than wall-clock speed, advances every step.
   await directorControl.click();
-  await expect(directorControl).toHaveAccessibleName('Start automatic demo director');
+  await expect(directorControl).toHaveAccessibleName('开始自动演示');
 }
 
 export async function numericDataValue(page: Page, testId: string): Promise<number> {

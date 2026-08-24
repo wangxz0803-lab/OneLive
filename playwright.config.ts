@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const isCI = Boolean(process.env.CI);
+const browserChannel =
+  process.env.PLAYWRIGHT_CHANNEL ?? (process.platform === 'win32' ? 'msedge' : 'chrome');
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -17,10 +19,7 @@ export default defineConfig({
       maxDiffPixelRatio: 0.025,
     },
   },
-  reporter: [
-    ['list'],
-    ['html', { outputFolder: './artifacts/playwright-report', open: 'never' }],
-  ],
+  reporter: [['list'], ['html', { outputFolder: './artifacts/playwright-report', open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:5173',
     colorScheme: 'dark',
@@ -34,11 +33,11 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'system-chrome',
+      name: `system-${browserChannel}`,
       use: {
         ...devices['Desktop Chrome'],
-        // Deliberately target the locally installed stable Chrome channel.
-        channel: 'chrome',
+        // Prefer the installed Windows browser while allowing CI/local overrides.
+        channel: browserChannel,
         viewport: { width: 1440, height: 900 },
       },
     },

@@ -2,7 +2,7 @@
 
 > ONE SOURCE. MANY MARKETS. LIVE.
 
-OneLive 是一个面向现场演示的实时数字分身直播 MVP：一名主播提供一次中文信号，控制台同时呈现北美、日本和西语市场的本地化数字分身直播体验，并通过可复现的网络实验展示拥塞、高时延、Edge AI 和 QoD 对体验的影响。
+OneLive 是一个面向现场演示的多市场视频 MVP：一段 15 秒中文直播录屏对应日本、拉美和印度三支本地化视频，并通过可复现的网络实验展示拥塞、高时延、Edge AI 和 QoD 对交付体验的影响。
 
 本项目优先保证离线可演示、状态可解释和失败可恢复。Mock Demo 不依赖手机、外部 AI API 或互联网。
 
@@ -111,6 +111,26 @@ iOS Safari 通常需要“显示详细信息 → 访问此网站”；Android Ch
 自签证书只适合受控局域网演示，不适合公网或生产部署。生产环境必须使用受信任 CA 证书，并配置 TURN、访问控制和隐私合规措施。
 
 ## Demo 操作
+
+### 四视频素材
+
+Mock Demo 从 `public/demo-media/` 读取固定文件名：
+
+- `original-zh.mp4`：原始中文录屏。
+- `japan-ja.mp4`：日本日语版本。
+- `latam-es.mp4`：拉美西班牙语版本。
+- `india-en.mp4`：印度英语版本。
+
+四支演示视频均已就位。任一本地化成片临时不可用时，界面会明确显示“本地化素材待补充 · 当前显示原片回退”，并使用原视频兜底；不会把兜底素材当成本地化成片介绍。对应 JPG poster 用于保证首屏和现场截图在视频解码前仍有真实画面。
+
+### 推荐 2–3 分钟节奏
+
+1. 播放左侧原始中文视频。
+2. 依次点击 Japan、LATAM、India，展示三种语言与场景。
+3. 固定 Japan，通过 Space 或 Director 按钮演示 Congestion、Latency、Edge 和 QoD。
+4. 按 C 打开 Comparison，以 Business 页面收尾。
+
+同一时间只播放一段预录音频；点击另一段视频或市场会暂停当前预录。
 
 完整的 3–5 分钟讲解脚本见 [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md)。
 
@@ -315,4 +335,4 @@ http://127.0.0.1:8900/console
 - 摄像头和麦克风默认不录制、不写入数据库。
 - 会话 ID 只用于短期设备配对，不是身份认证。
 - 自签 HTTPS、局域网信令和无鉴权会话只适合受控演示环境。
-- 展示 AI GENERATED / AUTHORIZED AVATAR 标识，禁止未经授权采集或冒用真人形象。
+- 原视频展示 ORIGINAL RECORDING；本地化视频展示 AI GENERATED / AUTHORIZED，禁止未经授权采集或冒用真人形象。

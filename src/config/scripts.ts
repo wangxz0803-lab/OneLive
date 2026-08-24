@@ -9,38 +9,37 @@ export interface DemoLine {
 export const DEMO_LINES: DemoLine[] = [
   {
     id: 'intro',
-    zh: '大家好，今天给大家介绍这款轻量降噪耳机。它支持全天佩戴，并拥有低延迟模式。',
+    zh: '梅特德菲多功能电气锅，插上电源即可轻松烹饪。手柄触控面板配备九种功能。',
     translations: {
-      'north-america': 'Meet our lightweight noise-cancelling earbuds, built for all-day comfort with a dedicated low-latency mode.',
-      japan: '一日中快適に使える、軽量ノイズキャンセリングイヤホンをご紹介します。低遅延モードにも対応しています。',
-      spanish: 'Conoce nuestros auriculares ligeros con cancelación de ruido, comodidad durante todo el día y modo de baja latencia.',
+      japan:
+        'メテドフィの多機能電気鍋です。コンセントにつなぐだけで簡単に調理できます。ハンドルのタッチパネルには9つの機能を搭載。',
+      latam:
+        'Esta es la olla eléctrica multifunción Metedfi. Solo tienes que enchufarla para cocinar fácilmente. El panel táctil del mango incluye nueve funciones.',
+      india:
+        'This is Metedfi’s multifunction electric pot. Just plug it in and start cooking. The handle’s touch panel offers nine cooking modes.',
     },
   },
   {
-    id: 'comfort',
-    zh: '单只仅重四点二克，长时间直播和通勤佩戴都很轻松。',
+    id: 'modes',
+    zh: '炒、蒸、火锅、汤、粥、煮饭、预约和保温，选择想做的料理即可。',
     translations: {
-      'north-america': 'At only 4.2 grams per earbud, they stay comfortable through long streams and daily commutes.',
-      japan: '片耳わずか4.2グラム。長時間の配信や通勤でも快適です。',
-      spanish: 'Con solo 4,2 gramos por auricular, son cómodos para directos largos y para el día a día.',
+      japan:
+        '炒め物、蒸し料理、鍋、スープ、おかゆ、炊飯、予約、保温まで、作りたい料理を選ぶだけです。',
+      latam:
+        'Elige saltear, cocinar al vapor, olla caliente, sopa, avena, arroz, programación o conservación del calor.',
+      india:
+        'Choose stir-fry, steaming, hot pot, soup, porridge, rice, scheduling or keep-warm mode.',
     },
   },
   {
-    id: 'battery',
-    zh: '充电盒可提供三十小时续航，十分钟快充即可使用两小时。',
+    id: 'close',
+    zh: '一台锅覆盖日常多种料理，操作直观，也更适合轻松展示。',
     translations: {
-      'north-america': 'The charging case delivers 30 hours of battery life, with two hours of listening from a ten-minute charge.',
-      japan: '充電ケース込みで30時間再生。10分の急速充電で2時間使用できます。',
-      spanish: 'El estuche ofrece 30 horas de autonomía y una carga de diez minutos permite dos horas de uso.',
-    },
-  },
-  {
-    id: 'latency',
-    zh: '开启低延迟模式后，游戏、视频和直播互动都能保持更好的音画同步。',
-    translations: {
-      'north-america': 'Low-latency mode keeps games, video, and live interactions closely synchronized.',
-      japan: '低遅延モードなら、ゲームや動画、ライブ配信でも音と映像がしっかり同期します。',
-      spanish: 'El modo de baja latencia mantiene sincronizados juegos, vídeo e interacciones en directo.',
+      japan: '一台で毎日のさまざまな料理に対応。操作も直感的で、手軽に使えます。',
+      latam:
+        'Una sola olla cubre muchas comidas diarias, con controles sencillos y una presentación clara.',
+      india:
+        'One compact pot handles everyday meals with simple controls and an easy live demonstration.',
     },
   },
 ];

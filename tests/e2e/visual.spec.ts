@@ -25,6 +25,32 @@ test.describe('required visual QA artifacts', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openReadyDemo(page, DEMO_URL);
     await expectDesktopFirstScreenFits(page);
+    const sourceStage = await page.getByTestId('source-panel').boundingBox();
+    const localizedStage = await page.getByTestId('channel-grid').boundingBox();
+    expect(sourceStage?.width ?? 0).toBeGreaterThan(420);
+    expect(localizedStage?.width ?? 0).toBeGreaterThan(520);
+    for (const marketId of MARKET_IDS) {
+      const tabBox = await page.getByTestId(`channel-tab-${marketId}`).boundingBox();
+      expect(tabBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+    await expect
+      .poll(() =>
+        page
+          .getByTestId('source-recording')
+          .evaluate((element) => (element as HTMLVideoElement).readyState),
+      )
+      .toBeGreaterThanOrEqual(1);
+    await expect
+      .poll(() =>
+        page
+          .getByTestId('localized-video')
+          .evaluate((element) => (element as HTMLVideoElement).readyState),
+      )
+      .toBeGreaterThanOrEqual(1);
+    const captionSize = await page
+      .locator('.localized-caption p')
+      .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+    expect(captionSize).toBeGreaterThanOrEqual(13);
     await page.screenshot({
       path: path.join(artifactsDirectory, 'control-room.png'),
       animations: 'disabled',
@@ -35,21 +61,21 @@ test.describe('required visual QA artifacts', () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await expectDesktopFirstScreenFits(page);
     for (const marketId of MARKET_IDS) {
-      await expect(page.getByTestId(`channel-card-${marketId}`)).toBeInViewport();
+      await expect(page.getByTestId(`channel-tab-${marketId}`)).toBeInViewport();
     }
   });
 
   test('captures visible network degradation', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openReadyDemo(page);
-    await page.getByRole('button', { name: 'Open network controls' }).click();
+    await page.getByRole('button', { name: '打开网络设置' }).click();
     await page.getByTestId('profile-congested').click();
     await expectChannelStatuses(page, {
-      'north-america': 'low-res',
-      japan: 'buffering',
-      spanish: 'low-res',
+      japan: 'low-res',
+      latam: 'buffering',
+      india: 'low-res',
     });
-    await page.getByRole('button', { name: 'Close network controls' }).click();
+    await page.getByRole('button', { name: '关闭网络设置' }).click();
     await page.screenshot({
       path: path.join(artifactsDirectory, 'network-degraded.png'),
       animations: 'disabled',
@@ -61,17 +87,17 @@ test.describe('required visual QA artifacts', () => {
   test('captures Edge and QoD recovery under background congestion', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openReadyDemo(page);
-    await page.getByRole('button', { name: 'Open network controls' }).click();
+    await page.getByRole('button', { name: '打开网络设置' }).click();
     await page.getByTestId('profile-congested').click();
     await page.getByTestId('deployment-toggle').click();
     await page.getByTestId('qod-toggle').click();
     await expect(page.getByTestId('network-path')).toHaveAttribute('data-state', 'protected');
     await expectChannelStatuses(page, {
-      'north-america': 'live',
       japan: 'live',
-      spanish: 'live',
+      latam: 'live',
+      india: 'live',
     });
-    await page.getByRole('button', { name: 'Close network controls' }).click();
+    await page.getByRole('button', { name: '关闭网络设置' }).click();
     await page.screenshot({
       path: path.join(artifactsDirectory, 'edge-qod-recovered.png'),
       animations: 'disabled',
@@ -84,7 +110,11 @@ test.describe('required visual QA artifacts', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openReadyDemo(page, MOBILE_URL);
     await expect(page.getByTestId('camera-preview')).toBeVisible();
-    await expect(page.getByTestId('broadcast-start')).toBeVisible();
+    await expect(page.getByRole('button', { name: '开始直播' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '静音' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '切换镜头' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '直播文案' })).toBeVisible();
+    await expect(page.getByText('不录制 · 不保存 · 自动重连')).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     const primaryControl = await page.getByTestId('broadcast-start').boundingBox();

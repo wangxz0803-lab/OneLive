@@ -5,12 +5,12 @@ import { Icon } from '@/components/Icon';
 import { OneLiveLogo } from '@/components/OneLiveLogo';
 import { DIRECTOR_PRESETS } from '@/core/director';
 import { deriveExperience } from '@/core/network';
-import { MARKET_PROFILES } from '@/config/markets';
 import { BroadcasterPage } from '@/features/broadcast/BroadcasterPage';
 import { BusinessView } from '@/features/business/BusinessView';
 import { ComparisonView } from '@/features/comparison/ComparisonView';
+import { AvatarTechnologyStage } from '@/features/control-room/AvatarTechnologyStage';
 import { DirectorHud } from '@/features/control-room/DirectorHud';
-import { MarketCard } from '@/features/control-room/MarketCard';
+import { LocalizedStage } from '@/features/control-room/LocalizedStage';
 import { NetworkDrawer } from '@/features/control-room/NetworkDrawer';
 import { NetworkPath } from '@/features/control-room/NetworkPath';
 import { SourcePanel } from '@/features/control-room/SourcePanel';
@@ -31,11 +31,11 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
       <main className="fatal-fallback">
         <OneLiveLogo />
         <Icon name="alert" size={32} />
-        <h1>OneLive entered Safe Demo mode</h1>
-        <p>The visual renderer was reset. Reload to return to the control room.</p>
+        <h1>OneLive 已进入安全演示模式</h1>
+        <p>画面渲染已安全重置，请重新加载并返回控制台。</p>
         <button type="button" onClick={() => window.location.reload()}>
           <Icon name="reset" />
-          Reload control room
+          重新加载控制台
         </button>
       </main>
     );
@@ -54,7 +54,7 @@ function BootSequence() {
         <OneLiveLogo />
         <span />
       </div>
-      <p>INITIALIZING GLOBAL BROADCAST FABRIC</p>
+      <p>正在初始化全球直播链路</p>
       <div className="boot-progress">
         <i />
       </div>
@@ -126,13 +126,14 @@ function ControlRoomPage() {
 
   return (
     <div
-      className={`app-shell app-shell--${state.view} ${state.presenterMode ? 'app-shell--presenter' : ''}`}
+      className={`app-shell app-shell--${state.view} ${state.networkStoryRevealed ? 'app-shell--network-revealed' : ''} ${state.presenterMode ? 'app-shell--presenter' : ''}`}
       data-testid="app-shell"
       data-app-ready={state.ready}
       data-ready={state.ready}
       data-network={state.profileId}
       data-edge={state.deployment === 'edge'}
       data-qod={state.qod}
+      data-control-mode={state.controlStageMode}
     >
       <AnimatePresence>{!state.bootComplete && <BootSequence />}</AnimatePresence>
       <TopBar experience={experience} />
@@ -141,30 +142,19 @@ function ControlRoomPage() {
           <motion.main
             id="main-content"
             key="control"
-            className="control-stage"
+            className={`control-stage control-stage--${state.controlStageMode}`}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.24 }}
           >
-            <h1 className="visually-hidden">OneLive global broadcast control room</h1>
+            <h1 className="visually-hidden">OneLive 全球直播控制台</h1>
             <SourcePanel experience={experience} />
-            <section
-              className="market-grid"
-              data-testid="channel-grid"
-              aria-label="Localized live markets"
-            >
-              {MARKET_PROFILES.map((market, index) => (
-                <MarketCard
-                  key={market.id}
-                  market={market}
-                  channel={experience.channels[index]}
-                  profileId={state.profileId}
-                  qod={state.qod}
-                  scriptIndex={state.scriptIndex}
-                />
-              ))}
-            </section>
+            {state.controlStageMode === 'video' ? (
+              <LocalizedStage experience={experience} />
+            ) : (
+              <AvatarTechnologyStage experience={experience} />
+            )}
           </motion.main>
         )}
         {state.view === 'comparison' && (
@@ -192,7 +182,9 @@ function ControlRoomPage() {
           </motion.div>
         )}
       </AnimatePresence>
-      {state.view === 'control' && <NetworkPath experience={experience} />}
+      {state.view === 'control' && state.networkStoryRevealed && (
+        <NetworkPath experience={experience} />
+      )}
       <DirectorHud />
       <NetworkDrawer />
     </div>

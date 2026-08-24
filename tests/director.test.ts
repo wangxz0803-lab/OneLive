@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  DIRECTOR_PRESETS,
-  clampDirectorStep,
-  directorPreset,
-} from '@/core/director';
+import { DIRECTOR_PRESETS, clampDirectorStep, directorPreset } from '@/core/director';
 import { useOneLiveStore } from '@/store/useOneLiveStore';
 
 describe('director presets', () => {
@@ -47,6 +43,8 @@ describe('director presets', () => {
       deployment: 'edge',
       qod: false,
     });
+    expect(directorPreset(3).narrative).toContain('AI直播终端');
+    expect(directorPreset(3).narrative).toContain('三路并发上行');
     expect(directorPreset(4)).toMatchObject({
       profileId: 'congested',
       deployment: 'edge',
@@ -59,7 +57,23 @@ describe('director presets', () => {
 describe('director store state machine', () => {
   beforeEach(() => {
     useOneLiveStore.getState().reset();
+  });
+
+  it('reveals the network story only after a director or network action', () => {
+    expect(useOneLiveStore.getState().networkStoryRevealed).toBe(false);
+
+    useOneLiveStore.getState().revealNetworkStory();
+    expect(useOneLiveStore.getState().networkStoryRevealed).toBe(true);
+
+    useOneLiveStore.getState().reset();
+    expect(useOneLiveStore.getState().networkStoryRevealed).toBe(false);
+
     useOneLiveStore.getState().applyDirectorStep(0);
+    expect(useOneLiveStore.getState().networkStoryRevealed).toBe(true);
+
+    useOneLiveStore.getState().reset();
+    useOneLiveStore.getState().setProfile('congested');
+    expect(useOneLiveStore.getState().networkStoryRevealed).toBe(true);
   });
 
   it('applies every preset atomically', () => {
@@ -95,6 +109,23 @@ describe('director store state machine', () => {
     });
   });
 
+  it('coordinates one selected market and one active prerecorded stage', () => {
+    const store = useOneLiveStore.getState();
+
+    expect(store.selectedMarketId).toBe('japan');
+    expect(store.activeRecording).toBeNull();
+
+    store.setSelectedMarket('india');
+    useOneLiveStore.getState().setActiveRecording('localized');
+    expect(useOneLiveStore.getState()).toMatchObject({
+      selectedMarketId: 'india',
+      activeRecording: 'localized',
+    });
+
+    useOneLiveStore.getState().setActiveRecording('original');
+    expect(useOneLiveStore.getState().activeRecording).toBe('original');
+  });
+
   it('resets all presentation mutations while retaining the current session', () => {
     const sessionId = useOneLiveStore.getState().sessionId;
     useOneLiveStore.getState().applyDirectorStep(5);
@@ -115,6 +146,9 @@ describe('director store state machine', () => {
       presenterMode: false,
       directorRunning: false,
       directorStep: 0,
+      selectedMarketId: 'japan',
+      activeRecording: null,
+      networkStoryRevealed: false,
       bootComplete: true,
     });
   });

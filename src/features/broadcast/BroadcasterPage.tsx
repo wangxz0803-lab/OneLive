@@ -27,7 +27,7 @@ export function BroadcasterPage() {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [scriptIndex, setScriptIndex] = useState(0);
-  const [message, setMessage] = useState('Camera and microphone are off until you start.');
+  const [message, setMessage] = useState('相机和麦克风将在开始直播后启用。');
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig | null>(null);
   useDialogFocus(sheetOpen, sheetRef, () => setSheetOpen(false));
   const realtime = useSessionSocket({
@@ -83,15 +83,15 @@ export function BroadcasterPage() {
       setFacingMode(nextFacing);
       previousStream?.getTracks().forEach((track) => track.stop());
       setState('live');
-      setMessage('Live contribution active. This media is not recorded or persisted.');
+      setMessage('直播信号已接入。媒体不会被录制或保存。');
     } catch {
       if (streamRef.current) {
         setState('live');
-        setMessage('Camera switch unavailable. The current live camera remains active.');
+        setMessage('暂时无法切换镜头，当前直播画面继续保持。');
       } else {
         setStream(null);
         setState('mock');
-        setMessage('Camera unavailable — Safe Demo signal is active. You can retry at any time.');
+        setMessage('相机不可用，已切换至安全演示信号，可随时重试。');
       }
     }
   };
@@ -102,7 +102,7 @@ export function BroadcasterPage() {
     setStream(null);
     if (videoRef.current) videoRef.current.srcObject = null;
     setState('ended');
-    setMessage('Broadcast ended. Your media tracks have been released.');
+    setMessage('直播已结束，相机和麦克风已释放。');
   };
 
   const setCaptureMuted = (next: boolean) => {
@@ -169,7 +169,7 @@ export function BroadcasterPage() {
     onCommand: handleSourceCommand,
     onSenderParameters: (result) => {
       if (!result.applied && result.reason) {
-        setMessage(`Live sender adaptation is unavailable: ${result.reason}`);
+        setMessage(`直播发送参数暂时无法调整：${result.reason}`);
       }
     },
   });
@@ -180,15 +180,15 @@ export function BroadcasterPage() {
   const peerLive = peer.connectionState === 'connected';
   const connectionLabel = !realtime.connected
     ? realtime.error
-      ? 'SIGNAL RECONNECTING'
-      : 'SIGNAL OFFLINE'
+      ? '信号重连中'
+      : '信号离线'
     : !realtime.joined
-      ? 'JOINING LIVE SESSION'
+      ? '正在加入直播会话'
       : peerLive
-        ? 'WEBRTC CONNECTED · LIVE'
+        ? 'WebRTC 已连接 · LIVE'
         : controlPresent
-          ? 'CONTROL PRESENT · LIVE'
-          : 'SESSION READY · LIVE';
+          ? '控制台在线 · LIVE'
+          : '会话已就绪 · LIVE';
   const statusMessage = peer.error || realtime.error || message;
 
   return (
@@ -198,7 +198,7 @@ export function BroadcasterPage() {
       data-testid="broadcaster-shell"
       data-state={state}
     >
-      <h1 className="visually-hidden">OneLive mobile broadcaster</h1>
+      <h1 className="visually-hidden">OneLive 移动直播端</h1>
       <header className="broadcaster-header">
         <OneLiveLogo compact />
         <div
@@ -225,30 +225,30 @@ export function BroadcasterPage() {
         <div className="camera-topline">
           <span className={captureLive ? 'mobile-live active' : 'mobile-live'}>
             {captureLive && <i />}
-            {captureLive ? 'LIVE' : state === 'mock' ? 'SAFE DEMO · EMULATED' : 'PREVIEW'}
+            {captureLive ? 'LIVE' : state === 'mock' ? '安全演示 · EMULATED' : '预览'}
           </span>
-          <span>SESSION {sessionId.slice(0, 10).toUpperCase()}</span>
+          <span>会话 {sessionId.slice(0, 10).toUpperCase()}</span>
         </div>
         <div className="camera-bottomline">
           <div>
             <Icon name="signal" size={15} />
             <span>
-              CONTRIBUTION
+              上行信号
               <strong>
                 {peerLive
-                  ? 'WEBRTC LIVE'
+                  ? 'WebRTC LIVE'
                   : captureLive
-                    ? 'MEDIA READY'
+                    ? '媒体已就绪'
                     : state === 'mock'
-                      ? 'MOCK PROGRAM'
-                      : 'STANDBY'}
+                      ? '模拟信号'
+                      : '待机'}
               </strong>
             </span>
           </div>
           <div>
             <Icon name="shield" size={15} />
             <span>
-              AI AUTHORIZATION<strong>SESSION ONLY</strong>
+              AI 授权<strong>仅限本次会话</strong>
             </span>
           </div>
         </div>
@@ -256,7 +256,7 @@ export function BroadcasterPage() {
           <div className="mobile-fallback-banner" data-testid="fallback-mock-source" role="status">
             <Icon name="spark" size={16} />
             <span>
-              <strong>SAFE DEMO SOURCE</strong>Hardware-independent signal active
+              <strong>安全演示信号</strong>无需依赖相机硬件
             </span>
           </div>
         )}
@@ -265,7 +265,7 @@ export function BroadcasterPage() {
         <p>{statusMessage}</p>
         <span>
           <Icon name="shield" size={13} />
-          No recording · No persistence · Auto reconnect enabled
+          不录制 · 不保存 · 自动重连
         </span>
       </section>
       <section className="control-dock">
@@ -279,10 +279,10 @@ export function BroadcasterPage() {
           >
             <Icon name={state === 'requesting' ? 'radio' : 'play'} />
             {state === 'requesting'
-              ? 'Requesting camera…'
+              ? '正在请求相机…'
               : state === 'ended'
-                ? 'Return to live session'
-                : 'Start live broadcast'}
+                ? '重新开始直播'
+                : '开始直播'}
           </button>
         ) : (
           <button
@@ -292,21 +292,21 @@ export function BroadcasterPage() {
             data-testid="broadcast-stop"
           >
             <Icon name="pause" />
-            End live broadcast
+            结束直播
           </button>
         )}
         <div className="mobile-secondary-actions">
           <button type="button" onClick={toggleMute} aria-pressed={muted} data-testid="mute-toggle">
             <Icon name={muted ? 'mute' : 'mic'} />
-            <span>{muted ? 'Unmute' : 'Mute'}</span>
+            <span>{muted ? '取消静音' : '静音'}</span>
           </button>
           <button type="button" onClick={switchCamera} data-testid="camera-switch">
             <Icon name="rotate" />
-            <span>Flip</span>
+            <span>切换镜头</span>
           </button>
           <button type="button" onClick={() => setSheetOpen(true)}>
             <Icon name="spark" />
-            <span>Script</span>
+            <span>直播文案</span>
           </button>
         </div>
       </section>
@@ -327,13 +327,13 @@ export function BroadcasterPage() {
           >
             <header>
               <div>
-                <span>DEMO PROMPTER</span>
-                <h2 id="script-sheet-title">Choose a live script</h2>
+                <span>演示提词器</span>
+                <h2 id="script-sheet-title">选择直播文案</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setSheetOpen(false)}
-                aria-label="Close script sheet"
+                aria-label="关闭直播文案"
                 data-dialog-initial-focus
               >
                 <Icon name="close" />

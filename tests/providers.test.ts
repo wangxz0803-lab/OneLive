@@ -12,8 +12,10 @@ describe('demo translation provider', () => {
     const provider = new DemoTranslationProvider();
     const fallback = DEMO_LINES[0];
 
-    for (const marketId of ['north-america', 'japan', 'spanish'] as const) {
-      await expect(provider.translate('arbitrary live speech', marketId, fallback)).resolves.toEqual({
+    for (const marketId of ['japan', 'latam', 'india'] as const) {
+      await expect(
+        provider.translate('arbitrary live speech', marketId, fallback),
+      ).resolves.toEqual({
         value: fallback.translations[marketId],
         provenance: 'EMULATED',
       });

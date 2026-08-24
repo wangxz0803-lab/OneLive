@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Icon } from '@/components/Icon';
+import { DEMO_MEDIA } from '@/config/demoMedia';
+import { MARKET_PROFILES } from '@/config/markets';
 import { DEMO_LINES } from '@/config/scripts';
 import type { ExperienceSnapshot } from '@/core/types';
 import { useDialogFocus } from '@/hooks/useDialogFocus';
@@ -18,7 +20,7 @@ import { useOneLiveStore } from '@/store/useOneLiveStore';
 
 function MockCameraSignal() {
   return (
-    <div className="mock-camera-signal" role="img" aria-label="Deterministic mock presenter signal">
+    <div className="mock-camera-signal" role="img" aria-label="稳定的模拟主播信号">
       <div className="source-room-light source-room-light--one" />
       <div className="source-room-light source-room-light--two" />
       <div className="source-person">
@@ -60,6 +62,8 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
   const [qrOpen, setQrOpen] = useState(false);
   const [cameraMessage, setCameraMessage] = useState('');
   const [speaking, setSpeaking] = useState(false);
+  const [sourceToolsOpen, setSourceToolsOpen] = useState(false);
+  const [sourceMediaUnavailable, setSourceMediaUnavailable] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig | null>(null);
   const [remoteSourceState, setRemoteSourceState] = useState<BroadcasterSourceState | null>(null);
@@ -70,12 +74,17 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
     sourceConnected,
     sourceMuted,
     scriptIndex,
+    selectedMarketId,
+    activeRecording,
     setSource,
     setSourceMuted,
     setScriptIndex,
+    setActiveRecording,
   } = useOneLiveStore();
   useDialogFocus(qrOpen, qrDialogRef, () => setQrOpen(false));
   const line = DEMO_LINES[scriptIndex % DEMO_LINES.length];
+  const selectedMarket =
+    MARKET_PROFILES.find((market) => market.id === selectedMarketId) ?? MARKET_PROFILES[0];
   const tts = useMemo(() => new BrowserTTSProvider(), []);
   const phoneUrl = `${window.location.origin}/broadcast/${sessionId}`;
   const realtime = useSessionSocket({
@@ -139,16 +148,27 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
   }, [selectedStream]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video || sourceKind !== 'mock' || sourceMediaUnavailable) return;
+    if (activeRecording !== 'original') {
+      video.pause();
+      return;
+    }
+    const result = video.play();
+    result?.catch(() => undefined);
+  }, [activeRecording, sourceKind, sourceMediaUnavailable]);
+
+  useEffect(() => {
     if (remoteReady && !remoteReadyRef.current) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       setLocalStream(null);
       setSource('phone', true);
-      setCameraMessage('Phone camera connected over the live WebRTC session.');
+      setCameraMessage('手机摄像头已通过 WebRTC 实时会话连接。');
     } else if (!remoteReady && remoteReadyRef.current && sourceKind === 'phone') {
       setSource('mock', true);
       setLiveStats(null);
-      setCameraMessage('Phone signal ended — deterministic Mock Source is active.');
+      setCameraMessage('手机信号已结束，稳定演示素材已接管。');
     }
     remoteReadyRef.current = remoteReady;
   }, [remoteReady, setSource, sourceKind]);
@@ -188,15 +208,15 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
       });
       setLocalStream(stream);
       setSource('local-camera', true);
-      setCameraMessage('Local camera connected. Media stays in this live session.');
+      setCameraMessage('本机摄像头已连接，媒体仅用于当前会话。');
     } catch {
       if (streamRef.current) {
         setSource('local-camera', true);
-        setCameraMessage('Camera refresh unavailable. The current local camera remains active.');
+        setCameraMessage('摄像头刷新失败，当前本机画面继续使用。');
       } else {
         setLocalStream(null);
         setSource('mock', true);
-        setCameraMessage('Camera unavailable — deterministic Mock Source is active.');
+        setCameraMessage('摄像头不可用，已切换到稳定演示素材。');
       }
     }
   };
@@ -206,13 +226,13 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
     streamRef.current = null;
     setLocalStream(null);
     setSource('mock', true);
-    setCameraMessage('Mock Source active. No camera or external API required.');
+    setCameraMessage('演示素材已启用，不需要摄像头或外部 API。');
   };
 
   const openPhoneSource = () => {
     if (remoteReady) {
       setSource('phone', true);
-      setCameraMessage('Phone camera selected from the live WebRTC session.');
+      setCameraMessage('已选择当前 WebRTC 会话中的手机摄像头。');
       return;
     }
     setQrOpen(true);
@@ -235,24 +255,28 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
 
   const playLine = async () => {
     setSpeaking(true);
-    await tts.speak(line.translations['north-america'], 'en-US', ['Samantha', 'Ava', 'English']);
+    await tts.speak(
+      line.translations[selectedMarket.id],
+      selectedMarket.locale,
+      selectedMarket.ttsVoicePreference,
+    );
     setSpeaking(false);
   };
 
   const sourceStatus =
     sourceKind === 'phone'
       ? remoteReady
-        ? 'WEBRTC LOCKED · LIVE'
+        ? 'WEBRTC 已连接 · 实时 LIVE'
         : broadcasterPresent && realtime.joined
-          ? 'PHONE PRESENT · LIVE'
-          : 'WAITING FOR PHONE'
+          ? '手机已加入 · 实时 LIVE'
+          : '等待手机连接'
       : sourceKind === 'local-camera'
         ? liveInput
-          ? 'CAMERA LOCKED · LIVE'
-          : 'CAMERA UNAVAILABLE'
+          ? '摄像头已连接 · 实时 LIVE'
+          : '摄像头不可用'
         : broadcasterPresent && realtime.joined
-          ? 'MOCK · PHONE PRESENT LIVE'
-          : 'MOCK READY · EMULATED';
+          ? '演示素材 · 手机在线 LIVE'
+          : '演示素材就绪';
   const remoteSettings = remoteVideoTrack?.getSettings();
   const localSettings = localVideoTrack?.getSettings();
   const liveBitrate = sourceKind === 'phone' && remoteReady ? liveStats?.bitrateKbps : null;
@@ -280,15 +304,15 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
       data-testid="source-panel"
       data-peer-state={viewer.connectionState}
       data-phone-present={broadcasterPresent}
-      aria-label="Human source signal"
+      aria-label="真人主播主直播源"
     >
       <span className="visually-hidden" data-testid="source-mode" data-source={sourceKind}>
-        {sourceKind} source
+        {sourceKind} 输入源
       </span>
       <header className="panel-header source-panel__header">
         <div>
-          <span className="section-kicker">PRIMARY INPUT</span>
-          <strong>Human signal source</strong>
+          <span className="section-kicker">真人直播源</span>
+          <strong>真人主播 · 中文主直播</strong>
         </div>
         <div
           className={`source-live-state ${liveInput || (broadcasterPresent && realtime.joined) ? 'source-live-state--connected' : ''}`}
@@ -301,28 +325,53 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
       <div className="source-preview" data-testid="source-preview">
         {sourceKind === 'local-camera' || (sourceKind === 'phone' && viewer.remoteStream) ? (
           <video ref={videoRef} autoPlay muted playsInline />
+        ) : sourceKind === 'mock' && !sourceMediaUnavailable ? (
+          <div className="source-recording-frame">
+            <video
+              ref={videoRef}
+              data-testid="source-recording"
+              src={DEMO_MEDIA.original.src}
+              poster={DEMO_MEDIA.original.poster}
+              preload="metadata"
+              playsInline
+              controls
+              loop
+              onPlay={() => setActiveRecording('original')}
+              onEnded={() => setActiveRecording(null)}
+              onError={() => {
+                setSourceMediaUnavailable(true);
+                setActiveRecording(null);
+              }}
+            />
+          </div>
         ) : (
           <MockCameraSignal />
         )}
         <div className="source-preview__top">
           <span className={liveInput ? 'live-badge' : 'provenance-badge'}>
             {liveInput && <i />}{' '}
-            {sourceKind === 'mock' ? 'SAFE DEMO' : liveInput ? 'LIVE' : 'CONNECTING'}
+            {sourceKind === 'mock' ? '真人样例' : liveInput ? '实时 LIVE' : '连接中'}
           </span>
-          <span className="provenance-badge">{liveInput ? 'LIVE INPUT' : 'EMULATED'}</span>
+          <span className="provenance-badge">
+            {liveInput ? '实时输入 LIVE' : DEMO_MEDIA.original.provenanceLabel}
+          </span>
         </div>
         <div className="source-preview__bottom">
           <span>
             <Icon name="camera" size={13} />
-            {sourceKind === 'mock' ? 'POSE SIM' : sourceKind === 'phone' ? 'PHONE CAM' : 'CAM 01'}
+            {sourceKind === 'mock'
+              ? '15秒真人直播样例'
+              : sourceKind === 'phone'
+                ? '手机摄像头'
+                : '摄像头 01'}
           </span>
           <span>
             <Icon name={sourceMuted ? 'mute' : 'mic'} size={13} />
-            {sourceMuted ? 'MUTED' : liveInput ? 'AUDIO LIVE' : 'DEMO AUDIO'}
+            {sourceMuted ? '已静音' : liveInput ? '实时音频 LIVE' : '原始音频'}
           </span>
           <span>
             <Icon name="shield" size={13} />
-            AI AUTHORIZED
+            {sourceKind === 'mock' ? '真人主源' : '当前会话已授权'}
           </span>
         </div>
         <div className="source-corners" aria-hidden="true">
@@ -337,74 +386,92 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
         <div
           className="audio-wave"
           role="img"
-          aria-label={liveInput ? 'Live input audio level' : 'Emulated demo audio level'}
+          aria-label={liveInput ? '实时输入音量' : '模拟演示音量'}
         >
           {Array.from({ length: 24 }, (_, index) => (
             <i key={index} style={{ '--wave-index': index } as React.CSSProperties} />
           ))}
         </div>
         <div className="source-caption" lang="zh-CN">
-          <span>ZH-CN · {liveInput ? 'LIVE INPUT' : 'DEMO SCRIPT'}</span>
+          <span>ZH-CN · {liveInput ? '实时输入 LIVE' : '主播中文原声'}</span>
           <p>{line.zh}</p>
         </div>
       </div>
 
       <div className="source-telemetry">
         <div>
-          <span>UPLINK</span>
+          <span>上行</span>
           <strong>
             {liveBitrate == null
               ? `${(experience.profile.uplinkKbps / 1000).toFixed(1)} Mbps`
               : `${(liveBitrate / 1000).toFixed(2)} Mbps`}
           </strong>
-          <small>{liveBitrate == null ? 'EMULATED' : 'LIVE'}</small>
+          <small>{liveBitrate == null ? '网络配置' : '实时 LIVE'}</small>
         </div>
         <div>
-          <span>CAPTURE</span>
+          <span>采集</span>
           <strong>
             {captureResolution} · {captureFps}
           </strong>
-          <small>{liveInput ? 'LIVE' : 'EMULATED'}</small>
+          <small>{liveInput ? '实时 LIVE' : '演示采集'}</small>
         </div>
         <div>
-          <span>POSE</span>
-          <strong>SEEDED</strong>
-          <small>EMULATED</small>
+          <span>媒体</span>
+          <strong>{sourceKind === 'mock' ? '本地 MP4' : '当前会话'}</strong>
+          <small>{liveInput ? '实时 LIVE' : '本地素材'}</small>
         </div>
       </div>
 
-      <div className="source-actions">
-        <button type="button" onClick={openPhoneSource} data-testid="connect-qr">
-          <Icon name="qr" size={15} />
-          Phone
-        </button>
-        <button type="button" onClick={useLocalCamera}>
-          <Icon name="camera" size={15} />
-          This camera
-        </button>
-        <button type="button" onClick={useMock} data-testid="fallback-mock-source">
-          <Icon name="spark" size={15} />
-          Mock
-        </button>
-        <button
-          type="button"
-          onClick={toggleSourceMuted}
-          aria-pressed={sourceMuted}
-          aria-label={sourceMuted ? 'Unmute source' : 'Mute source'}
-        >
-          <Icon name={sourceMuted ? 'mute' : 'mic'} size={15} />
-        </button>
-      </div>
+      <button
+        className="source-tools-toggle"
+        type="button"
+        aria-expanded={sourceToolsOpen}
+        aria-controls="source-tools"
+        aria-label={sourceToolsOpen ? '收起输入源工具' : '打开输入源工具'}
+        onClick={() => setSourceToolsOpen((open) => !open)}
+      >
+        <Icon name="settings" size={15} />
+        输入源工具
+        <Icon name="chevron" size={14} />
+      </button>
 
-      <div className="script-control">
-        <button type="button" onClick={() => setScriptIndex((scriptIndex + 1) % DEMO_LINES.length)}>
-          <Icon name="chevron" size={14} />
-          Next script
-        </button>
-        <button type="button" onClick={playLine} disabled={speaking}>
-          <Icon name={speaking ? 'pause' : 'play'} size={14} />
-          {speaking ? 'Speaking…' : 'Voice preview'}
-        </button>
+      <div id="source-tools" className="source-tools" hidden={!sourceToolsOpen}>
+        <div className="source-actions">
+          <button type="button" onClick={openPhoneSource} data-testid="connect-qr">
+            <Icon name="qr" size={15} />
+            手机
+          </button>
+          <button type="button" onClick={useLocalCamera}>
+            <Icon name="camera" size={15} />
+            本机摄像头
+          </button>
+          <button type="button" onClick={useMock} data-testid="fallback-mock-source">
+            <Icon name="spark" size={15} />
+            演示素材
+          </button>
+          <button
+            type="button"
+            onClick={toggleSourceMuted}
+            aria-pressed={sourceMuted}
+            aria-label={sourceMuted ? '取消输入静音' : '静音输入'}
+          >
+            <Icon name={sourceMuted ? 'mute' : 'mic'} size={15} />
+          </button>
+        </div>
+
+        <div className="script-control">
+          <button
+            type="button"
+            onClick={() => setScriptIndex((scriptIndex + 1) % DEMO_LINES.length)}
+          >
+            <Icon name="chevron" size={14} />
+            下一段文案
+          </button>
+          <button type="button" onClick={playLine} disabled={speaking}>
+            <Icon name={speaking ? 'pause' : 'play'} size={14} />
+            {speaking ? '播放中…' : `${selectedMarket.market}语音预览`}
+          </button>
+        </div>
       </div>
       {recoverableMessage && (
         <p className="source-message" role="status">
@@ -427,14 +494,14 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
               className="modal-close"
               type="button"
               onClick={() => setQrOpen(false)}
-              aria-label="Close phone connection dialog"
+              aria-label="关闭手机连接窗口"
               data-dialog-initial-focus
             >
               <Icon name="close" />
             </button>
-            <span className="section-kicker">MOBILE CONTRIBUTION</span>
-            <h2 id="qr-title">Scan to connect the host camera</h2>
-            <p>Open this secure session on a phone connected to the same network.</p>
+            <span className="section-kicker">手机采集</span>
+            <h2 id="qr-title">扫码连接主播手机</h2>
+            <p>请用同一网络中的手机打开此安全会话。</p>
             <div className="qr-code-wrap">
               <QRCodeSVG
                 value={phoneUrl}
@@ -448,7 +515,7 @@ export function SourcePanel({ experience }: { experience: ExperienceSnapshot }) 
             <code>{phoneUrl}</code>
             <div className="privacy-line">
               <Icon name="shield" size={15} />
-              Camera and microphone are never recorded or persisted.
+              摄像头和麦克风默认不会录制或持久化保存。
             </div>
           </div>
         </div>

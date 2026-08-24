@@ -12,11 +12,11 @@ export function DirectorHud() {
       <div
         className="director-hud__progress"
         role="progressbar"
-        aria-label="Demo sequence"
+        aria-label="演示进度"
         aria-valuemin={1}
         aria-valuemax={DIRECTOR_PRESETS.length}
         aria-valuenow={directorStep + 1}
-        aria-valuetext={`${step.label}, step ${directorStep + 1} of ${DIRECTOR_PRESETS.length}`}
+        aria-valuetext={`${step.label}，第 ${directorStep + 1} 步，共 ${DIRECTOR_PRESETS.length} 步`}
       >
         {DIRECTOR_PRESETS.map((item, index) => (
           <i key={item.id} className={index <= directorStep ? 'active' : ''} aria-hidden="true" />
@@ -33,7 +33,7 @@ export function DirectorHud() {
           onClick={previousDirectorStep}
           disabled={directorStep === 0}
           data-testid="director-previous"
-          aria-label="Previous demo step"
+          aria-label="上一步"
         >
           <Icon name="chevron" style={{ transform: 'rotate(180deg)' }} />
         </button>
@@ -42,10 +42,11 @@ export function DirectorHud() {
           onClick={nextDirectorStep}
           disabled={directorStep === DIRECTOR_PRESETS.length - 1}
           data-testid="director-next"
+          aria-label="下一步"
         >
-          Next <Icon name="arrow" />
+          下一步 <Icon name="arrow" />
         </button>
-        <button type="button" onClick={reset} aria-label="Reset demo">
+        <button type="button" onClick={reset} aria-label="重置演示">
           <Icon name="reset" />
         </button>
       </div>
