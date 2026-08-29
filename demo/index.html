@@ -21,21 +21,23 @@
   --ui:Inter,"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
   --mono:"SF Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
   --r1:8px; --r2:12px; --r3:16px; --e:cubic-bezier(.2,.8,.25,1);
-  --glass:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.013));
+  /* 不再依赖 backdrop-filter 才能看清层级；提高表面不透明度，用普通合成保留石墨质感。 */
+  --glass:linear-gradient(180deg,rgba(19,27,41,.96),rgba(9,14,24,.96));
   --lift:inset 0 1px 0 rgba(255,255,255,.1),inset 0 0 0 1px rgba(255,255,255,.05),
          0 20px 48px -16px rgba(0,0,0,.85);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}
-body{background:var(--bg);color:var(--t1);font-family:var(--ui);font-size:13px;line-height:1.5;
+body{background:
+  radial-gradient(42% 34% at 76% 2%,rgba(91,157,255,.10),transparent 68%),
+  radial-gradient(38% 30% at 8% 96%,rgba(143,114,255,.07),transparent 66%),var(--bg);
+  color:var(--t1);font-family:var(--ui);font-size:13px;line-height:1.5;
   -webkit-font-smoothing:antialiased;font-feature-settings:"cv02","cv03";overflow-x:hidden;position:relative}
-body::before{content:"";position:fixed;inset:-15%;pointer-events:none;z-index:0;
-  background:radial-gradient(42% 34% at 76% 2%,color-mix(in srgb,var(--brand) 22%,transparent),transparent 66%),
-             radial-gradient(38% 30% at 8% 96%,color-mix(in srgb,var(--violet) 15%,transparent),transparent 64%);
-  filter:blur(20px);animation:drift 28s ease-in-out infinite alternate}
-@keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-2%,2%,0) scale(1.06)}}
-body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.03;mix-blend-mode:overlay;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>")}
+/* Intel 集显上，“全屏模糊动画 + 多层毛玻璃”会占满合成预算：Canvas 仍被调用，
+   但 video 解码停在旧帧，造成“标称 30fps、肉眼却卡住”。静态背景保留氛围；所有
+   表面改用上面的高不透明 graphite gradient，避免实时采样页面背后的像素。 */
+body::before,body::after{display:none!important}
+*{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 /* 竖向预算的总闸：顶栏 + 三栏 + 机架 + 法务行必须收在 100vh 内，
    底部机架才不会被裁掉；剩下的余量由 .body{flex:1} 全部喂给舞台。 */
 .app{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:10px 16px 12px;
@@ -90,6 +92,7 @@ body.live .sess .dot{background:var(--live);box-shadow:0 0 0 4px color-mix(in sr
   transition:transform .16s var(--e),filter .2s var(--e)}
 .golive:hover{filter:brightness(1.1)} .golive:active{transform:scale(.98)}
 .golive:focus-visible{outline:2px solid var(--brand2);outline-offset:3px}
+.golive:disabled{cursor:wait;opacity:.46;filter:saturate(.45);box-shadow:none}
 body.live .golive{background:linear-gradient(150deg,rgba(255,255,255,.11),rgba(255,255,255,.05));
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
 .capbar{display:flex;gap:14px;align-items:center;padding:0 4px}
@@ -163,6 +166,9 @@ body.live .pgm-tally{opacity:1}
   text-shadow:0 1px 5px rgba(0,0,0,.9);opacity:0;transition:.4s var(--e)}
 body.live .pgm-meta{opacity:1}
 .sepdot{opacity:.45}
+.pgm-motion{padding:3px 6px;border-radius:5px;background:rgba(5,9,18,.62);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);font-weight:700}
+.pgm-motion.ok{color:var(--ok)} .pgm-motion.warn{color:var(--warn)} .pgm-motion.bad{color:var(--crit)}
 .pgm-cc{position:absolute;left:14px;right:14px;bottom:14px;z-index:5;padding:9px 13px;
   border-radius:var(--r2);font-size:13px;line-height:1.45;background:rgba(5,9,18,.6);
   backdrop-filter:blur(16px) saturate(150%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
@@ -220,7 +226,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .tile-l{position:absolute;left:6px;bottom:5px;z-index:3;font-size:10px;font-weight:600;
   text-shadow:0 1px 4px rgba(0,0,0,.95)}
 .tile-n{position:absolute;right:6px;bottom:5px;z-index:3;font-family:var(--mono);font-size:9px;
-  color:rgba(255,255,255,.72);text-shadow:0 1px 4px rgba(0,0,0,.95)}
+  color:rgba(255,255,255,.82);text-shadow:0 1px 4px rgba(0,0,0,.95);text-align:right}
 .tile-b{position:absolute;top:5px;left:6px;z-index:3;font-family:var(--mono);font-size:8px;
   letter-spacing:.1em;padding:2px 5px;border-radius:3px;background:rgba(0,0,0,.55);
   color:rgba(255,255,255,.8)}
@@ -348,6 +354,8 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .ctl.on{background:rgba(91,157,255,.15);color:var(--t1);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(91,157,255,.4)}
 .ctl.on .cd{opacity:1;color:var(--ok);box-shadow:0 0 8px currentColor}
+.ctl.on[data-health="warn"] .cd{color:var(--warn)}
+.ctl.on[data-health="crit"] .cd{color:var(--crit)}
 .ctl.on .cq{color:var(--t2)}
 .tile.dis{opacity:.16;filter:grayscale(1);pointer-events:none}
 
@@ -413,9 +421,170 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .evidence li{font-size:11.5px;line-height:1.75;color:var(--t2)}
 .evidence li span{font-family:var(--mono);font-size:9.5px;color:var(--t3);margin-left:8px}
 
+/* Future Experience V2：素材驱动的导演预演，不进入六步主状态机 */
+.future-open-btn{height:36px;padding:0 14px;border:1px solid color-mix(in srgb,var(--brand2) 40%,transparent);
+  border-radius:10px;background:rgba(40,228,245,.075);color:#C9FAFF;font:700 11px var(--ui);
+  white-space:nowrap;cursor:pointer;transition:transform .22s var(--e),background .22s var(--e)}
+.future-open-btn:hover{background:rgba(40,228,245,.13);transform:translateY(-1px)}
+.future-open-btn:active{transform:translateY(1px)}
+.future-open-btn:focus-visible,.future-close:focus-visible,.future-tab:focus-visible,.future-policy:focus-visible,
+.future-view:focus-visible,.future-angle:focus-visible{outline:2px solid var(--brand2);outline-offset:3px}
+.future-shell{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:14px;background:rgba(1,3,9,.86)}
+.future-shell[hidden]{display:none}body.future-open{overflow:hidden}body.future-open .topbar{overflow:hidden}
+.future-dialog{width:min(1460px,calc(100vw - 28px));height:min(842px,calc(100vh - 28px));
+  display:grid;grid-template-rows:60px minmax(0,1fr) 62px;overflow:hidden;border-radius:16px;
+  background:#09101B;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 34px 100px rgba(0,0,0,.7);
+  opacity:0;transform:scale(.985);transition:opacity .26s var(--e),transform .26s var(--e)}
+.future-shell.open .future-dialog{opacity:1;transform:scale(1)}
+.future-head{display:flex;align-items:center;gap:14px;padding:9px 12px 9px 18px;background:#0C1421;
+  box-shadow:inset 0 -1px 0 rgba(255,255,255,.08)}
+.future-title{display:flex;align-items:baseline;gap:8px;min-width:265px}
+.future-title strong{color:var(--t1);font-size:16px;letter-spacing:-.02em}.future-title b{color:var(--brand2);font-weight:700}
+.future-title span{color:var(--t3);font-size:9.5px}.future-state{color:#A8F5FC;font:700 9px var(--mono);letter-spacing:.075em}
+.future-tabs{margin-left:auto;display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:10px;
+  background:#080E18;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.future-tab{height:34px;min-width:112px;padding:0 13px;border:0;border-radius:8px;background:transparent;
+  color:var(--t2);font:700 11px var(--ui);cursor:pointer;transition:.2s var(--e)}
+.future-tab[aria-selected="true"]{background:#14283A;color:#E7FCFF;box-shadow:inset 0 0 0 1px rgba(40,228,245,.34)}
+.future-close{height:34px;padding:0 14px;border-radius:9px;border:1px solid rgba(255,255,255,.14);
+  background:#111A28;color:var(--t1);font:700 11px var(--ui);cursor:pointer}
+.future-body{display:grid;grid-template-columns:minmax(0,2.55fr) minmax(300px,.82fr);gap:0;min-height:0}
+.future-visual{position:relative;min-height:0;padding:14px;background:#050A12;box-shadow:inset -1px 0 rgba(255,255,255,.075)}
+.future-multi,.future-spatial{height:100%;min-height:0}.future-multi[hidden],.future-spatial[hidden]{display:none}
+.future-multi{display:grid;grid-template-rows:minmax(0,1fr) 118px;gap:10px}
+.future-frame{position:relative;min-height:0;overflow:hidden;border-radius:14px;background:#02050A;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+.future-frame::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(2,5,10,.42),transparent 23%,transparent 56%,rgba(2,5,10,.82))}
+.future-main-image,.future-main-prev,.future-fallback{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.future-main-image{z-index:1;transform:scale(1);transition:opacity .28s var(--e),transform .42s var(--e)}
+.future-main-prev{z-index:2;opacity:0;pointer-events:none}.future-fallback{z-index:1;background:#03060C}
+.future-frame.is-switching .future-main-prev{animation:futurePrev .32s var(--e) both}
+.future-frame.is-switching .future-main-image{animation:futureNext .36s var(--e) both}
+@keyframes futurePrev{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(1.012)}}
+@keyframes futureNext{from{opacity:0;transform:scale(1.018)}to{opacity:1;transform:scale(1)}}
+.future-frame-hud{position:absolute;z-index:4;left:14px;right:14px;top:12px;display:flex;justify-content:space-between;gap:12px}
+.future-frame-hud strong{font-size:13px;color:#F5FBFF}.future-frame-hud span{font:700 8.5px var(--mono);color:#B7F7FC;
+  padding:5px 7px;border-radius:6px;background:rgba(3,10,16,.72);box-shadow:inset 0 0 0 1px rgba(40,228,245,.22)}
+.future-frame-copy{position:absolute;z-index:4;left:15px;bottom:13px;max-width:430px}
+.future-frame-copy strong{display:block;font-size:17px;letter-spacing:-.02em;text-shadow:0 1px 3px rgba(0,0,0,.8)}.future-frame-copy span{font-size:10px;color:#D5E0ED;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+.future-network-note{position:absolute;z-index:4;right:14px;bottom:14px;text-align:right;color:#C3D0E2;font-size:9px}
+.future-network-note b{display:block;color:var(--warn);font:800 16px var(--mono);text-shadow:0 1px 3px rgba(0,0,0,.85)}
+.future-director{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-height:0}
+.future-view{position:relative;display:grid;grid-template-columns:128px minmax(0,1fr);align-items:center;gap:11px;
+  min-width:0;overflow:hidden;border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:7px;
+  background:#0B121D;color:var(--t1);text-align:left;cursor:pointer;transition:transform .22s var(--e),border-color .22s var(--e),background .22s var(--e)}
+.future-view:hover{transform:translateY(-2px)}.future-view.is-primary{border-color:rgba(40,228,245,.55);background:#10202D}
+.future-view.is-sleeping{opacity:.56}.future-view img{display:block;width:128px;height:86px;object-fit:cover;border-radius:8px;background:#03060C}
+.future-view-copy{min-width:0}.future-view-copy strong{display:block;font-size:11px}.future-view-copy span{display:block;margin-top:4px;
+  color:var(--t3);font-size:9px;line-height:1.45}.future-view-copy em{display:block;margin-top:8px;color:var(--brand2);font:700 8px var(--mono);font-style:normal}
+.future-spatial{position:relative}.future-scene{--spatial-pan:0;position:relative;height:100%;overflow:hidden;border-radius:14px;
+  background:#02060A;touch-action:none;cursor:grab;box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+.future-scene:active{cursor:grabbing}.future-spatial-media{position:absolute;inset:-3% -6%;width:112%;height:106%;object-fit:cover;
+  transform:translateX(calc(var(--spatial-pan) * -2.8%)) scale(1.035);transition:transform .16s linear}
+.future-spatial-depth{position:absolute;inset:-2% -4%;width:108%;height:104%;object-fit:cover;opacity:.2;mix-blend-mode:screen;
+  clip-path:polygon(0 0,24% 0,34% 100%,0 100%);transform:translateX(calc(var(--spatial-pan) * 5%)) scale(1.05)}
+.future-scene::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(2,6,10,.3),transparent 25%,transparent 68%,rgba(2,6,10,.68))}
+.future-spatial-head{position:absolute;z-index:3;left:16px;right:16px;top:14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.future-spatial-head strong{display:block;font-size:17px}.future-spatial-head span{display:block;margin-top:3px;color:#B6C6D8;font-size:9.5px}
+.future-spatial-head em{font:700 8.5px var(--mono);font-style:normal;color:#B7F7FC;text-align:right}
+.future-viewport{position:absolute;z-index:3;left:15%;right:15%;top:14%;bottom:18%;border:1px solid rgba(183,247,252,.38);
+  border-radius:12px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);pointer-events:none}
+.future-viewport::before{content:"CURRENT VIEWPORT";position:absolute;right:9px;top:8px;color:#C9FAFF;font:700 8px var(--mono)}
+.future-angle-wrap{position:absolute;z-index:4;left:50%;bottom:16px;transform:translateX(-50%);width:min(520px,72%);
+  display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;background:rgba(4,10,16,.86);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.future-angle-wrap span{font:700 8.5px var(--mono);color:var(--t3);white-space:nowrap}.future-angle{flex:1;accent-color:var(--brand2);cursor:ew-resize}
+.future-angle-val{min-width:38px;text-align:right;color:#C9FAFF!important}
+.future-insight{min-height:0;overflow:auto;padding:17px 16px;background:#0A111C}
+.future-story{padding-bottom:15px;margin-bottom:15px;box-shadow:inset 0 -1px rgba(255,255,255,.075)}
+.future-k{display:block;margin-bottom:7px;color:#6E819D;font:700 8.5px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.future-story h3{margin:0;color:var(--t1);font-size:20px;letter-spacing:-.03em}.future-story p{margin:7px 0 0;color:var(--t2);font-size:10.5px;line-height:1.6}
+.future-scale{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:12px}
+.future-scale strong{font:800 15px var(--ui)}.future-scale span{color:#B7F7FC;font:700 10px var(--mono)}
+.future-demand{display:flex;align-items:baseline;gap:6px;margin-top:8px}.future-demand strong{color:var(--warn);font:800 30px var(--mono);letter-spacing:-.04em}
+.future-demand span{color:var(--t3);font:600 8.5px var(--mono)}.future-demand.focus strong{color:var(--brand2)}
+.future-status{margin:4px 0 0;color:var(--t2);font-size:9.5px;line-height:1.55}
+.future-matrix-wrap{padding-bottom:15px;margin-bottom:15px;box-shadow:inset 0 -1px rgba(255,255,255,.075)}
+.future-matrix-title{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px;color:var(--t2);font-size:9.5px}
+.future-matrix-title b{color:var(--t1)}.future-matrix{display:grid;grid-template-columns:46px repeat(3,1fr);gap:5px;align-items:center}
+.future-matrix .mh{color:var(--t3);font:700 7.5px var(--mono);text-align:center}.future-matrix .mr{color:var(--t2);font:700 8px var(--mono)}
+.future-route{height:30px;display:grid;place-items:center;border-radius:7px;background:#111B28;color:#61738C;
+  font:800 8px var(--mono);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:.25s var(--e)}
+.future-route.active{background:#13313B;color:#C9FAFF;box-shadow:inset 0 0 0 1px rgba(40,228,245,.32)}
+.future-route.warn{background:#2B2112;color:#FFD58A;box-shadow:inset 0 0 0 1px rgba(255,181,52,.28)}
+.future-route.vip::after{content:"VIP"}.future-route.best::after{content:"BE"}.future-route.all::after{content:"SYNC"}
+.future-cap{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.future-cap div{padding:8px 9px;border-radius:8px;background:#0E1723}
+.future-cap span{display:block;color:var(--t3);font-size:8px}.future-cap strong{display:block;margin-top:2px;color:var(--t1);font:750 12px var(--mono)}
+.future-spatial-policy{margin:0 0 15px;padding:12px 0 15px;color:var(--t2);font-size:10.5px;line-height:1.65;
+  box-shadow:inset 0 -1px rgba(255,255,255,.075)}.future-spatial-policy[hidden]{display:none}
+.future-pipeline{display:grid;gap:0}.future-node{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr);gap:9px;padding:7px 0}
+.future-node b{color:var(--t1);font-size:9.5px}.future-node span{color:var(--t3);font-size:8.7px;line-height:1.5}
+.future-node:not(:last-child)::before{content:"";position:absolute;left:75px;bottom:0;right:0;height:1px;background:rgba(255,255,255,.055)}
+.future-boundary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;padding:9px 16px;
+  background:#0C1421;box-shadow:inset 0 1px rgba(255,255,255,.08)}
+.future-foot-copy{color:var(--t3);font-size:9px;line-height:1.45}.future-foot-copy b{color:#A8F5FC;font-weight:600}
+.future-foot-actions{display:flex;align-items:center;gap:8px}.future-policies{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.future-policies[hidden]{display:none}.future-policy{height:40px;min-width:150px;padding:0 12px;border:1px solid rgba(255,255,255,.1);
+  border-radius:9px;background:#101927;color:var(--t2);font:700 10px var(--ui);cursor:pointer}.future-policy small{margin-left:7px;color:var(--t3);font:650 8px var(--mono)}
+.future-policy[aria-pressed="true"]{border-color:rgba(40,228,245,.42);background:#14303B;color:#E7FCFF}.future-keys{color:var(--t3);font:600 8px var(--mono);white-space:nowrap}
+@media(max-width:1040px){.future-body{grid-template-columns:minmax(0,1fr) 286px}.future-view{grid-template-columns:94px minmax(0,1fr)}.future-view img{width:94px;height:70px}}
+@media(max-width:900px){
+  .future-shell{padding:0}.future-dialog{width:100vw;height:100dvh;border-radius:0;grid-template-rows:auto minmax(0,1fr) auto}
+  .future-head{flex-wrap:wrap}.future-title{min-width:0}.future-state{margin-left:auto}.future-tabs{order:3;width:100%;margin-left:0}.future-tab{min-width:0}
+  .future-body{grid-template-columns:1fr;overflow:auto}.future-visual{min-height:620px;padding:10px;box-shadow:inset 0 -1px rgba(255,255,255,.075)}
+  .future-insight{overflow:visible}.future-boundary{grid-template-columns:1fr}.future-foot-actions{justify-content:space-between}
+}
+@media(max-width:560px){
+  .future-title span{display:none}.future-visual{min-height:500px}.future-multi{grid-template-rows:minmax(260px,1fr) 144px}
+  .future-director{gap:5px}.future-view{display:block;padding:5px}.future-view img{width:100%;height:84px}.future-view-copy{padding:5px 3px 2px}
+  .future-view-copy span{display:none}.future-view-copy em{margin-top:3px}.future-frame-copy strong{font-size:14px}.future-frame-copy span{display:none}
+  .future-spatial{min-height:480px}.future-angle-wrap{width:84%}.future-viewport{left:8%;right:8%;top:16%;bottom:20%}
+  .future-foot-actions{display:block}.future-policies{width:100%}.future-policy{min-width:0}.future-keys{display:none}
+}
+
+/* ── 首次素材预加载：真实监听四路媒体，不使用假倒计时 ── */
+.boot-shell{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(52% 44% at 50% 42%,rgba(91,157,255,.13),transparent 72%),#050812;
+  opacity:1;visibility:visible;transition:opacity .24s var(--e),visibility 0s linear 0s}
+.boot-shell.done{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .24s var(--e),visibility 0s linear .24s}
+.boot-card{width:min(430px,100%);padding:30px 32px 26px;border-radius:18px;text-align:center;
+  background:linear-gradient(180deg,#111B2A,#090E18);border:1px solid rgba(255,255,255,.09);
+  box-shadow:inset 0 1px rgba(255,255,255,.09),0 30px 80px rgba(0,0,0,.55)}
+.boot-mark{width:48px;height:48px;margin:0 auto 18px;border-radius:14px;display:grid;place-items:center;
+  color:#fff;background:linear-gradient(145deg,var(--brand),var(--violet));
+  box-shadow:0 0 0 7px rgba(91,157,255,.08),0 16px 36px -12px rgba(91,157,255,.85)}
+.boot-mark svg{width:23px;height:23px}.boot-k{display:block;color:var(--brand2);font:700 9px var(--mono);letter-spacing:.18em}
+.boot-card h1{margin:8px 0 6px;font-size:22px;line-height:1.25;letter-spacing:-.025em}
+.boot-status{margin:0;color:var(--t2);font-size:12px;min-height:18px}
+.boot-progress{height:5px;margin:22px 0 10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.07)}
+.boot-progress i{display:block;width:100%;height:100%;border-radius:inherit;transform:scaleX(0);transform-origin:left;
+  background:linear-gradient(90deg,var(--brand),var(--brand2));box-shadow:0 0 14px rgba(55,217,230,.4);
+  transition:transform .24s var(--e)}
+.boot-meta{display:flex;justify-content:space-between;gap:16px;color:var(--t3);font:600 9px var(--mono)}
+.boot-continue{margin-top:20px;min-height:44px;padding:0 18px;border:1px solid rgba(91,157,255,.4);border-radius:10px;
+  color:#EAF4FF;background:rgba(91,157,255,.14);font:600 12px var(--ui);cursor:pointer}
+.boot-continue:focus-visible{outline:2px solid var(--brand2);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){
+  .future-dialog,.future-open-btn,.future-tab,.future-view,.future-main-image,.future-spatial-media,.future-route,
+  .boot-shell,.boot-progress i{transition:none!important;animation:none!important}
+}
+
 </style>
 </head>
 <body>
+<div class="boot-shell" id="bootShell" aria-label="演示素材加载状态">
+  <section class="boot-card">
+    <span class="boot-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v18M6 8v8M18 8v8M2 11v2M22 11v2" stroke-linecap="round"/></svg></span>
+    <span class="boot-k">ONELIVE · DEMO SAFE MODE</span>
+    <h1>正在准备 OneLive 直播演示</h1>
+    <p class="boot-status" id="bootStatus" aria-live="polite">正在检查本地演示素材…</p>
+    <div class="boot-progress" role="progressbar" aria-label="四路视频加载进度" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" id="bootProgress"><i id="bootBar"></i></div>
+    <div class="boot-meta"><span id="bootCount">0 / 4 路已就绪</span><span>离线本地加载</span></div>
+    <button class="boot-continue" id="bootContinue" type="button" hidden>仍然进入演示</button>
+  </section>
+</div>
 <div class="app">
 
   <header class="topbar">
@@ -425,16 +594,17 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     </div>
     <div class="sess"><span class="dot"></span><span id="tState">未开播</span><span class="tc" id="tcMain">00:00:00</span></div>
     <div class="capbar" id="capBar" aria-label="能力边界">
-      <span class="capcell"><b>输入</b><em>预生成素材 · 模拟</em></span>
+      <span class="capcell"><b>输入</b><em>预生成同步母版 · 模拟</em></span>
       <span class="capcell"><b>网络</b><em id="capNet">优秀 5G SA · 模拟</em></span>
-      <span class="capcell"><b>推理</b><em id="capInfer">云端 · 模拟</em></span>
+      <span class="capcell"><b>生成</b><em id="capInfer">云端路径 · 模拟</em></span>
       <span class="capcell"><b>QoD</b><em id="capQod">未启用 · 模拟</em></span>
     </div>
     <div class="sp"></div>
     <div class="dests" id="dests" aria-label="分发平台开关"></div>
     <div class="linkpill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18.5" r="1.7"/><path d="M8.2 14.4a5.6 5.6 0 0 1 7.6 0M5 11a10.2 10.2 0 0 1 14 0" stroke-linecap="round"/></svg>
       <b id="lqName">优秀</b><span id="lqBr">8.25</span><small>Mbps</small></div>
-    <button class="golive" id="go">开始直播</button>
+    <button class="future-open-btn" id="futureOpen" type="button" aria-haspopup="dialog" aria-controls="futureShell">未来体验</button>
+    <button class="golive" id="go" disabled>开始直播</button>
   </header>
 
   <div class="body">
@@ -442,12 +612,12 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     <!-- 左：全部是真实控件 -->
     <aside class="rail">
       <div class="rg">
-        <div class="rt">生成位置<span class="rt-x" id="topoNow">云端</span></div>
+        <div class="rt">部署路径<span class="rt-x" id="topoNow">云端</span></div>
         <div class="ctls" id="topoCtl">
           <button class="ctl on" type="button" data-topo="cloud" aria-pressed="true">
-            <span class="cd"></span><span class="cl">云端生成</span><span class="cq">上行 ×1</span></button>
+            <span class="cd"></span><span class="cl">云端生成</span><span class="cq">单路上云</span></button>
           <button class="ctl" type="button" data-topo="edge" aria-pressed="false">
-            <span class="cd"></span><span class="cl">端侧生成</span><span class="cq">上行 ×N</span></button>
+            <span class="cd"></span><span class="cl">近端生成</span><span class="cq">多路上行</span></button>
         </div>
       </div>
       <div class="rg">
@@ -475,13 +645,13 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
           <div class="pgm-frame">
             <canvas id="pgmBg" aria-hidden="true"></canvas>
             <canvas id="pgmCv" aria-label="播出画面"></canvas>
-            <img id="pgmPh" src="assets/japan-ja.jpg" alt="播出画面">
+            <img id="pgmPh" src="assets/original-zh.jpg" alt="播出画面">
             <div class="pgm-tally"><span class="rec"><i></i>ON AIR</span><span class="tc" id="tcPgm">00:00:00</span></div>
-            <div class="pgm-meta"><span id="pgmLang">日本語</span><span class="sepdot">·</span><span id="pgmRes">1080P</span></div>
+            <div class="pgm-meta"><span id="pgmLang">原始中文</span><span class="sepdot">·</span><span id="pgmRes">1080P</span>
+              <span class="sepdot">·</span><span class="pgm-motion ok" id="pgmMotion" title="交付帧率（模拟）">流畅交付 · 30fps</span></div>
             <div class="pgm-cc" id="pgmCC"></div>
             <div class="pgm-veil">点击右上「开始直播」</div>
           </div>
-          <audio id="pgmAudio" loop preload="auto" aria-hidden="true"></audio>
           <!-- 舞台右侧的副列：文案对照在上、MULTIVIEW 在下。MULTIVIEW 从 .stagecol
                的纵向堆叠里挪进来，是为了同时解决两件事——把整页的竖向预算还给
                .program（舞台宽度只能由竖向空间推出），并让小窗行的宽度收敛到副列
@@ -542,12 +712,12 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
       <div class="faders" id="faders"></div>
     </section>
     <section class="bus">
-      <div class="bus-t">链路条件<em>决定容量，触发自动降码</em></div>
+      <div class="bus-t">链路条件<em>分别改变容量与整路时延</em></div>
       <div class="netrow" id="netList" role="group" aria-label="链路条件"></div>
       <div class="qodrow">
         <button class="ctl" id="qodCtl" type="button" aria-pressed="false">
-          <span class="cd"></span><span class="cl">QoD 保障</span><span class="cq" id="qodCap">—</span></button>
-        <span class="qodnote" id="qodNote">为关键业务流提供确定性上行保障</span>
+          <span class="cd"></span><span class="cl">QoD 业务保障</span><span class="cq" id="qodCap">15.00M</span></button>
+        <span class="qodnote" id="qodNote">为 OneLive 多路上行申请 VIP 保障预算</span>
       </div>
     </section>
     <section class="bus">
@@ -556,8 +726,8 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     </section>
   </footer>
 
-  <p class="legal">成片为<b>预生成素材</b> · 网络 / Edge / QoD / 时延为<b>可控模拟</b>，不代表生产部署或商用 SLA · 画面劣化与带宽账本为<b>实时计算</b>
-    　·　空格 开播 · 1–4 链路 · Q/W/E 切频道
+  <p class="legal">成片为<b>预生成干净母版</b> · 云端 / 近端交付、网络 / QoD / 时延为<b>可控模拟</b>，不代表生产部署或商用 SLA · 帧率、画质劣化与带宽账本为<b>实时计算</b>
+    　·　空格 开播 · 1–4 链路 · Q/W/E 切频道 · V 未来体验
     <button class="evbtn" id="evToggle" type="button" aria-expanded="false" aria-controls="evidence">实测证据</button></p>
   <div class="evidence" id="evidence" hidden>
     <div class="ev-h">以下为本项目真实可运行部分的实测记录，均可在仓库中追溯</div>
@@ -569,6 +739,97 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
       <li>引擎端到端时延：中位 674ms（浏览器采集全链路）<span>docs/superpowers/m1c-results.md</span></li>
       <li>回归网：Python 171 项 + 控制台 E2E 5/5 + 手机传输 33/33<span>docs/superpowers/m4-results.md</span></li>
     </ul>
+  </div>
+
+  <div class="future-shell" id="futureShell" hidden>
+    <section class="future-dialog" id="futureDialog" role="dialog" aria-modal="true" aria-labelledby="futureTitle">
+      <header class="future-head">
+        <div class="future-title"><strong id="futureTitle">OneLive <b>ViewLab</b></strong><span>多视角和空间交付预演</span></div>
+        <span class="future-state">CONCEPT / EMULATED</span>
+        <div class="future-tabs" role="tablist" aria-label="未来体验模式">
+          <button class="future-tab" id="futureMultiTab" type="button" role="tab" aria-selected="true" aria-controls="futureMulti">多视图</button>
+          <button class="future-tab" id="futureSpatialTab" type="button" role="tab" aria-selected="false" aria-controls="futureSpatial">空间直播</button>
+        </div>
+        <button class="future-close" id="futureClose" type="button">关闭</button>
+      </header>
+
+      <div class="future-body">
+        <section class="future-visual" aria-label="未来体验预演舞台">
+          <div class="future-multi" id="futureMulti" role="tabpanel" aria-labelledby="futureMultiTab">
+            <div class="future-frame" id="futureFrame">
+              <img class="future-main-prev" id="futureMainPrev" alt="" aria-hidden="true">
+              <img class="future-main-image" id="futureMainImage" src="assets/future/front.webp" alt="AI 生成的正面主播机位概念画面">
+              <canvas class="future-fallback" id="futureFallbackCanvas" aria-label="当前节目回退画面" hidden></canvas>
+              <div class="future-frame-hud"><strong id="futureFrameTitle">正面主播</strong><span id="futureFrameState">AI 关键帧 / 概念</span></div>
+              <div class="future-frame-copy"><strong id="futureFrameTask">人物表达与商品关系</strong><span id="futureFrameDesc">同一时刻生成独立横屏机位，不再依靠放大裁切。</span></div>
+              <div class="future-network-note"><b id="futureFrameNeed">55.44M</b><span id="futureFrameNetwork">全量同步目标需求</span></div>
+            </div>
+            <div class="future-director" id="futureViews" aria-label="AI 导演机位">
+              <button class="future-view is-primary" type="button" data-future-view="front" aria-pressed="true">
+                <img src="assets/future/front.webp" alt="正面主播机位缩略图"><span class="future-view-copy"><strong>正面主播</strong><span>人物、表情和商品关系</span><em>CAM A</em></span>
+              </button>
+              <button class="future-view" type="button" data-future-view="side" aria-pressed="false">
+                <img src="assets/future/side.webp" alt="侧面互动机位缩略图"><span class="future-view-copy"><strong>侧面互动</strong><span>横向视差和台面深度</span><em>CAM B</em></span>
+              </button>
+              <button class="future-view" type="button" data-future-view="overhead" aria-pressed="false">
+                <img src="assets/future/overhead.webp" alt="俯拍商品机位缩略图"><span class="future-view-copy"><strong>俯拍商品</strong><span>锅内结构和操作细节</span><em>CAM C</em></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="future-spatial" id="futureSpatial" role="tabpanel" aria-labelledby="futureSpatialTab" hidden>
+            <div class="future-scene" id="futureScene">
+              <img class="future-spatial-media" id="futureSpatialImage" src="assets/future/spatial.webp" alt="AI 生成的空间重建概念画面">
+              <img class="future-spatial-depth" src="assets/future/spatial.webp" alt="" aria-hidden="true">
+              <div class="future-spatial-head"><div><strong>空间直播视口</strong><span>拖动画面改变观察方向，环境层产生深度视差</span></div><em>2.5D 预演 / 非实时 3D</em></div>
+              <div class="future-viewport" id="futurePlane" aria-hidden="true"></div>
+              <label class="future-angle-wrap"><span>观察方向</span><input class="future-angle" id="futureAngle" type="range" min="-30" max="30" step="1" value="0"><span class="future-angle-val" id="futureAngleValue">0°</span></label>
+            </div>
+          </div>
+        </section>
+
+        <aside class="future-insight" aria-label="未来网络需求说明">
+          <section class="future-story">
+            <span class="future-k" id="futureNarrativeLabel">全量同步</span>
+            <h3 id="futureStoryTitle">一个现场，九路交付</h3>
+            <p id="futureStoryCopy">三个市场同时获得三个镜位，语言数量与视图数量相乘。</p>
+            <div class="future-scale"><strong id="futureScale">3语言 × 3视图</strong><span id="futureStreams">9 路概念流</span></div>
+            <div class="future-demand" id="futureDemandWrap"><strong id="futureDemand">55.44</strong><span id="futureDemandUnit">Mbps 目标需求</span></div>
+            <p class="future-status" id="futureStatus">全量分发将同时编码和交付九路内容，显著超出当前保障预算。</p>
+          </section>
+
+          <section class="future-matrix-wrap" id="futureMatrixWrap">
+            <div class="future-matrix-title"><b>语言 × 视图交付矩阵</b><span id="futureMatrixHint">九路持续编码</span></div>
+            <div class="future-matrix" id="futureMatrix" aria-label="三语言三视图交付矩阵">
+              <span></span><span class="mh">正面</span><span class="mh">侧面</span><span class="mh">俯拍</span>
+              <span class="mr">日本</span><i class="future-route all" data-row="0" data-col="front"></i><i class="future-route all" data-row="0" data-col="side"></i><i class="future-route all" data-row="0" data-col="overhead"></i>
+              <span class="mr">拉美</span><i class="future-route all" data-row="1" data-col="front"></i><i class="future-route all" data-row="1" data-col="side"></i><i class="future-route all" data-row="1" data-col="overhead"></i>
+              <span class="mr">印度</span><i class="future-route all" data-row="2" data-col="front"></i><i class="future-route all" data-row="2" data-col="side"></i><i class="future-route all" data-row="2" data-col="overhead"></i>
+            </div>
+            <div class="future-cap"><div><span>当前演示预算</span><strong id="futureBudget">8.25 Mbps</strong></div><div><span>目标需求差额</span><strong id="futureGap">-47.19 Mbps</strong></div></div>
+          </section>
+
+          <p class="future-spatial-policy" id="futureSpatialPolicy" hidden>Edge 预测用户观察方向，只渲染和交付当前视口。负载由空间资产、编码和交互范围决定，因此不显示虚构固定码率。</p>
+
+          <section>
+            <span class="future-k">网络链路</span>
+            <div class="future-pipeline">
+              <div class="future-node"><b>多源采集</b><span>同步机位或深度输入，当前使用 AI 关键帧预演</span></div>
+              <div class="future-node"><b>Edge 引擎</b><span>时空对齐、视图合成、重建与当前视口渲染</span></div>
+              <div class="future-node"><b>5G / QoD</b><span>优先保障当前视口、核心音频和交互控制</span></div>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="future-boundary">
+        <span class="future-foot-copy"><b>能力边界：</b>多视图使用 AI 生成关键帧，空间模式使用 2.5D 视差，没有真实多机位采集或实时三维重建。</span>
+        <div class="future-foot-actions"><div class="future-policies" id="futurePolicies">
+          <button class="future-policy" type="button" data-future-policy="all" aria-pressed="true">全量同步<small>9路 / 55.44M</small></button>
+          <button class="future-policy" type="button" data-future-policy="viewport" aria-pressed="false">当前视角优先<small>3路 / 18.48M</small></button>
+        </div><span class="future-keys">V 打开或关闭　Esc 关闭</span></div>
+      </footer>
+    </section>
   </div>
 </div>
 
@@ -590,27 +851,27 @@ const AUDIO_MBPS = 0.16;              // 每路音频码率
 /* ── 链路档位：容量 + 丢包/抖动（与画质解耦，两者都真实） ── */
 const NETS = [
   { id:1, n:"优秀",   m:"5G SA",   cap:8.25, rtt:35,  loss:0,    drop:0,   jit:0,   st:"var(--ok)" },
-  { id:2, n:"良好",   m:"5G NSA",  cap:4.10, rtt:78,  loss:0.4,  drop:.10, jit:35,  st:"var(--ok)" },
+  { id:2, n:"高时延", m:"5G SA",   cap:8.25, rtt:1500,loss:0,    drop:0,   jit:0,   st:"var(--warn)" },
   { id:3, n:"拥塞",   m:"4G",      cap:1.45, rtt:180, loss:3.2,  drop:.34, jit:100, st:"var(--warn)" },
   { id:4, n:"弱覆盖", m:"4G 边缘", cap:0.42, rtt:420, loss:11.5, drop:.62, jit:240, st:"var(--crit)" }
 ];
 const SRC = [
-  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh.mp4",
+  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh-demo.mp4",
     lang:"原始信号", always:true,
     subs:["梅特德菲多功能电气锅，插上电源即可轻松烹饪。手柄触控面板配备九种功能。",
           "炒、蒸、火锅、汤、粥、煮饭、预约和保温，选择想做的料理即可。",
           "一台锅覆盖日常多种料理，操作直观，也更适合轻松展示。"] },
-  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja.mp4",
+  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja-demo.mp4",
     lang:"日本語",
     subs:["メテドフィの多機能電気鍋です。コンセントにつなぐだけで簡単に調理できます。ハンドルのタッチパネルには9つの機能を搭載。",
           "炒め物、蒸し料理、鍋、スープ、おかゆ、炊飯、予約、保温まで、作りたい料理を選ぶだけです。",
           "一台で毎日のさまざまな料理に対応。操作も直感的で、手軽に使えます。"] },
-  { id:"es", label:"拉美 · 西语", tag:"CH2", ph:"assets/latam-es.jpg", vid:"assets/latam-es.mp4",
+  { id:"es", label:"拉美 · 西语", tag:"CH2", ph:"assets/latam-es.jpg", vid:"assets/latam-es-demo.mp4",
     lang:"Español",
     subs:["Esta es la olla eléctrica multifunción Metedfi. Solo tienes que enchufarla para cocinar fácilmente. El panel táctil del mango incluye nueve funciones.",
           "Elige saltear, cocinar al vapor, olla caliente, sopa, avena, arroz, programación o conservación del calor.",
           "Una sola olla cubre muchas comidas diarias, con controles sencillos y una presentación clara."] },
-  { id:"en", label:"印度 · 英语", tag:"CH3", ph:"assets/india-en.jpg", vid:"assets/india-en.mp4",
+  { id:"en", label:"印度 · 英语", tag:"CH3", ph:"assets/india-en.jpg", vid:"assets/india-en-demo.mp4",
     lang:"English (IN)",
     subs:["This is Metedfi’s multifunction electric pot. Just plug it in and start cooking. The handle’s touch panel offers nine cooking modes.",
           "Choose stir-fry, steaming, hot pot, soup, porridge, rice, scheduling or keep-warm mode.",
@@ -629,40 +890,96 @@ const CMTS={
   "English (IN)":["This looks so useful!","What's the price?","Do you ship to India?","Just ordered one!"]};
 
 /* ── 状态 ── */
-let net = NETS[0], live = false, pgm = 1, t0 = 0;
+let net = NETS[0], live = false, pgm = 0, t0 = 0;
 let targetQ = 0;                 // 目标画质（用户选）
-let actualQ = 0;                 // 实际画质（ABR 结果）
+let actualQ = 0;                 // 当前 PROGRAM 画质（兼容现有 UI / 测试钩子）
+let actualQByChannel = [0,0,0,0]; // CAM + 三路本地化内容的独立画质
 let chOn = [true,true,true];     // 三路语言频道开关
 let platOn = PLAT.map(()=>true);
 let subsOn = true;
 let micGain = .72;
 let tiles = [], cmtN = 0;
+let futureOpen = false, futureMode = "multi", futureDelivery = "all", futureView = "front";
+let futureAngle = 0, futureReturnFocus = null, futureSwitchTimer = 0;
+const bootStartedAt = performance.now(), bootReady = new Set(), bootFailed = new Set();
+let bootFinished = false, bootTimeout = 0;
+const FUTURE_ASSETS = {
+  front:{src:"assets/future/front.webp",title:"正面主播",task:"人物表达与商品关系",desc:"同一时刻生成独立横屏机位，不再依靠放大裁切。"},
+  side:{src:"assets/future/side.webp",title:"侧面互动",task:"横向视差与空间关系",desc:"侧机位补充台面深度、手势和主播与商品的位置关系。"},
+  overhead:{src:"assets/future/overhead.webp",title:"俯拍商品",task:"商品结构与操作细节",desc:"俯拍机位把锅内结构、双手动作和操作区域交付给观众。"}
+};
 
 /* 拓扑与 QoD 状态（Task 5/6 接线） */
 let topo = "cloud", qod = false;
-const QOD_GUARANTEE = { "5G SA": 22.0, "5G NSA": 12.0 };
-function qodAvailable(){ return QOD_GUARANTEE[net.m] !== undefined; }
-function capEffective(){ return (qod && qodAvailable()) ? QOD_GUARANTEE[net.m] : net.cap; }
+// 演示值：5G SA 下，运营商调度器可为 OneLive 业务类提供 15 Mbps 保障预算。
+// 这是该业务获得的可用资源提升，不代表物理频谱或小区总容量被凭空扩大。
+const QOD_GUARANTEE = {"5G SA":15};
+function qodAvailable(){ return topo === "edge" && QOD_GUARANTEE[net.m] !== undefined; }
+function capEffective(){ return qod && qodAvailable() ? QOD_GUARANTEE[net.m] : net.cap; }
 function upLanes(){ return topo === "edge" ? chOn.filter(Boolean).length : 1; }
 function perLaneAt(qi){ return LADDER[qi].v + AUDIO_MBPS; }
+function qualityFor(i){ return i===0 ? 0 : actualQByChannel[i]; }
+function priorityChannel(){
+  if(pgm>0 && chActive(pgm)) return pgm;
+  return [1,2,3].find(i=>chActive(i)) || 1;
+}
+function qodPriorityChannels(){
+  const active=[1,2,3].filter(i=>chActive(i)), primary=priorityChannel();
+  return [primary,...active.filter(i=>i!==primary)].slice(0,Math.min(2,active.length));
+}
 function uplinkNeedMbps(){ return live ? upLanes()*perLaneAt(targetQ) : 0; }
-function uplinkRealMbps(){ return live ? upLanes()*perLaneAt(actualQ) : 0; }
-/* ── 时延与音画同步模型 ──
-   E2E 端侧 = 链路 RTT + 端侧本地化推理
-   E2E 云端 = 链路 RTT + 跨洲往返 + 云端本地化推理 + 分发
-   音画错位不由 RTT 直接决定：它来自视频路径与语音链路(ASR/翻译/TTS)处理长度不一致，
-   抖动会在此基础上继续放大。端侧的段级流水线把这个差值压到 40ms 量级。 */
-const LAT = { edge:{ infer:180, extra:0 }, cloud:{ infer:420, extra:250+155 } };
-const AV_BASE = { edge:40, cloud:440 };
-function e2eMs(){ const L = LAT[topo]; return Math.round(net.rtt + L.infer + L.extra); }
-function avSkewMs(){ return Math.round(AV_BASE[topo] + net.jit*0.6); }
+function uplinkRealMbps(){
+  if(!live) return 0;
+  if(topo === "cloud") return perLaneAt(actualQByChannel[priorityChannel()]);
+  return [1,2,3].filter(i=>chActive(i)).reduce((sum,i)=>sum+perLaneAt(actualQByChannel[i]),0);
+}
+/* ── 两条部署路径的取舍模型 ──
+   云端：一条原流上云，云端生成三路内容；相对本地原流多出推理、跨网与回传时延。
+   近端：生成可落在设备、场馆边缘或运营商边缘；路径更短，但要承载多路并发上行。
+   两条路径生成的每一路都保持路内音画同步。这里比较的是整路内容相对本地原流的
+   交付滞后，不能把整体时延误写成声音与画面的错位。数值均为可控模拟。 */
+const LAT = { edge:{ infer:100, extra:45 }, cloud:{ infer:1250, extra:1215 } };
+const AV_SYNC_TARGET_MS = 0;
+function sourceLagMs(){ const L = LAT[topo]; return Math.round(net.rtt + L.infer + L.extra); }
+function e2eMs(){ return sourceLagMs(); } // 保留测试钩子的旧字段名
+function avSkewMs(){ return AV_SYNC_TARGET_MS; }
+
+/* ── 启动加载：以四路视频真实 readyState 为准，避免用户在解码缓存为空时直接开播 ── */
+function finishBoot(degraded=false){
+  if(bootFinished) return;
+  bootFinished=true; clearTimeout(bootTimeout);
+  $("go").disabled=false;
+  $("bootStatus").textContent=degraded ? "已进入降级准备模式，缺失素材可在监看窗重试" : "四路素材已就绪，可以开始演示";
+  const delay=Math.max(0,620-(performance.now()-bootStartedAt));
+  setTimeout(()=>$("bootShell").classList.add("done"),delay);
+}
+function updateBoot(){
+  const ready=bootReady.size, failed=bootFailed.size, total=SRC.length;
+  $("bootProgress").setAttribute("aria-valuenow",String(ready));
+  $("bootBar").style.transform=`scaleX(${ready/total})`;
+  $("bootCount").textContent=failed ? `${ready} / ${total} 路已就绪 · ${failed} 路异常` : `${ready} / ${total} 路已就绪`;
+  $("bootStatus").textContent=ready===total ? "四路素材已就绪，可以开始演示" : `正在预加载第 ${Math.min(total,ready+failed+1)} 路视频…`;
+  if(ready===total){ finishBoot(false); return; }
+  if(ready+failed===total && failed){
+    $("bootStatus").textContent="部分素材无法读取，可进入演示并使用其余频道";
+    $("bootContinue").hidden=false;
+  }
+}
+function markBootReady(i){ bootFailed.delete(i); bootReady.add(i); updateBoot(); }
+function markBootFailed(i){ if(!bootReady.has(i)) bootFailed.add(i); updateBoot(); }
+$("bootContinue").onclick=()=>finishBoot(true);
+bootTimeout=setTimeout(()=>{
+  if(bootFinished) return;
+  $("bootStatus").textContent=`已有 ${bootReady.size} 路可用，其余素材加载较慢`;
+  $("bootContinue").hidden=false;
+},8000);
 
 /* ── MULTIVIEW ── */
 SRC.forEach((s,i)=>{
   const d=document.createElement("div");
   d.className="tile off"; d.tabIndex=0; d.setAttribute("role","button");
   d.setAttribute("aria-label",`切换 ${s.label} 到播出`);
-  d.innerHTML=`<img src="${s.ph}" alt="${s.label} 监看"><video src="${s.vid}" muted loop playsinline aria-hidden="true"></video>
+  d.innerHTML=`<img src="${s.ph}" alt="${s.label} 监看"><video src="${s.vid}" muted loop preload="auto" playsinline aria-hidden="true"></video>
     <canvas aria-hidden="true"></canvas><span class="tile-b">${s.tag}</span>
     <span class="tile-l">${s.label}</span><span class="tile-n">—</span>`;
   d.onclick=()=>setPgm(i);
@@ -671,8 +988,24 @@ SRC.forEach((s,i)=>{
   tiles.push({el:d,vd:d.querySelector("video"),cv:d.querySelector("canvas"),
               num:d.querySelector(".tile-n"),cfg:s,ok:false,last:0,si:0});
 });
-tiles.forEach(t=>{t.vd.addEventListener("loadeddata",()=>t.ok=true);
-                  t.vd.addEventListener("error",()=>t.ok=false);});
+tiles.forEach((t,i)=>{
+  const ready=()=>{
+    const firstReady=!t.ok;
+    t.ok=true;
+    markBootReady(i);
+    if(live&&chActive(i)){
+      t.vd.play().then(()=>{
+        t.el.classList.add("rd");
+        if(firstReady&&i>0) alignGeneratedMedia(true,i);
+      }).catch(()=>t.num.textContent="点击重试");
+    }
+  };
+  t.vd.addEventListener("loadeddata",ready);
+  t.vd.addEventListener("canplay",ready);
+  t.vd.addEventListener("error",()=>{t.ok=false;t.num.textContent="素材不可用";markBootFailed(i);});
+  if(t.vd.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA) ready();
+  else t.vd.load();
+});
 
 function chActive(i){ return i===0 ? true : chOn[i-1]; }
 
@@ -688,9 +1021,9 @@ function renderPgmSide(){
     </div>`).join("");
   $("pgmSide").innerHTML = `
     <div class="mbar">
-      <div class="mcell"><span class="mtk">E2E 时延</span><span class="mtv" id="mE2E">— ms</span></div>
-      <div class="mcell"><span class="mtk">A-V SYNC</span><span class="mtv" id="mAV">— ms</span></div>
-      <div class="mcell"><span class="mtk">上行码率</span><span class="mtv" id="mBr">— M</span></div>
+      <div class="mcell"><span class="mtk">相对原流</span><span class="mtv" id="mE2E">— ms</span></div>
+      <div class="mcell"><span class="mtk">路内音画</span><span class="mtv" id="mAV">—</span></div>
+      <div class="mcell"><span class="mtk">当前流码率</span><span class="mtv" id="mBr">— M</span></div>
     </div>
     <div class="lz">
       <div class="lz-h"><b>本地化文案对照</b><em>${isSrc ? "原始信号" : "ZH-CN 原文 ↕ " + s.lang}</em></div>
@@ -705,22 +1038,25 @@ function paintMetrics(){
   if(pgm===0){                          // 原始信号=本地监看，没有交付路径可言
     $("mE2E").textContent = "本地"; $("mE2E").className = "mtv ok";
     $("mAV").textContent  = "本地"; $("mAV").className  = "mtv ok";
-    $("mBr").textContent  = uplinkRealMbps().toFixed(2) + " M";
+    $("mBr").textContent  = perLaneAt(0).toFixed(2) + " M";
     $("mBr").className    = "mtv";
     return;
   }
-  const e = e2eMs(), a = avSkewMs();
+  const e = sourceLagMs();
   const cls = (v,good,warn)=> v<=good ? "mtv ok" : v<=warn ? "mtv warn" : "mtv bad";
-  $("mE2E").textContent = e + " ms";  $("mE2E").className = cls(e,300,700);
-  $("mAV").textContent  = a + " ms";  $("mAV").className  = cls(a,80,250);
-  $("mBr").textContent  = uplinkRealMbps().toFixed(2) + " M";
+  $("mE2E").textContent = "+" + e + " ms";  $("mE2E").className = cls(e,300,700);
+  $("mAV").textContent  = "同步 · 同源";  $("mAV").className = "mtv ok";
+  $("mBr").textContent  = perLaneAt(qualityFor(pgm)).toFixed(2) + " M";
   $("mBr").className    = "mtv";
 }
 
 /* ── 右栏：平台流量数据（运维口径，非宣传板） ── */
 function renderFlow(){
-  const chN = chOn.filter(Boolean).length, perLane = perLaneAt(actualQ);
-  const per = live ? chN*perLane : 0;
+  const active=[1,2,3].filter(i=>chActive(i));
+  const chN=active.length;
+  const per = live ? active.reduce((sum,i)=>sum+perLaneAt(qualityFor(i)),0) : 0;
+  const qMix = active.map(i=>LADDER[qualityFor(i)].id);
+  const mixLabel = !live ? "待开播" : new Set(qMix).size===1 ? qMix[0] : "混合画质";
   /* 品牌色只能当色块用，不能当文字色：TikTok #0F0F0F / X #000 在深色底上是隐形的
      （下方「分发平台」列表同理，那里也是把品牌色刷成 .lg 的背景而非文字色）。 */
   $("flowList").innerHTML = PLAT.map((p,i)=>`
@@ -728,104 +1064,127 @@ function renderFlow(){
       <i class="fw-d" style="background:${p.c}"></i>
       <span class="fw-n">${p.n}</span>
       <span class="fw-v">${(platOn[i]?per:0).toFixed(2)}</span>
-      <span class="fw-q">${platOn[i] ? (live ? LADDER[actualQ].id : "待开播") : "已关闭"}</span>
+      <span class="fw-q">${platOn[i] ? mixLabel : "已关闭"}</span>
     </div>`).join("");
   const total = per * platOn.filter(Boolean).length;
   $("flowTotal").textContent = total.toFixed(1);
-  // 小窗数字标签：显示该路上行码率（原为观众数，与流量叙事无关）
+  // 小窗直接显示各生成路相对本地原流的整体滞后，避免把时延误解为路内音画错位。
   tiles.forEach((t,i)=>{
     const on = !t.el.classList.contains("off");
-    // 端侧模式下 CAM 不占上行（生成在本地）；云端模式下它正是那唯一一路
     t.num.textContent = (live && on)
-      ? ((i===0 && topo==="edge") ? "本地" : perLane.toFixed(2)+"M") : "—";
+      ? (i===0 ? "本地 · 30fps" : `+${sourceLagMs()}ms · ${LADDER[qualityFor(i)].id}`)
+      : "—";
   });
 }
 
-/* ── 音频通路：单元素承载 PROGRAM 路声音，currentTime 落后画面 avSkew ──
-   file:// 下 WebAudio 对本地媒体输出全零（CORS），故不用 DelayNode。
-   对齐一律用 playbackRate 比例牵引，只有换源那种秒级失配才 seek：
-   实测 file:// 下一次 seek 会让音频停顿约 0.4s（readyState 掉到 1），
-   所以任何亚秒级的 seek 门限都会自激——seek 停顿本身又把偏差顶回门限之上，
-   于是每 250ms 再 seek 一次，永不收敛且声音全程卡顿。 */
-function syncAudioSource(){
-  const a = $("pgmAudio"), want = SRC[pgm].vid;
-  if(a.getAttribute("src") !== want){
-    a.setAttribute("src", want);
-    a.load();
-    if(live) a.play().catch(()=>{});
+/* ── 媒体时间轴：每路 MP4 自带音频，浏览器维护路内音画同步 ──
+   CAM 是本地时钟；云端返回的三路整体落后，近端三路接近本地。部署路径与网络 RTT
+   都真正作用于 video.currentTime，而不是只改面板数字。四个素材统一为 15s 周期。 */
+const wrapTime=(v,d)=>((v%d)+d)%d;
+// 浏览器在多路本地 MP4 上的 currentTime 采样会有约百毫秒抖动。
+// 低于此范围用 playbackRate 追帧，高于此范围直接提交目标帧，
+// 确保演示中的“整路交付滞后”不会漂移成音画/多路不同步。
+const MEDIA_SYNC_SNAP_S = 0.12;
+function circularDelta(target,current,duration){
+  let delta=target-current;
+  if(delta> duration/2) delta-=duration;
+  if(delta<-duration/2) delta+=duration;
+  return delta;
+}
+function alignGeneratedMedia(force=false,only=null){
+  if(!live || !tiles[0] || !tiles[0].vd.duration) return;
+  const master=tiles[0].vd;
+  (only===null?[1,2,3]:[only]).forEach(i=>{
+    const v=tiles[i].vd;
+    if(!chActive(i) || !v.duration || v.seeking) return;
+    const target=wrapTime(master.currentTime-sourceLagMs()/1000,v.duration);
+    const delta=circularDelta(target,v.currentTime,v.duration);
+    if(force || Math.abs(delta)>MEDIA_SYNC_SNAP_S){
+      v.currentTime=target;
+      v.playbackRate=1;
+      return;
+    }
+    // 只牵引整路复用媒体，音频和画面一起变化。小偏差用缓慢追帧，避免频繁 seek 拖垮解码。
+    v.playbackRate=Math.abs(delta)<.03 ? 1 : 1+clamp(delta*.20,-.05,.05);
+  });
+}
+function actualMediaLagMs(i=pgm){
+  if(i===0 || !tiles[0] || !tiles[i] || !tiles[i].vd.duration) return 0;
+  const v=tiles[i].vd, master=tiles[0].vd;
+  return Math.round(circularDelta(master.currentTime,v.currentTime,v.duration)*1000);
+}
+// 15 秒循环边界会让浏览器短暂经历 loop/seek 状态；200ms 扫描既能
+// 把边界误差压回可接受范围，也不会像逐帧校正那样制造额外 seek。
+setInterval(()=>alignGeneratedMedia(false),200);
+
+let audioFadeEpoch=0;
+function routeProgramAudio(from,to,fade=true){
+  const epoch=++audioFadeEpoch;
+  const media=tiles.map(t=>t.vd);
+  if(!live){ media.forEach(v=>{v.muted=true;v.volume=0;}); return; }
+  const next=media[to], prev=from>=0 ? media[from] : null;
+  media.forEach((v,i)=>{ if(i!==from&&i!==to){v.muted=true;v.volume=0;} });
+  if(!fade || !prev || from===to){
+    if(prev&&from!==to){prev.muted=true;prev.volume=0;}
+    next.muted=false; next.volume=micGain; return;
   }
+  const t0=performance.now(), ms=90, pv=prev.volume;
+  prev.muted=false; next.muted=false; next.volume=0;
+  const finish=()=>{
+    if(epoch!==audioFadeEpoch) return;
+    prev.muted=true;prev.volume=0;next.muted=false;next.volume=micGain;
+  };
+  const step=now=>{
+    if(epoch!==audioFadeEpoch) return;
+    // 某些浏览器的首个 RAF timestamp 会略早于本轮 performance.now()；必须双向夹紧，
+    // 否则 p<0 会把旧声道音量算到 1 以上并抛 IndexSizeError，造成切台顿挫。
+    const p=Math.max(0,Math.min(1,(now-t0)/ms));
+    prev.volume=pv*(1-p); next.volume=micGain*p;
+    if(p<1) requestAnimationFrame(step);
+    else finish();
+  };
+  requestAnimationFrame(step);
+  setTimeout(finish,ms+40); // RAF 被投屏/后台节流时也必须确定性收掉旧声道
 }
-let lastSeek = 0;
-/* CAM 是本地监看：主播自己的信号没有语音链路要等，错位恒为 0。
-   440ms/40ms 只属于跨网交付的三路。 */
-function audioSkewS(){ return pgm===0 ? 0 : avSkewMs()/1000; }
-/* 拓扑切换=交付路径重建：一次性硬重同步（短暂静默后立即对齐），
-   而不是让比例回路用 1.35 倍速追一秒多——变速追赶听起来像故障，
-   路径重建的"咔哒一下就对上"才是真实系统的声音。 */
-function resyncAudio(){
-  const a = $("pgmAudio"), v = tiles[pgm] && tiles[pgm].vd;
-  if(!live || !v || !v.duration || !a.duration) return;
-  const D = a.duration;
-  a.currentTime = ((v.currentTime - audioSkewS()) % D + D) % D;
-  a.playbackRate = 1; lastSeek = Date.now();
-}
-function alignAudio(){
-  const a = $("pgmAudio"), v = tiles[pgm] && tiles[pgm].vd;
-  if(!live || !v || !v.duration || !a.duration) return;
-  /* 换源/seek 期间 currentTime 是冻结的：此时算出来的偏差全是假的，
-     照着它调倍速会一路上冲到上限，等数据回来又要花几秒退回去。等就绪再动。 */
-  if(a.seeking || a.readyState < 3) return;
-  /* 素材是 loop 的：目标位置按时长取模，而不是在 0 处截断。
-     截断会让回环后音频被硬拉到 0、错位塌成 0 并需十几秒才爬回来——
-     取模则让音频自然接着播上一轮的尾巴，回环处零抖动。 */
-  const D = a.duration;
-  const target = ((v.currentTime - audioSkewS()) % D + D) % D;
-  let drift = a.currentTime - target;             // >0 表示音频跑快了
-  if(drift >  D/2) drift -= D;                    // 回环两侧取最短路
-  if(drift < -D/2) drift += D;
-  /* 只有换源那种秒级失配才 seek（此时音频刚 load 回到 0，倍速追不动）。
-     亚秒级一律不 seek——试过：seek 门限设 0.25/0.4 都会自激，声音全程卡顿。
-     2s 冷却是结构性保险：一次 seek 的停顿本身能攒出 1.4s 偏差，逼近门限，
-     没有冷却就可能在慢机器上「停顿→超门限→再 seek」滚起来。 */
-  if(Math.abs(drift) > 1.5 && Date.now()-lastSeek > 2000){
-    a.currentTime = target; a.playbackRate = 1; lastSeek = Date.now(); return;
-  }
-  /* 其余交给比例牵引：rate = 1 - k·drift，偏差按 e 指数收敛(τ=1/k≈1s)。
-     开播时音画同在 0，这条回路要把 0.44s 的错位「拉开」；切端侧时又要把它「收掉」，
-     两次都在 2s 内完成，且越接近对齐倍速越贴回 1，不过冲、不抖动。
-     死区 30ms 只是避免视频 currentTime 帧级量化(~33ms)引起的无谓赋值。 */
-  const k = 1.0, lim = 0.35;
-  a.playbackRate = Math.abs(drift) <= 0.03
-    ? 1 : Math.min(1+lim, Math.max(1-lim, 1 - k*drift));
-}
-setInterval(alignAudio, 250);
 
 function setPgm(i){
   if(!chActive(i)) return;                       // 关掉的频道不能切
+  const prev=pgm;
   pgm=i;
+  if(live) recompute();                          // PROGRAM 画质与 QoD 优先级都必须立即跟随切台
   tiles.forEach((t,k)=>t.el.classList.toggle("air", k===i && live));
   $("pgmLang").textContent=SRC[i].label;
   $("pgmPh").src=SRC[i].ph;
   $("pgmCC").textContent = live && SRC[i].subs ? SRC[i].subs[0] : "";
   document.querySelector(".pgm-frame").classList.toggle("rd", live && tiles[i].ok);
   renderPgmSide();
-  syncAudioSource();
+  renderDeliveryState();
+  /* 切台是本地导演动作，不应再等待云端/无线链路的下一次交付 tick。
+     先立即提交目标频道已经解码好的最新帧，后续帧再继续受拓扑和网络预算约束。 */
+  primeProgramFrame(i);
+  routeProgramAudio(prev,i,prev!==i);
 }
 
-/* ── 左栏：生成位置（端侧 / 云端）——只改上行侧公式 ── */
+/* ── 左栏：两条部署路径（近端可以是设备、场馆边缘或运营商边缘） ── */
 function renderTopo(){
   $("topoCtl").querySelectorAll("button").forEach(b=>{
     const on = b.dataset.topo === topo;
     b.classList.toggle("on", on);
     b.setAttribute("aria-pressed", String(on));
   });
-  $("topoNow").textContent = topo === "edge" ? "端侧" : "云端";
+  $("topoNow").textContent = topo === "edge" ? "近端" : "云端";
 }
 $("topoCtl").querySelectorAll("button").forEach(b=>{
-  b.onclick = ()=>{ topo = b.dataset.topo; renderTopo(); recompute(); resyncAudio(); };
+  b.onclick = ()=>{
+    if(b.dataset.topo===topo) return;
+    topo=b.dataset.topo;
+    if(!qodAvailable()) qod=false;
+    resetDeliveryClock(); renderTopo(); renderQod(); recompute();
+    if(live) alignGeneratedMedia(true);
+  };
 });
 
-/* ── QoD 保障：不凭空造带宽，依赖接入制式的保障能力 ── */
+/* ── QoD 保障：业务获得更高的可用资源预算，依赖接入制式的调度能力 ── */
 function renderQod(){
   const ok = qodAvailable();
   const btn = $("qodCtl");
@@ -833,10 +1192,14 @@ function renderQod(){
   if(!ok) qod = false;
   btn.classList.toggle("on", qod);
   btn.setAttribute("aria-pressed", String(qod));
-  $("qodCap").textContent = ok ? QOD_GUARANTEE[net.m].toFixed(2) + "M" : "不可用";
+  const guarantee = QOD_GUARANTEE[net.m];
+  $("qodCap").textContent = ok ? `${guarantee.toFixed(2)}M` : "不可用";
+  const vip=qodPriorityChannels(), standard=[1,2,3].filter(i=>chActive(i)&&!vip.includes(i));
   $("qodNote").textContent = ok
-    ? `${net.m} 可为关键业务流保障 ${QOD_GUARANTEE[net.m].toFixed(2)} Mbps 上行`
-    : `当前接入制式不支持 QoD 保障（${net.m}）`;
+    ? (qod ? `VIP：${vip.map(i=>SRC[i].label).join(" / ")}；Best Effort：${standard.map(i=>SRC[i].label).join(" / ")||"—"}`
+           : `当前 Best Effort 为 ${net.cap.toFixed(2)} Mbps，可申请 ${guarantee.toFixed(2)} Mbps 业务保障`)
+    : (topo!=="edge" ? "云端只上传一条原流，无需启动近端多路上行保障"
+                     : `当前接入制式不支持 QoD 保障（${net.m}）`);
 }
 $("qodCtl").onclick = ()=>{ if(!qodAvailable()) return; qod = !qod; renderQod(); recompute(); };
 
@@ -853,6 +1216,7 @@ function renderChans(){
       chOn[k]=!chOn[k];
       if(!chOn[k] && pgm===k+1){ const nx=[1,2,3].find(i=>chActive(i)); setPgm(nx!==undefined?nx:0); }
       renderChans(); syncTiles(); recompute();
+      if(live&&chOn[k]) setTimeout(()=>alignGeneratedMedia(true,k+1),60);
     };
     h.appendChild(b);
   });
@@ -862,7 +1226,11 @@ function syncTiles(){
     const act = chActive(i) && live;
     t.el.classList.toggle("off", !act);
     t.el.classList.toggle("dis", !chActive(i));
-    if(act){ if(t.ok){ t.vd.play().catch(()=>{}); t.el.classList.add("rd"); } }
+    if(act){
+      // play() 本身会启动尚未完成的预加载；不能等待 loadeddata 才调用，否则慢设备会卡在元数据状态。
+      if(t.vd.readyState===0) t.vd.load();
+      t.vd.play().then(()=>t.el.classList.add("rd")).catch(()=>t.num.textContent="点击重试");
+    }
     else { t.vd.pause(); t.el.classList.remove("rd","air"); }
   });
   if(live) tiles[pgm] && tiles[pgm].el.classList.add("air");
@@ -892,14 +1260,51 @@ function renderSubs(){
 }
 $("subCtl").onclick=()=>{ subsOn=!subsOn; renderSubs(); };
 
+/* ── 左栏状态灯：网络档位 + 实际频道画质共同决定，文字同步说明而非只靠颜色 ── */
+const HEALTH_LABEL={ok:"稳定",warn:"波动",crit:"受限"};
+function networkHealth(){ return net.id===4 ? "crit" : net.id===1 ? "ok" : "warn"; }
+function channelHealth(i){
+  const qi=qualityFor(i), fps=deliveryFps();
+  if(net.id===4 || fps<12 || qi>=3) return "crit";
+  if(net.id!==1 || fps<24 || qi>=1) return "warn";
+  return "ok";
+}
+function applyControlHealth(button,health){
+  const name=button?.querySelector(".cl")?.textContent?.trim()||"当前选项";
+  if(!button || !button.classList.contains("on")){
+    button?.removeAttribute("data-health");
+    button?.removeAttribute("title");
+    button?.setAttribute("aria-label",name);
+    return;
+  }
+  button.dataset.health=health;
+  button.title=`${name} · ${HEALTH_LABEL[health]}`;
+  button.setAttribute("aria-label",`${name}，链路状态${HEALTH_LABEL[health]}`);
+}
+function renderRailHealth(){
+  const base=networkHealth();
+  document.body.dataset.netHealth=base;
+  $("topoCtl").querySelectorAll(".ctl").forEach(button=>applyControlHealth(button,base));
+  $("qCtl").querySelectorAll(".ctl").forEach(button=>applyControlHealth(button,base));
+  applyControlHealth($("subCtl"),base);
+  applyControlHealth($("qodCtl"),qod ? "ok" : base);
+  $("chCtl").querySelectorAll(".ctl").forEach((button,k)=>{
+    const on=chOn[k], health=channelHealth(k+1);
+    applyControlHealth(button,health);
+    const status=button.querySelector(".cq");
+    if(status) status.textContent=on ? (live ? HEALTH_LABEL[health] : "待开播") : "已关";
+  });
+}
+
 /* ── 链路档位 ── */
 NETS.forEach(n=>{
   const b=document.createElement("button");
   b.className="net"; b.type="button"; b.setAttribute("aria-pressed",n.id===net.id);
   b.innerHTML=`<span class="nm"><span class="nd" style="color:${n.st}"></span>${n.n}</span>
     <span class="ns">容量 ${n.cap} Mbps<br>${n.rtt}ms · 丢包 ${n.loss}%</span>`;
-  b.onclick=()=>{ net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
-    document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute(); };
+  b.onclick=()=>{ const changed=net.id!==n.id; net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
+    document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute();
+    if(live&&changed) alignGeneratedMedia(true); };
   $("netList").appendChild(b);
 });
 
@@ -930,20 +1335,61 @@ function dests(){
   });
 }
 
-/* ══ 核心：带宽账本 + ABR 自动降码 ══ */
+/* ══ 核心：带宽账本 + ABR + QoD 业务保障预算 ══ */
+function allocateChannelQualities(){
+  const active=[1,2,3].filter(i=>chActive(i));
+  actualQByChannel=[0,targetQ,targetQ,targetQ];
+  if(!live || !active.length) return;
+
+  if(topo==="cloud"){
+    // 云端只上传一条原流：输入侧 ABR 一次，三路云端成片保持相同高清档位。
+    let q=targetQ;
+    while(q<LADDER.length-1 && perLaneAt(q)>capEffective()) q++;
+    active.forEach(i=>actualQByChannel[i]=q);
+    return;
+  }
+
+  if(qod){
+    // QoD：先给每路最低可用预算，再优先升级两路 VIP；剩余预算继续给 Best Effort。
+    // 15 Mbps 场景下结果为 2×1080P + 1×480P，明确展示差异化服务，而非全员完美。
+    const worst=LADDER.length-1;
+    active.forEach(i=>actualQByChannel[i]=worst);
+    let used=active.length*perLaneAt(worst);
+    const upgrade=i=>{
+      const from=actualQByChannel[i];
+      if(from<=targetQ) return false;
+      const to=from-1, delta=perLaneAt(to)-perLaneAt(from);
+      if(used+delta>capEffective()+1e-6) return false;
+      actualQByChannel[i]=to; used+=delta; return true;
+    };
+    qodPriorityChannels().forEach(i=>{ while(upgrade(i)){} });
+    const standard=active.filter(i=>!qodPriorityChannels().includes(i));
+    let moved=true;
+    while(moved){ moved=false; standard.forEach(i=>{ if(upgrade(i)) moved=true; }); }
+    return;
+  }
+
+  // Best Effort 按当前可用预算公平降级，避免某一路被静默牺牲。
+  let q=targetQ;
+  while(q<LADDER.length-1 && active.length*perLaneAt(q)>capEffective()) q++;
+  active.forEach(i=>actualQByChannel[i]=q);
+}
+
 function recompute(){
-  const cap = capEffective(), ul = upLanes();
-  // 1) ABR：上行总需求 ≤ 有效容量，否则逐级降码
-  actualQ = targetQ;
-  while (actualQ < LADDER.length-1 && ul*perLaneAt(actualQ) > cap) actualQ++;
-  const q = LADDER[actualQ], perLane = perLaneAt(actualQ);
+  const cap=capEffective(), ul=upLanes();
+  allocateChannelQualities();
+  actualQ=qualityFor(pgm);
+  const q=LADDER[actualQ];
 
-  // 2) 出口：路数 = 在播频道 × 开启平台（与拓扑无关）
-  const chN = chOn.filter(Boolean).length, plN = platOn.filter(Boolean).length;
+  // 出口：按每个频道的实际档位求和。
+  const active=[1,2,3].filter(i=>chActive(i));
+  const chN=active.length, plN=platOn.filter(Boolean).length;
   const lanes = live ? chN*plN : 0;
-  const egress = lanes*perLane;
+  const perPlatform=live ? active.reduce((sum,i)=>sum+perLaneAt(qualityFor(i)),0) : 0;
+  const egress=perPlatform*plN;
+  const avgLane=chN ? perPlatform/chN : 0;
 
-  // 3) 上行：目标需求（触发 ABR 的原因）与实际发送分开显示
+  // 上行：目标需求（触发 ABR 的原因）与分配后的实际发送分开显示。
   const uplinkNeed = uplinkNeedMbps();
   const uplink = uplinkRealMbps();
   const gap  = cap - uplinkNeed;
@@ -953,7 +1399,7 @@ function recompute(){
   $("bwUp").textContent = uplink.toFixed(2);
   $("bwCap").textContent = cap.toFixed(2);
   $("bwLanes").textContent = lanes;
-  $("bwPer").textContent = perLane.toFixed(2);
+  $("bwPer").textContent = avgLane.toFixed(2);
   $("bwEgress").textContent = egress.toFixed(1);
   $("bwHead").textContent = (head>=0?"+":"")+head.toFixed(2);
   $("bwHead").className = "bv " + (head<0?"bad":head<1?"warn":"ok");
@@ -966,11 +1412,13 @@ function recompute(){
   $("bwBar").className = "bwfill " + (uplink>cap?"bad":uplink>cap*.8?"warn":"ok");
   $("bwPct").textContent = live ? Math.round(pct)+"%" : "—";
 
-  const abr = actualQ!==targetQ;
+  const abr = live && active.some(i=>qualityFor(i)!==targetQ);
   $("abr").hidden = !abr || !live;
-  if(abr) $("abrTxt").textContent =
-    `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出容量 ${cap.toFixed(2)} Mbps，已自动降至 ${q.id}`;
+  if(abr) $("abrTxt").textContent = qod
+    ? `15.00 Mbps 保障预算优先承载两路 VIP 1080P；其余 Best Effort 使用剩余资源`
+    : `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出当前可用预算 ${cap.toFixed(2)} Mbps，三路公平降至 ${q.id}`;
   $("pgmRes").textContent = q.id;
+  renderDeliveryState();
   $("qNow").textContent = q.id;
   $("lqName").textContent = net.n + (qod && qodAvailable() ? " · QoD" : "");
   $("lqBr").textContent = cap.toFixed(2);
@@ -979,13 +1427,18 @@ function recompute(){
   [...$("plats").children].forEach((el,i)=>{
     const stt=el.querySelector(".stt"), qq=el.querySelector(".q");
     if(stt) stt.innerHTML = live&&platOn[i] ? '<i></i>'+chN+' 路' : (platOn[i]?'待开播':'已关闭');
-    if(qq)  qq.textContent = platOn[i] ? q.id : "—";
+    if(qq){
+      const mix=active.map(ch=>LADDER[qualityFor(ch)].id);
+      qq.textContent=platOn[i] ? (!live?LADDER[targetQ].id:(new Set(mix).size===1?mix[0]:"混合")) : "—";
+    }
   });
   paintMetrics();
   renderFlow();
   $("capNet").textContent   = `${net.n} ${net.m} · 模拟`;
-  $("capInfer").textContent = `${topo === "edge" ? "端侧" : "云端"} · 模拟`;
-  $("capQod").textContent   = qod ? "已启用 · 模拟" : "未启用 · 模拟";
+  $("capInfer").textContent = `${topo === "edge" ? "近端路径" : "云端路径"} · 模拟`;
+  $("capQod").textContent   = qod ? `VIP 业务保障 ${cap.toFixed(2)}M · 模拟` : "未启用 · 模拟";
+  renderQod();
+  renderRailHealth();
 }
 
 /* ── 音频推子：可拖动，真实驱动 VU 与麦克风增益 ── */
@@ -998,7 +1451,10 @@ function recompute(){
   for(let k=0;k<7;k++) r.querySelector(".vu").appendChild(document.createElement("i"));
   const inp=r.querySelector(".rng");
   inp.oninput=()=>{ const val=+inp.value; $("fv-"+id).textContent=val;
-    if(id==="mic"){ micGain=val/100; } };
+    if(id==="mic"){
+      micGain=val/100;
+      if(live&&tiles[pgm]) tiles[pgm].vd.volume=micGain;
+    } };
 });
 
 /* ── 开播 ── */
@@ -1007,12 +1463,10 @@ function start(){
   live=true; t0=Date.now(); cmtN=0;
   document.body.classList.add("live");
   $("go").textContent="结束直播"; $("tState").textContent="直播中";
-  tiles.forEach((t,i)=>setTimeout(()=>{ syncTiles(); if(i===pgm) setPgm(pgm); }, 160+i*130));
-  dests(); renderPlat(); recompute();
-  const a = $("pgmAudio");
-  a.muted = false; a.volume = 1;
-  syncAudioSource();
-  a.play().catch(()=>{});          // 由「开始直播」点击手势触发，满足自动播放策略
+  tiles.forEach(t=>{t.vd.muted=true;t.vd.volume=0;t.vd.playbackRate=1;});
+  if(tiles[0].vd.duration) tiles[0].vd.currentTime=Math.min(2.4,tiles[0].vd.duration-.2);
+  alignGeneratedMedia(true);
+  syncTiles(); dests(); renderPlat(); recompute(); setPgm(pgm);
 }
 function stop(){
   live=false; document.body.classList.remove("live");
@@ -1020,25 +1474,50 @@ function stop(){
   syncTiles(); document.querySelector(".pgm-frame").classList.remove("rd");
   $("abr").hidden=true;
   dests(); renderPlat(); recompute();
-  const a = $("pgmAudio");
-  a.pause(); a.currentTime = 0;
+  audioFadeEpoch++;
+  tiles.forEach(t=>{t.vd.pause();t.vd.currentTime=0;t.vd.playbackRate=1;t.vd.muted=true;t.vd.volume=0;});
 }
 addEventListener("keydown",e=>{
+  if(futureOpen){
+    if(e.key==="Escape"||e.key.toLowerCase()==="v"){e.preventDefault();closeFuture();}
+    return;
+  }
   if(e.target.matches("input,textarea")) return;
+  if(e.key.toLowerCase()==="v"){e.preventDefault();openFuture();return;}
   if(e.code==="Space"){e.preventDefault(); live?stop():start();}
   const n=NETS.find(x=>String(x.id)===e.key);
-  if(n){ net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
-         document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute(); }
+  if(n){ const changed=net.id!==n.id; net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
+         document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute();
+         if(live&&changed) alignGeneratedMedia(true); }
   const k={q:1,w:2,e:3}[e.key.toLowerCase()]; if(k!==undefined&&live) setPgm(k);
 });
 
-/* ── 路径损伤：拓扑决定实时性预算 ──
-   云端 E2E 860ms，播放端要维持互动就只能压小缓冲，网络抖动吸收不掉、直接表现为卡顿；
-   跨洲多跳还带来额外丢包。端侧 215ms 有充足余量，同一条接入链路下画面是流畅的。
-   这是端侧生成相对云端最先被眼睛捕捉到的收益——比清晰度更直观。 */
-const PATH = { edge:{ jit:0, drop:0 }, cloud:{ jit:120, drop:.07 } };
-function effJit(){ return net.jit + PATH[topo].jit; }
-function effDrop(){ return 1 - (1-net.drop)*(1-PATH[topo].drop); }
+/* ── 交付路径：两条部署路径都可稳定生成 30fps，网络丢包/抖动再叠加其上 ──
+   云端的代价是整路内容相对原流更晚，而不是画面天然更卡或音画天然错位。
+   近端的代价是多路上行占用更多无线容量，画质仍由 ABR 单独决定。 */
+const DELIVERY = {
+  cloud:{ fps:30, drop:0 },
+  edge: { fps:30, drop:0 }
+};
+function effJit(){ return net.jit; }
+function effDrop(){ return 1 - (1-net.drop)*(1-DELIVERY[topo].drop); }
+function deliveryFps(){
+  if(pgm===0) return 30;
+  const jitterFactor = 1 + net.jit/160;
+  return Math.max(2, Math.round(DELIVERY[topo].fps * (1-effDrop()) / jitterFactor));
+}
+function renderDeliveryState(){
+  const el=$("pgmMotion"); if(!el) return;
+  if(pgm===0){ el.textContent="本地监看 · 30fps"; el.className="pgm-motion ok"; return; }
+  const fps=deliveryFps();
+  const label = fps>=24 ? "流畅交付" : fps>=12 ? "网络受限" : "路径卡顿";
+  el.textContent=`${label} · ${fps}fps`;
+  el.className="pgm-motion " + (fps>=24?"ok":fps>=12?"warn":"bad");
+}
+function resetDeliveryClock(){
+  pgmSlot.last=0; pgmSlot.next=0;
+  tiles.forEach(t=>{ t.last=0; t.next=0; });
+}
 
 /* ── 渲染：画质(ABR) + 丢包/抖动(链路 × 拓扑) 双重真实作用 ──
    例外：CAM(原始信号) 是主播本地采集，不经过任何网络路径——
@@ -1046,14 +1525,21 @@ function effDrop(){ return 1 - (1-net.drop)*(1-PATH[topo].drop); }
    这不只是正确性：原始 vs 交付的同屏对比本身就是"网络在挤压交付"的证据。 */
 function mkOff(){ const c=document.createElement("canvas"); return {c:c, x:c.getContext("2d")}; }
 const offT=mkOff(), offP=mkOff();          // 小窗与大画面各自离屏，避免每帧来回改尺寸
-function paint(cv,v,now,slot,W,o,pristine){
-  if(!pristine){
+function paint(cv,v,now,slot,W,o,pristine,qualityIndex,force=false){
+  if(!pristine && !force){
+    const minFrameMs = 1000/DELIVERY[topo].fps;
+    /* 使用累积 deadline，而不是 now-last >= 33.333 的硬比较。60Hz 的 RAF 常落在
+       33.2ms，硬比较会再错过一拍，把标称 30fps 实际压成约 20fps。 */
+    const due = slot.next || now;
+    if(now+1 < due) return false;
+    slot.next = due + minFrameMs;
+    if(slot.next < now-minFrameMs) slot.next = now+minFrameMs;
     if(Math.random()<effDrop()) return false;
     const jit=effJit();
     if(jit && now-slot.last < Math.random()*jit) return false;
   }
   if(!v.videoWidth) return false;
-  const sc=pristine ? 1 : LADDER[actualQ].sc;
+  const sc=pristine ? 1 : LADDER[qualityIndex].sc;
   const H=Math.round(W*v.videoHeight/v.videoWidth);
   if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
   const sw=Math.max(20,Math.round(W*sc)), sh=Math.max(20,Math.round(H*sc));
@@ -1067,6 +1553,178 @@ function paint(cv,v,now,slot,W,o,pristine){
    jit>0 时大画面会整个冻住而不是卡顿。 */
 const pgmSlot={last:0};
 let tileTick=0, bgTick=0;
+function primeProgramFrame(i){
+  const t=tiles[i];
+  if(!live || !t || !t.ok || !t.vd.videoWidth) return false;
+  pgmSlot.last=0; pgmSlot.next=0;
+  const now=performance.now();
+  const painted=paint($("pgmCv"),t.vd,now,pgmSlot,360,offP,i===0,qualityFor(i),true);
+  if(painted){
+    const sc=$("pgmCv"), bg=$("pgmBg");
+    if(bg.width!==sc.width||bg.height!==sc.height){bg.width=sc.width;bg.height=sc.height;}
+    bg.getContext("2d").drawImage(sc,0,0);
+    bgTick=now;
+  }
+  return painted;
+}
+
+/* Future Experience V2：优先使用 AI 多机位关键帧，失败时回退到已解码 PROGRAM */
+function futureMediaSource(){
+  const program=$("pgmCv"), frame=document.querySelector(".pgm-frame");
+  if(live&&frame&&frame.classList.contains("rd")&&program.width&&program.height) return program;
+  const tile=tiles[pgm], img=tile&&tile.el.querySelector("img");
+  return img&&img.complete&&img.naturalWidth ? img : null;
+}
+function sourceSize(source){
+  return {w:source.videoWidth||source.naturalWidth||source.width||0,
+          h:source.videoHeight||source.naturalHeight||source.height||0};
+}
+function coverRect(sw,sh,dw,dh){
+  const scale=Math.max(dw/sw,dh/sh), w=dw/scale, h=dh/scale;
+  return {sx:(sw-w)/2,sy:(sh-h)/2,sw:w,sh:h};
+}
+function drawFutureFallback(){
+  const canvas=$("futureFallbackCanvas"),source=futureMediaSource();
+  if(!canvas||!source) return;
+  const rect=canvas.getBoundingClientRect();
+  if(rect.width<2||rect.height<2) return;
+  const dpr=Math.min(window.devicePixelRatio||1,1.5), W=Math.round(rect.width*dpr), H=Math.round(rect.height*dpr);
+  if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;}
+  const {w:sw,h:sh}=sourceSize(source); if(!sw||!sh) return;
+  const c=canvas.getContext("2d"); c.clearRect(0,0,W,H); c.fillStyle="#02040A"; c.fillRect(0,0,W,H);
+  const crop=coverRect(sw,sh,W,H);
+  c.drawImage(source,crop.sx,crop.sy,crop.sw,crop.sh,0,0,W,H);
+}
+function futureSnapshot(){
+  if(futureMode==="spatial") return {streams:null,demand:null};
+  return futureDelivery==="all" ? {streams:9,demand:55.44} : {streams:3,demand:18.48};
+}
+function setFutureAngle(value){
+  futureAngle=clamp(Math.round(Number(value)||0),-30,30);
+  $("futureAngle").value=String(futureAngle);
+  $("futureAngleValue").textContent=(futureAngle>0?"+":"")+futureAngle+"°";
+  $("futurePlane").style.setProperty("--angle",futureAngle+"deg");
+  $("futureScene").style.setProperty("--spatial-pan",(futureAngle/30).toFixed(3));
+}
+function showFutureAsset(animate){
+  const asset=FUTURE_ASSETS[futureView],main=$("futureMainImage"),prev=$("futureMainPrev"),frame=$("futureFrame"),fallback=$("futureFallbackCanvas");
+  if(!asset)return;
+  clearTimeout(futureSwitchTimer);
+  if(animate&&main.src){prev.src=main.currentSrc||main.src;frame.classList.remove("is-switching");void frame.offsetWidth;frame.classList.add("is-switching");}
+  main.onerror=()=>{main.hidden=true;fallback.hidden=false;$("futureFrameState").textContent="同源回退 / 概念";drawFutureFallback();};
+  main.onload=()=>{main.hidden=false;fallback.hidden=true;$("futureFrameState").textContent="AI 关键帧 / 概念";};
+  main.alt="AI 生成的"+asset.title+"概念画面";main.src=asset.src;
+  if(main.complete&&main.naturalWidth){main.hidden=false;fallback.hidden=true;}
+  $("futureFrameTitle").textContent=asset.title;$("futureFrameTask").textContent=asset.task;$("futureFrameDesc").textContent=asset.desc;
+  futureSwitchTimer=setTimeout(()=>frame.classList.remove("is-switching"),420);
+}
+function renderFutureRoutes(){
+  const viewport=futureDelivery==="viewport",protectedMode=qod&&qodAvailable();
+  document.querySelectorAll(".future-route").forEach(route=>{
+    route.className="future-route";
+    if(!viewport){route.classList.add("active","warn","all");return;}
+    if(route.dataset.col!==futureView)return;
+    const row=Number(route.dataset.row);route.classList.add("active");
+    if(protectedMode&&row<2)route.classList.add("vip");else route.classList.add("best");
+  });
+  $("futureMatrixHint").textContent=viewport?"每个市场只保留当前视角":"九路持续编码";
+}
+function renderFuture(){
+  const multi=futureMode==="multi";
+  $("futureMulti").hidden=!multi; $("futureSpatial").hidden=multi;
+  $("futureMultiTab").setAttribute("aria-selected",String(multi));
+  $("futureSpatialTab").setAttribute("aria-selected",String(!multi));
+  $("futureMultiTab").tabIndex=multi?0:-1; $("futureSpatialTab").tabIndex=multi?-1:0;
+  $("futurePolicies").hidden=!multi; $("futureMatrixWrap").hidden=!multi; $("futureSpatialPolicy").hidden=multi;
+  document.querySelectorAll("[data-future-policy]").forEach(button=>
+    button.setAttribute("aria-pressed",String(button.dataset.futurePolicy===futureDelivery)));
+  document.querySelectorAll("[data-future-view]").forEach(button=>{
+    const selected=button.dataset.futureView===futureView;
+    button.classList.toggle("is-primary",selected);button.classList.toggle("is-sleeping",multi&&futureDelivery==="viewport"&&!selected);
+    button.setAttribute("aria-pressed",String(selected));
+  });
+  const demandWrap=$("futureDemandWrap"); demandWrap.className="future-demand";
+  if(multi){
+    const viewport=futureDelivery==="viewport",snapshot=futureSnapshot(),budget=capEffective(),gap=budget-snapshot.demand;
+    $("futureNarrativeLabel").textContent=viewport?"当前视角优先":"全量同步";
+    $("futureStoryTitle").textContent=viewport?"只交付正在看的镜位":"一个现场，九路交付";
+    $("futureStoryCopy").textContent=viewport?"Edge 为每个市场生成当前视角，未选镜位进入待命。":"三个市场同时获得三个镜位，语言数量与视图数量相乘。";
+    $("futureScale").textContent="3语言 × 3视图";
+    $("futureStreams").textContent=snapshot.streams+" 路概念流";
+    $("futureDemand").textContent=snapshot.demand.toFixed(2);
+    $("futureDemandUnit").textContent="Mbps 目标需求";
+    $("futureBudget").textContent=budget.toFixed(2)+" Mbps";$("futureGap").textContent=(gap>=0?"+":"")+gap.toFixed(2)+" Mbps";
+    $("futureGap").style.color=gap>=0?"var(--ok)":"var(--warn)";
+    $("futureStatus").textContent=viewport
+      ? (qod&&qodAvailable()?"当前 15M QoD 模型仍只保障两路 VIP 1080P，一路 Best Effort 480P。":"当前视口已减少六路常驻交付，但仍受现有网络预算约束。")
+      : "所有镜位持续编码和交付，目标需求显著超出当前网络预算。";
+    $("futureFrameNeed").textContent=snapshot.demand.toFixed(2)+"M";$("futureFrameNetwork").textContent=viewport?"当前视角目标需求":"全量同步目标需求";
+    if(viewport) demandWrap.classList.add("focus");
+    renderFutureRoutes();
+  }else{
+    $("futureNarrativeLabel").textContent="视口自适应";$("futureStoryTitle").textContent="空间资产只交付当前观察区域";
+    $("futureStoryCopy").textContent="Edge 根据观察方向完成视口渲染，QoD 优先保障画面、声音和控制。";
+    $("futureScale").textContent="自由视点"; $("futureStreams").textContent="负载随场景变化";
+    $("futureDemand").textContent="场景相关"; $("futureDemandUnit").textContent="按视口自适应";
+    $("futureStatus").textContent="真实负载取决于空间资产、编码方式和交互范围，因此不展示虚构固定码率。";
+    demandWrap.classList.add("focus");
+  }
+  setFutureAngle(futureAngle);
+}
+function setFutureSiblingsInert(inert){
+  const shell=$("futureShell");
+  [...shell.parentElement.children].forEach(el=>{if(el!==shell) el.inert=inert;});
+}
+function openFuture(){
+  if(futureOpen) return;
+  futureOpen=true; futureReturnFocus=document.activeElement;
+  $("evidence").hidden=true; $("evToggle").setAttribute("aria-expanded","false");
+  const shell=$("futureShell"); shell.hidden=false; document.body.classList.add("future-open");
+  setFutureSiblingsInert(true); renderFuture();showFutureAsset(false);
+  requestAnimationFrame(()=>shell.classList.add("open"));
+  setTimeout(()=>$("futureClose").focus(),40);
+}
+function closeFuture(){
+  if(!futureOpen) return;
+  futureOpen=false; const shell=$("futureShell"); shell.classList.remove("open");
+  document.body.classList.remove("future-open"); setFutureSiblingsInert(false);
+  setTimeout(()=>{if(!futureOpen)shell.hidden=true;},190);
+  const target=futureReturnFocus; futureReturnFocus=null;
+  if(target&&typeof target.focus==="function") setTimeout(()=>target.focus(),0);
+}
+function trapFutureFocus(event){
+  if(event.key!=="Tab") return;
+  const focusable=[...$("futureDialog").querySelectorAll("button,input")]
+    .filter(el=>!el.disabled&&!el.hidden&&el.offsetParent!==null);
+  if(!focusable.length) return;
+  const first=focusable[0],last=focusable[focusable.length-1];
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+}
+
+$("futureOpen").onclick=openFuture; $("futureClose").onclick=closeFuture;
+$("futureMultiTab").onclick=()=>{futureMode="multi";renderFuture();};
+$("futureSpatialTab").onclick=()=>{futureMode="spatial";renderFuture();};
+document.querySelectorAll("[data-future-view]").forEach(button=>button.onclick=()=>{
+  if(futureView===button.dataset.futureView)return;futureView=button.dataset.futureView;showFutureAsset(true);renderFuture();
+});
+document.querySelectorAll("[data-future-policy]").forEach(button=>button.onclick=()=>{
+  futureDelivery=button.dataset.futurePolicy;renderFuture();
+});
+$("futureAngle").oninput=event=>setFutureAngle(event.target.value);
+$("futureDialog").addEventListener("keydown",trapFutureFocus);
+$("futureShell").addEventListener("click",event=>{if(event.target===$("futureShell"))closeFuture();});
+{
+  const scene=$("futureScene"); let dragging=false,startX=0,startAngle=0;
+  scene.addEventListener("pointerdown",event=>{
+    if(event.target.closest("input")) return;
+    dragging=true;startX=event.clientX;startAngle=futureAngle;scene.setPointerCapture(event.pointerId);
+  });
+  scene.addEventListener("pointermove",event=>{
+    if(!dragging)return;setFutureAngle(startAngle+(event.clientX-startX)*.12);
+  });
+  const end=()=>{dragging=false;}; scene.addEventListener("pointerup",end);scene.addEventListener("pointercancel",end);
+}
 requestAnimationFrame(function loop(now){
   if(live){
     const doTiles = now-tileTick >= 80;    // 小窗是监看画面，12fps 足够
@@ -1074,8 +1732,8 @@ requestAnimationFrame(function loop(now){
     tiles.forEach((t,i)=>{
       if(!t.ok||t.el.classList.contains("off")) return;
       const pristine = i===0;            // CAM=本地采集，见上
-      if(doTiles) paint(t.cv,t.vd,now,t,180,offT,pristine);
-      if(i===pgm && paint($("pgmCv"),t.vd,now,pgmSlot,360,offP,pristine) && now-bgTick>=160){
+      if(doTiles) paint(t.cv,t.vd,now,t,180,offT,pristine,qualityFor(i));
+      if(i===pgm && paint($("pgmCv"),t.vd,now,pgmSlot,360,offP,pristine,qualityFor(i)) && now-bgTick>=160){
         bgTick = now;                      // 垫底虚化是 blur(34px)，每帧重算极贵且看不出
         const sc2=$("pgmCv"), bg=$("pgmBg");
         if(bg.width!==sc2.width||bg.height!==sc2.height){bg.width=sc2.width;bg.height=sc2.height;}
@@ -1100,8 +1758,13 @@ setInterval(()=>{
     });
   });
 },140);
-setInterval(()=>{ if(!live)return; const t=tiles[pgm]; if(!t.cfg.subs)return;
-  t.si=(t.si+1)%t.cfg.subs.length; $("pgmCC").textContent=t.cfg.subs[t.si]; },4600);
+setInterval(()=>{
+  if(!live||!subsOn)return;
+  const t=tiles[pgm], lines=t.cfg.subs;
+  if(!lines||!t.vd.duration)return;
+  const i=Math.min(lines.length-1,Math.floor((t.vd.currentTime/t.vd.duration)*lines.length));
+  if(i!==t.si){t.si=i;$("pgmCC").textContent=lines[i];}
+},250);
 
 /* ── 评论（跟随播出语言；网络差则变慢） ── */
 const HUE=["#5B9DFF","#FF7A8A","#31E08A","#FFB534","#8F72FF"];
@@ -1118,7 +1781,7 @@ setInterval(()=>{
   cmtN++;
 },1300);
 
-renderTopo(); renderQod(); renderChans(); renderQ(); renderSubs(); dests(); renderPlat(); setPgm(1); recompute();
+renderTopo(); renderQod(); renderChans(); renderQ(); renderSubs(); dests(); renderPlat(); setPgm(0); recompute();
 
 /* ── 证据抽屉：默认收起，评委质疑真实性时展开 ── */
 $("evToggle").onclick = ()=>{
@@ -1133,12 +1796,18 @@ window.__demo = {
     return {
       topo, qod, qodAvailable: qodAvailable(), live,
       quality: LADDER[actualQ].id,
+      channelQualities: actualQByChannel.map((q,i)=>i===0?"LOCAL":LADDER[q].id),
+      priorityChannel: priorityChannel(),
+      deliveryFps: deliveryFps(),
+      deliveryMode: pgm===0 ? "local" : (deliveryFps()>=24 ? "smooth" : deliveryFps()>=12 ? "limited" : "stalled"),
       cap: +capEffective().toFixed(2),
       uplinkNeed: +uplinkNeedMbps().toFixed(2),
       uplinkReal: +uplinkRealMbps().toFixed(2),
       gap:  +(capEffective() - uplinkNeedMbps()).toFixed(2),
       head: +(capEffective() - uplinkRealMbps()).toFixed(2),
-      e2e: e2eMs(), av: avSkewMs()
+      sourceLag: sourceLagMs(), actualMediaLag: actualMediaLagMs(), e2e: e2eMs(), av: avSkewMs(),
+      futureOpen, futureMode, futureDelivery, futureView, futureAngle,
+      futureStreams: futureSnapshot().streams, futureDemand: futureSnapshot().demand
     };
   }
 };

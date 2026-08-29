@@ -20,11 +20,12 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
   await page.locator('#go').click();
   await page.waitForFunction(() => document.body.classList.contains('live'));
   await page.waitForTimeout(1500);
+  expect((await state(page)).sourceLag).toBe(2500);
   await shot(page, '1-live');
 
   // 2 本地化深度
-  // PROGRAM 默认就是 CH1（pgm=1），直接点 nth(1) 是个空操作：即使切频道整个坏掉，
-  // 下面的三行断言也照样通过。先绕道 CH2 再切回来，让这一步真的验证一次切换。
+  // PROGRAM 默认从中文原流开始。先切 CH2 再切 CH1，让这一步同时验证跨频道切换
+  // 和「中文输入 → 多语言生成」的叙事起点。
   const pgmLang = page.locator('#pgmLang');
   await page.locator('#mv .tile').nth(2).click();
   await expect(pgmLang).toHaveText(/西/);
@@ -33,7 +34,13 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
   await expect(page.locator('#pgmSide .lz-row')).toHaveCount(3);
   await shot(page, '2-localized');
 
-  // 3 拧网络
+  // 3 先看纯高时延：画质与帧率不变，整路内容更晚；再看拥塞造成降码和卡顿。
+  await page.locator('#netList button').nth(1).click();
+  let s = await state(page);
+  expect(s.quality).toBe('1080P');
+  expect(s.sourceLag).toBe(3965);
+  expect(s.deliveryFps).toBe(30);
+  await shot(page, '3-high-latency');
   await page.locator('#netList button').nth(2).click();
   await expect(page.locator('#abr')).toBeVisible();
   await shot(page, '3-congested');
@@ -41,17 +48,24 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
 
   // 4 切拓扑
   await page.locator('#topoCtl button[data-topo="edge"]').click();
-  let s = await state(page);
+  s = await state(page);
   expect(s.gap).toBeCloseTo(-10.23, 2);
   expect(s.quality).toBe('480P');
-  expect(s.av).toBe(40);
+  expect(s.channelQualities).toEqual(['LOCAL', '480P', '480P', '480P']);
+  expect(s.av).toBe(0);
+  expect(s.sourceLag).toBe(180);
+  expect(s.deliveryMode).toBe('smooth');
+  await expect(page.locator('#pgmMotion')).toHaveText('流畅交付 · 30fps');
   await shot(page, '4-edge');
 
   // 5 开 QoD
   await page.locator('#qodCtl').click();
   s = await state(page);
   expect(s.quality).toBe('1080P');
-  expect(s.gap).toBeCloseTo(3.52, 2);
+  expect(s.channelQualities).toEqual(['LOCAL', '1080P', '1080P', '480P']);
+  expect(s.cap).toBeCloseTo(15, 2);
+  expect(s.uplinkReal).toBeCloseTo(13.68, 2);
+  expect(s.deliveryMode).toBe('smooth');
   await shot(page, '5-qod');
 
   // 6 加平台（先全关再逐个开，验证出口线性增长）
