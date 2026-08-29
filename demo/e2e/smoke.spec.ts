@@ -12,6 +12,11 @@ test('演示台加载出四个监看窗与测试钩子', async ({ page }) => {
   expect(s.topo).toBe('cloud');
   expect(s.qod).toBe(false);
   expect(s.live).toBe(false);
+  await expect(page.locator('#pgmLang')).toHaveText('原始中文');
+  await expect(page.locator('#pgmPh')).toHaveAttribute('src', 'assets/original-zh.jpg');
+  await expect(page.locator('#bootProgress')).toHaveAttribute('aria-valuenow', '4');
+  await expect(page.locator('#bootShell')).toHaveClass(/done/);
+  await expect(page.locator('#go')).toBeEnabled();
   expect(errors).toEqual([]);
 
   // 交叉校验：#bwUp 由 recompute() 的内联算式写入，s.uplinkReal 由新助手算出。
@@ -29,14 +34,48 @@ test('四路监看指向新素材且标签为三市场', async ({ page }) => {
     els.map((el) => (el as HTMLVideoElement).getAttribute('src')),
   );
   expect(srcs).toEqual([
-    'assets/original-zh.mp4',
-    'assets/japan-ja.mp4',
-    'assets/latam-es.mp4',
-    'assets/india-en.mp4',
+    'assets/original-zh-demo.mp4',
+    'assets/japan-ja-demo.mp4',
+    'assets/latam-es-demo.mp4',
+    'assets/india-en-demo.mp4',
   ]);
+
+  await page.locator('#go').click();
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>('#mv video')]
+    .every((video) => video.duration === 15 && !video.paused));
+  expect(await page.locator('#mv video').evaluateAll((els) =>
+    els.map((el) => (el as HTMLVideoElement).muted),
+  )).toEqual([false, true, true, true]);
 
   const labels = await page.locator('#mv .tile-l').allTextContents();
   expect(labels).toEqual(['原始中文', '日本 · 日语', '拉美 · 西语', '印度 · 英语']);
+});
+
+test('左栏状态灯随链路和 QoD 分配显示稳定、波动与受限', async ({ page }) => {
+  await openDemo(page);
+  await page.locator('#go').click();
+  await page.waitForFunction(() => document.body.classList.contains('live'));
+
+  const channels = page.locator('#chCtl .ctl');
+  await expect(channels).toHaveCount(3);
+  await expect(channels.nth(0)).toHaveAttribute('data-health', 'ok');
+  await expect(channels.nth(0).locator('.cq')).toHaveText('稳定');
+
+  await page.locator('#netList button').nth(1).click();
+  await expect(channels.nth(0)).toHaveAttribute('data-health', 'warn');
+  await expect(channels.nth(0).locator('.cq')).toHaveText('波动');
+
+  await page.locator('#netList button').nth(3).click();
+  await expect(channels.nth(0)).toHaveAttribute('data-health', 'crit');
+  await expect(channels.nth(0).locator('.cq')).toHaveText('受限');
+
+  await page.locator('#netList button').nth(0).click();
+  await page.locator('#topoCtl button[data-topo="edge"]').click();
+  await page.locator('#qodCtl').click();
+  await expect(channels.nth(0)).toHaveAttribute('data-health', 'ok');
+  await expect(channels.nth(1)).toHaveAttribute('data-health', 'ok');
+  await expect(channels.nth(2)).toHaveAttribute('data-health', 'warn');
+  await expect(channels.nth(2).locator('.cq')).toHaveText('波动');
 });
 
 test('监看窗与播出画面均为 9:16 竖屏且首屏不横向溢出', async ({ page }) => {
@@ -197,7 +236,7 @@ test('顶栏标注能力边界，右栏按平台列出口流量', async ({ page 
   const caps = page.locator('#capBar .capcell');
   await expect(caps).toHaveCount(4);
   await expect(caps.nth(0)).toContainText('输入');
-  await expect(caps.nth(0)).toContainText('预生成素材');
+  await expect(caps.nth(0)).toContainText('预生成同步母版');
   await expect(caps.nth(3)).toContainText('QoD');
 
   await page.locator('#go').click();
@@ -223,7 +262,7 @@ test('证据抽屉默认收起，展开后列出可追溯实测', async ({ page 
 });
 
 test('任何桌面宽度下拓扑开关都必须可点', async ({ page }) => {
-  // 演示第 4 步的转折点全靠「端侧生成」。曾有 @media(max-width:1280px){.rail{display:none}}
+  // 演示第 4 步要切到「近端生成」。曾有 @media(max-width:1280px){.rail{display:none}}
   // 在 1280px 投影仪上把整个左栏隐藏，动线直接断掉，而当时没有任何测试覆盖到。
   for (const [width, height] of [
     [1920, 1080],
@@ -238,9 +277,9 @@ test('任何桌面宽度下拓扑开关都必须可点', async ({ page }) => {
     await openDemo(page);
 
     const edge = page.locator('#topoCtl button[data-topo="edge"]');
-    await expect(edge, `${width}x${height} 端侧生成按钮应可见`).toBeVisible();
+    await expect(edge, `${width}x${height} 近端生成按钮应可见`).toBeVisible();
     await edge.click();
-    expect((await state(page)).topo, `${width}x${height} 点击后应切到端侧`).toBe('edge');
+    expect((await state(page)).topo, `${width}x${height} 点击后应切到近端`).toBe('edge');
 
     const hOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

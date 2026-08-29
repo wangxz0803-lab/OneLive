@@ -9,13 +9,26 @@ export interface DemoState {
   qodAvailable: boolean;
   live: boolean;
   quality: string;
+  channelQualities: string[];
+  priorityChannel: number;
+  deliveryFps: number;
+  deliveryMode: 'local' | 'smooth' | 'limited' | 'stalled';
   cap: number;
   uplinkNeed: number;
   uplinkReal: number;
   gap: number;
   head: number;
+  sourceLag: number;
+  actualMediaLag: number;
   e2e: number;
   av: number;
+  futureOpen: boolean;
+  futureMode: 'multi' | 'spatial';
+  futureDelivery: 'all' | 'viewport';
+  futureView: 'front' | 'side' | 'overhead';
+  futureAngle: number;
+  futureStreams: number | null;
+  futureDemand: number | null;
 }
 
 export async function openDemo(page: Page): Promise<void> {
