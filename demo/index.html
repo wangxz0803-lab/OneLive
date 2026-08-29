@@ -1416,7 +1416,7 @@ function recompute(){
   $("abr").hidden = !abr || !live;
   if(abr) $("abrTxt").textContent = qod
     ? `15.00 Mbps 保障预算优先承载两路 VIP 1080P；其余 Best Effort 使用剩余资源`
-    : `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出当前可用预算 ${cap.toFixed(2)} Mbps，三路公平降至 ${q.id}`;
+    : `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出当前可用预算 ${cap.toFixed(2)} Mbps，三路公平降至 ${LADDER[qualityFor(active[0])].id}`;
   $("pgmRes").textContent = q.id;
   renderDeliveryState();
   $("qNow").textContent = q.id;
