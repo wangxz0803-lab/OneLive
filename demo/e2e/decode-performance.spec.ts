@@ -11,6 +11,7 @@ test('近端路径必须持续取得真实新媒体帧，不能只重复绘制�
   await page.locator('#topoCtl button[data-topo="edge"]').click();
   await page.locator('#netList button').nth(0).click();
   await page.locator('#mv .tile').nth(1).click();
+  await page.waitForFunction(() => !document.body.classList.contains('media-syncing'));
   await page.waitForTimeout(500);
 
   const result = await page.evaluate(async () => {

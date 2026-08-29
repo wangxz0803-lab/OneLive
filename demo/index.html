@@ -152,6 +152,9 @@ body.live .golive{background:linear-gradient(150deg,rgba(255,255,255,.11),rgba(2
 .pgm-frame::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
   background:linear-gradient(180deg,rgba(0,0,0,.5),transparent 20%,transparent 56%,rgba(0,0,0,.78)),
              repeating-linear-gradient(180deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px)}
+body.media-syncing .pgm-frame::before{content:"正在同步媒体路径";position:absolute;inset:0;z-index:7;
+  display:grid;place-items:center;padding-top:44px;color:#dffbff;font:600 11px/1 var(--mono);letter-spacing:.12em;
+  background:rgba(3,9,15,.52);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 body.live .pgm-frame{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--live) 45%,transparent),
   0 0 46px -16px var(--live)}
 .pgm-tally{position:absolute;top:11px;left:12px;z-index:5;display:flex;gap:8px;align-items:center;
@@ -1081,10 +1084,14 @@ function renderFlow(){
    CAM 是本地时钟；云端返回的三路整体落后，近端三路接近本地。部署路径与网络 RTT
    都真正作用于 video.currentTime，而不是只改面板数字。四个素材统一为 15s 周期。 */
 const wrapTime=(v,d)=>((v%d)+d)%d;
-// 浏览器在多路本地 MP4 上的 currentTime 采样会有约百毫秒抖动。
-// 低于此范围用 playbackRate 追帧，高于此范围直接提交目标帧，
-// 确保演示中的“整路交付滞后”不会漂移成音画/多路不同步。
-const MEDIA_SYNC_SNAP_S = 0.12;
+// 多路本地 MP4 的 currentTime 采样会有约百毫秒抖动，seek 本身又需要重新解码关键帧。
+// 过窄的硬对齐阈值会让 200ms 校时器持续写 currentTime，把 30fps 视频压成约 5fps。
+// 只有显著漂移才硬 seek；稳定阶段用很小的 playbackRate 差异缓慢牵引。
+const MEDIA_SYNC_SNAP_S = 0.75;
+const MEDIA_SYNC_RATE_DEADBAND_S = 0.025;
+const MEDIA_SYNC_RATE_GAIN = 0.35;
+const MEDIA_SYNC_MAX_RATE_DELTA = 0.05;
+const MEDIA_SYNC_CHECK_MS = 500;
 function circularDelta(target,current,duration){
   let delta=target-current;
   if(delta> duration/2) delta-=duration;
@@ -1096,7 +1103,7 @@ function alignGeneratedMedia(force=false,only=null){
   const master=tiles[0].vd;
   (only===null?[1,2,3]:[only]).forEach(i=>{
     const v=tiles[i].vd;
-    if(!chActive(i) || !v.duration || v.seeking) return;
+    if(!chActive(i) || !v.duration || (v.seeking && !force)) return;
     const target=wrapTime(master.currentTime-sourceLagMs()/1000,v.duration);
     const delta=circularDelta(target,v.currentTime,v.duration);
     if(force || Math.abs(delta)>MEDIA_SYNC_SNAP_S){
@@ -1105,7 +1112,9 @@ function alignGeneratedMedia(force=false,only=null){
       return;
     }
     // 只牵引整路复用媒体，音频和画面一起变化。小偏差用缓慢追帧，避免频繁 seek 拖垮解码。
-    v.playbackRate=Math.abs(delta)<.03 ? 1 : 1+clamp(delta*.20,-.05,.05);
+    v.playbackRate=Math.abs(delta)<MEDIA_SYNC_RATE_DEADBAND_S
+      ? 1
+      : 1+clamp(delta*MEDIA_SYNC_RATE_GAIN,-MEDIA_SYNC_MAX_RATE_DELTA,MEDIA_SYNC_MAX_RATE_DELTA);
   });
 }
 function actualMediaLagMs(i=pgm){
@@ -1113,9 +1122,42 @@ function actualMediaLagMs(i=pgm){
   const v=tiles[i].vd, master=tiles[0].vd;
   return Math.round(circularDelta(master.currentTime,v.currentTime,v.duration)*1000);
 }
-// 15 秒循环边界会让浏览器短暂经历 loop/seek 状态；200ms 扫描既能
-// 把边界误差压回可接受范围，也不会像逐帧校正那样制造额外 seek。
-setInterval(()=>alignGeneratedMedia(false),200);
+// 四路素材时长一致，循环边界通常可自然保持偏移；低频校时只负责消除长期漂移。
+// 硬对齐仍由开始直播、部署路径、网络档位和频道恢复等显式事件立即触发。
+setInterval(()=>alignGeneratedMedia(false),MEDIA_SYNC_CHECK_MS);
+
+let mediaTransitionEpoch=0;
+function waitForMediaSeek(v,timeout=1200){
+  if(!v.seeking && v.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA) return Promise.resolve();
+  return new Promise(resolve=>{
+    let timer;
+    const done=()=>{
+      clearTimeout(timer);
+      v.removeEventListener("seeked",done);
+      v.removeEventListener("loadeddata",done);
+      resolve();
+    };
+    v.addEventListener("seeked",done);
+    v.addEventListener("loadeddata",done);
+    timer=setTimeout(done,timeout);
+  });
+}
+async function synchronizeMediaTransition(){
+  if(!live) return;
+  const epoch=++mediaTransitionEpoch;
+  const active=tiles.filter((_,i)=>chActive(i));
+  document.body.classList.add("media-syncing");
+  active.forEach(t=>{t.vd.pause();t.vd.muted=true;t.vd.volume=0;t.vd.playbackRate=1;});
+  alignGeneratedMedia(true);
+  await Promise.all(active.map(t=>waitForMediaSeek(t.vd)));
+  if(epoch!==mediaTransitionEpoch || !live) return;
+  await Promise.all(active.map(t=>t.vd.play().then(()=>t.el.classList.add("rd")).catch(()=>{
+    t.num.textContent="点击重试";
+  })));
+  if(epoch!==mediaTransitionEpoch || !live) return;
+  routeProgramAudio(-1,pgm,false);
+  document.body.classList.remove("media-syncing");
+}
 
 let audioFadeEpoch=0;
 function routeProgramAudio(from,to,fade=true){
@@ -1180,7 +1222,7 @@ $("topoCtl").querySelectorAll("button").forEach(b=>{
     topo=b.dataset.topo;
     if(!qodAvailable()) qod=false;
     resetDeliveryClock(); renderTopo(); renderQod(); recompute();
-    if(live) alignGeneratedMedia(true);
+    if(live) void synchronizeMediaTransition();
   };
 });
 
@@ -1221,17 +1263,17 @@ function renderChans(){
     h.appendChild(b);
   });
 }
-function syncTiles(){
+function syncTiles(playMedia=true){
   tiles.forEach((t,i)=>{
     const act = chActive(i) && live;
     t.el.classList.toggle("off", !act);
     t.el.classList.toggle("dis", !chActive(i));
-    if(act){
+    if(act&&playMedia){
       // play() 本身会启动尚未完成的预加载；不能等待 loadeddata 才调用，否则慢设备会卡在元数据状态。
       if(t.vd.readyState===0) t.vd.load();
       t.vd.play().then(()=>t.el.classList.add("rd")).catch(()=>t.num.textContent="点击重试");
     }
-    else { t.vd.pause(); t.el.classList.remove("rd","air"); }
+    else if(!act) { t.vd.pause(); t.el.classList.remove("rd","air"); }
   });
   if(live) tiles[pgm] && tiles[pgm].el.classList.add("air");
   // 小窗数字标签由 renderFlow() 写，而它读的是 .off——开播时 recompute() 跑在
@@ -1304,7 +1346,7 @@ NETS.forEach(n=>{
     <span class="ns">容量 ${n.cap} Mbps<br>${n.rtt}ms · 丢包 ${n.loss}%</span>`;
   b.onclick=()=>{ const changed=net.id!==n.id; net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
     document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute();
-    if(live&&changed) alignGeneratedMedia(true); };
+    if(live&&changed) void synchronizeMediaTransition(); };
   $("netList").appendChild(b);
 });
 
@@ -1463,13 +1505,13 @@ function start(){
   live=true; t0=Date.now(); cmtN=0;
   document.body.classList.add("live");
   $("go").textContent="结束直播"; $("tState").textContent="直播中";
-  tiles.forEach(t=>{t.vd.muted=true;t.vd.volume=0;t.vd.playbackRate=1;});
+  tiles.forEach(t=>{t.vd.pause();t.vd.muted=true;t.vd.volume=0;t.vd.playbackRate=1;});
   if(tiles[0].vd.duration) tiles[0].vd.currentTime=Math.min(2.4,tiles[0].vd.duration-.2);
-  alignGeneratedMedia(true);
-  syncTiles(); dests(); renderPlat(); recompute(); setPgm(pgm);
+  syncTiles(false); dests(); renderPlat(); recompute(); setPgm(pgm);
+  void synchronizeMediaTransition();
 }
 function stop(){
-  live=false; document.body.classList.remove("live");
+  live=false; mediaTransitionEpoch++; document.body.classList.remove("live","media-syncing");
   $("go").textContent="开始直播"; $("tState").textContent="已结束";
   syncTiles(); document.querySelector(".pgm-frame").classList.remove("rd");
   $("abr").hidden=true;
@@ -1488,7 +1530,7 @@ addEventListener("keydown",e=>{
   const n=NETS.find(x=>String(x.id)===e.key);
   if(n){ const changed=net.id!==n.id; net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
          document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute();
-         if(live&&changed) alignGeneratedMedia(true); }
+         if(live&&changed) void synchronizeMediaTransition(); }
   const k={q:1,w:2,e:3}[e.key.toLowerCase()]; if(k!==undefined&&live) setPgm(k);
 });
 
