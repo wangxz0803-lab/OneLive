@@ -31,6 +31,29 @@ test('云端返回流真实落后本地 2500ms，切近端后收敛到 180ms', a
   }).toBeLessThan(90);
 });
 
+test('部署路径切换必须覆盖尚未完成的旧媒体 seek', async ({ page }) => {
+  await openDemo(page);
+  await goLive(page);
+  await page.locator('#mv .tile').nth(1).click();
+
+  // 同一事件循环内先制造一个尚未完成的旧 seek，再切换近端路径。
+  // 旧实现会因为 video.seeking 而丢弃新目标，500ms 后才补一次约 2.5 秒跳转。
+  await page.evaluate(() => {
+    const runtime = window as unknown as { __seekEvents: number };
+    const video = document.querySelectorAll<HTMLVideoElement>('#mv video')[1];
+    runtime.__seekEvents = 0;
+    video.addEventListener('seeking', () => runtime.__seekEvents++);
+    video.currentTime = video.duration - 0.01;
+    (document.querySelector('#topoCtl button[data-topo="edge"]') as HTMLButtonElement).click();
+  });
+
+  await page.waitForTimeout(1200);
+  // 一次来自测试制造的旧目标，一次来自用户最新选择；后台校时不得再追加第三次 seek。
+  expect(await page.evaluate(() => (window as unknown as { __seekEvents: number }).__seekEvents)).toBe(2);
+  await expect.poll(async () => Math.abs((await state(page)).actualMediaLag - 180))
+    .toBeLessThan(90);
+});
+
 test('高时延保持 1080P 和 30fps，只增加整路交付滞后', async ({ page }) => {
   await openDemo(page);
   await goLive(page);

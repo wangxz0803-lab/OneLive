@@ -1,4 +1,6 @@
-# OneLive Future Experience V2 设计稿
+# OneLive Future Experience V2 设计稿（已由V3替代）
+
+> 当前实现请以 `docs/FUTURE_EXPERIENCE_V3.md` 为准。本文件仅保留用于追踪旧版多视图 / 2.5D方案。
 
 ## 1. 为什么重做
 

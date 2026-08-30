@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openDemo, state } from './helpers';
 
-test('未来体验独立打开且不重载主直播媒体', async ({ page }) => {
+test('未来体验打开后暂停后台解码且关闭后无重载恢复主演示', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   await openDemo(page);
@@ -19,96 +19,165 @@ test('未来体验独立打开且不重载主直播媒体', async ({ page }) => 
       });
     }
   });
-  const before = await page.locator('#mv video').evaluateAll((videos) =>
-    videos.map((video) => (video as HTMLVideoElement).currentTime));
-
   await page.locator('#futureOpen').click();
   await expect(page.locator('#futureDialog')).toBeVisible();
-  await page.waitForTimeout(450);
+  await expect(page.locator('#futureProduction')).toBeVisible();
+  await page.waitForFunction(() => {
+    const video = document.querySelector<HTMLVideoElement>('#futureOrbitVideo');
+    return !!video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+  });
+  await page.waitForFunction(() => (window as unknown as { __demo: { state(): { future3dReady: boolean } } }).__demo.state().future3dReady,
+    undefined, { timeout: 20_000 });
 
   const current = await state(page);
   expect(current.futureOpen).toBe(true);
-  expect(current.futureMode).toBe('multi');
-  expect(current.futureStreams).toBe(9);
-  expect(current.futureDemand).toBeCloseTo(55.44, 2);
-  await expect(page.locator('#futureScale')).toHaveText('3语言 × 3视图');
-  await expect(page.locator('#futureStatus')).toContainText('超出当前网络预算');
-  expect(await page.locator('#futureMainImage').evaluate((image) =>
-    (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(1000);
-  await expect(page.locator('#futureViews img')).toHaveCount(3);
-  await expect(page.locator('.future-route.active')).toHaveCount(9);
+  expect(current.futureMode).toBe('production');
+  expect(current.future3dReady).toBe(true);
+  expect(current.futureOrbitDuration).toBeCloseTo(7.533, 2);
+  await expect(page.locator('.future-rig-cam')).toHaveCount(3);
+  await expect(page.locator('.future-rig-monitor img')).toHaveCount(3);
+  await expect(page.locator('#future3DLayer')).toHaveClass(/is-ready/);
+  await expect(page.locator('#future3DLayer canvas')).toHaveCount(1);
+  await expect(page.locator('#futureOrbitVideo')).toBeVisible();
+  await expect(page.locator('#futureEnterViewer')).toHaveText('进入3D空间');
+  expect(await page.locator('#futureOrbitVideo').evaluate((video) => (video as HTMLVideoElement).paused)).toBe(true);
 
-  const media = await page.locator('#mv video').evaluateAll((videos, previous) =>
+  await page.locator('.future-rig-cam.left').click();
+  await expect.poll(async () => (await state(page)).futureAngle).toBe(25);
+  await expect(page.locator('.future-rig-cam.left')).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(450);
+  expect((await state(page)).futureAngle).toBe(25);
+  await page.locator('.future-rig-cam.right').click();
+  await expect.poll(async () => (await state(page)).futureAngle).toBe(-25);
+  await expect(page.locator('#futureOrbitVideo')).toBeVisible();
+  expect(await page.locator('#futureOrbitVideo').evaluate((video) => (video as HTMLVideoElement).paused)).toBe(true);
+
+  await page.waitForTimeout(350);
+  const media = await page.locator('#mv video').evaluateAll((videos) =>
+    videos.map((video) => {
+      const mediaVideo = video as HTMLVideoElement;
+      return {
+        currentTime: mediaVideo.currentTime,
+        paused: mediaVideo.paused,
+        loadStarts: (mediaVideo as HTMLVideoElement & { __futureLoadStarts?: number }).__futureLoadStarts ?? 0,
+      };
+    }));
+  expect(media.every((sample) => sample.paused && sample.loadStarts === 0)).toBe(true);
+
+  const suspendedTimes = media.map((sample) => sample.currentTime);
+  await page.locator('#futureClose').click();
+  await expect(page.locator('#futureShell')).toBeHidden();
+  await expect.poll(async () => page.locator('#mv video').evaluateAll((videos) =>
+    videos.every((video) => !(video as HTMLVideoElement).paused))).toBe(true);
+  await page.waitForTimeout(350);
+  const resumed = await page.locator('#mv video').evaluateAll((videos, previous) =>
     videos.map((video, index) => {
       const mediaVideo = video as HTMLVideoElement;
       const elapsed = mediaVideo.currentTime >= previous[index]
         ? mediaVideo.currentTime - previous[index]
         : (mediaVideo.duration - previous[index]) + mediaVideo.currentTime;
-      return {
-        advanced: elapsed > 0.1,
-        paused: mediaVideo.paused,
-        loadStarts: (mediaVideo as HTMLVideoElement & { __futureLoadStarts?: number }).__futureLoadStarts ?? 0,
-      };
-    }), before);
-  expect(media.every((sample) => sample.advanced && !sample.paused && sample.loadStarts === 0)).toBe(true);
+      return elapsed > 0.1;
+    }), suspendedTimes);
+  expect(resumed.every(Boolean)).toBe(true);
   expect(errors).toEqual([]);
 });
 
-test('多视图切换与按需视口展示完整网络账本', async ({ page }) => {
-  await openDemo(page);
-  await page.locator('#topoCtl button[data-topo="edge"]').click();
-  await page.locator('#qodCtl').click();
-  await page.locator('#futureOpen').click();
-
-  const side = page.locator('[data-future-view="side"]');
-  await side.click();
-  await expect(side).toHaveAttribute('aria-pressed', 'true');
-  await expect(side).toHaveClass(/is-primary/);
-  expect((await state(page)).futureView).toBe('side');
-  await expect(page.locator('#futureFrameTitle')).toHaveText('侧面互动');
-
-  await page.locator('[data-future-policy="viewport"]').click();
-  const current = await state(page);
-  expect(current.futureDelivery).toBe('viewport');
-  expect(current.futureStreams).toBe(3);
-  expect(current.futureDemand).toBeCloseTo(18.48, 2);
-  await expect(page.locator('#futureStreams')).toHaveText('3 路概念流');
-  await expect(page.locator('#futureStatus')).toContainText('两路 VIP 1080P，一路 Best Effort 480P');
-  await expect(page.locator('.future-route.active')).toHaveCount(3);
-  await expect(page.locator('.future-route.vip')).toHaveCount(2);
-  await expect(page.locator('.future-route.best')).toHaveCount(1);
-  await expect(page.locator('.future-view.is-sleeping')).toHaveCount(2);
-});
-
-test('空间模式不虚构固定码率并支持视角交互', async ({ page }) => {
+test('观众端支持水平与俯仰自由视角及独立音频', async ({ page }) => {
+  test.setTimeout(90_000);
   await openDemo(page);
   await page.locator('#futureOpen').click();
-  await page.locator('#futureSpatialTab').click();
+  await page.waitForFunction(() => (window as unknown as { __demo: { state(): { future3dReady: boolean } } }).__demo.state().future3dReady,
+    undefined, { timeout: 20_000 });
+  await page.locator('#futureEnterViewer').click();
 
-  let current = await state(page);
-  expect(current.futureMode).toBe('spatial');
-  expect(current.futureStreams).toBeNull();
-  expect(current.futureDemand).toBeNull();
-  await expect(page.locator('#futureDemand')).toHaveText('场景相关');
-  await expect(page.locator('#futureStatus')).toContainText('不展示虚构固定码率');
-  await expect(page.locator('.future-boundary')).toContainText('没有真实多机位采集或实时三维重建');
-  await expect(page.locator('#futurePolicies')).toBeHidden();
-  await expect(page.locator('#futureSpatialPolicy')).toBeVisible();
+  await expect(page.locator('#futureAudience')).toBeVisible();
+  await expect(page.locator('#futureOrbitVideo')).toBeHidden();
+  await expect(page.locator('#future3DLayer canvas')).toBeVisible();
+  await expect(page.locator('#futureAudience')).toContainText('PRE-GENERATED 3D · LIVE RENDER');
+  expect((await state(page)).futureMode).toBe('viewer');
+
+  const canvas = page.locator('#future3DLayer canvas');
+  const bounds = await canvas.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.move(bounds!.x + bounds!.width * 0.5, bounds!.y + bounds!.height * 0.55);
+  await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width * 0.62, bounds!.y + bounds!.height * 0.32, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await state(page)).futurePitch).toBeGreaterThan(5);
+  await expect(page.locator('#futureViewerAngleValue')).toContainText('俯仰 +');
 
   await page.locator('#futureAngle').fill('20');
-  current = await state(page);
-  expect(current.futureAngle).toBe(20);
+  await expect.poll(async () => (await state(page)).futureAngle).toBe(20);
   await expect(page.locator('#futureAngleValue')).toHaveText('+20°');
-  expect(await page.locator('#futurePlane').evaluate((element) =>
-    element.style.getPropertyValue('--angle'))).toBe('20deg');
+  const seek = await page.locator('#futureOrbitVideo').evaluate((video) => ({
+    currentTime: (video as HTMLVideoElement).currentTime,
+    duration: (video as HTMLVideoElement).duration,
+    paused: (video as HTMLVideoElement).paused,
+    muted: (video as HTMLVideoElement).muted,
+  }));
+  expect(seek.currentTime / seek.duration).toBeGreaterThan(0.85);
+  expect(seek.paused).toBe(true);
+  expect(seek.muted).toBe(true);
+
+  await page.locator('#futureAudioControl').click();
+  await expect(page.locator('#futureAudioControl')).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.locator('#futureCoreAudio').evaluate((audio) => (audio as HTMLAudioElement).paused)).toBe(false);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#futureProduction')).toBeVisible();
+  expect((await state(page)).futureMode).toBe('production');
+  expect(await page.locator('#futureCoreAudio').evaluate((audio) => (audio as HTMLAudioElement).paused)).toBe(true);
 });
 
-test('V 与 Esc 控制未来体验并恢复焦点', async ({ page }) => {
+test.skip('未来体验不重复承担网络对比，网络差异由六步主演示验证', async ({ page }) => {
+  await openDemo(page);
+  await page.locator('#futureOpen').click();
+  await page.waitForFunction(() => (window as unknown as { __demo: { state(): { future3dReady: boolean } } }).__demo.state().future3dReady,
+    undefined, { timeout: 20_000 });
+  await page.locator('#futureProduction [data-future-net="congested"]').click();
+  await page.locator('#futureEnterViewer').click();
+
+  let current = await state(page);
+  expect(current.futureNetwork).toBe('congested');
+  expect(current.futureQod).toBe(false);
+  await expect(page.locator('#futureGeometryMetric')).toContainText('64');
+  await expect(page.locator('#futureAudience')).toHaveClass(/future-net-congested/);
+  expect(await page.locator('#future3DLayer canvas').evaluate((canvas) => getComputedStyle(canvas).filter)).toContain('blur(1.6px)');
+
+  await page.locator('#futureAudience [data-future-qod]').click();
+  current = await state(page);
+  expect(current.futureQod).toBe(true);
+  await expect(page.locator('#futureGeometryMetric')).toContainText('91');
+  await expect(page.locator('#futureAudience')).toHaveClass(/future-qod/);
+  await expect.poll(async () => page.locator('#future3DLayer canvas').evaluate((canvas) => getComputedStyle(canvas).filter))
+    .toContain('blur(0.2px)');
+  await expect(page.locator('#futureViewerTitle')).toHaveText('当前视口获得优先保障');
+
+  await page.locator('#futureAudience [data-future-qod]').click();
+  await page.locator('#futureAudience [data-future-net="weak"]').click();
+  await expect(page.locator('#futureAngle')).toHaveAttribute('min', '-25');
+  await expect(page.locator('#futureAngle')).toHaveAttribute('max', '25');
+  await page.locator('#futureAngle').fill('25');
+  await expect.poll(async () => (await state(page)).futureAngle).toBe(25);
+
+  await page.locator('#futureAudience [data-future-net="latency"]').click();
+  await page.locator('#futureAngle').fill('20');
+  await expect(page.locator('#futureResponseMetric')).toContainText('780');
+  await expect.poll(async () => (await state(page)).futureAngle, { timeout: 1500 }).toBe(20);
+});
+
+test('V、Esc与返回按钮维持正确层级和焦点', async ({ page }) => {
   await openDemo(page);
   await page.locator('#futureOpen').focus();
   await page.keyboard.press('v');
   await expect(page.locator('#futureDialog')).toBeVisible();
   await expect(page.locator('#futureClose')).toBeFocused();
+
+  await page.locator('#futureEnterViewer').click();
+  await expect(page.locator('#futureViewerBack')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#futureProduction')).toBeVisible();
+  await expect(page.locator('#futureEnterViewer')).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(page.locator('#futureShell')).toBeHidden();
@@ -116,7 +185,7 @@ test('V 与 Esc 控制未来体验并恢复焦点', async ({ page }) => {
   expect((await state(page)).futureOpen).toBe(false);
 });
 
-test('未来体验在桌面与手机视口无横向溢出', async ({ page }) => {
+test('未来体验在桌面与手机视口无页面横向溢出', async ({ page }) => {
   for (const [width, height] of [[1440, 900], [1920, 1080], [390, 844]]) {
     await page.setViewportSize({ width, height });
     await openDemo(page);
@@ -129,9 +198,10 @@ test('未来体验在桌面与手机视口无横向溢出', async ({ page }) => 
     expect(bounds!.y, `${width}x${height} 上边界`).toBeGreaterThanOrEqual(0);
     expect(bounds!.y + bounds!.height, `${width}x${height} 下边界`).toBeLessThanOrEqual(height + 1);
 
+    await page.locator('#futureEnterViewer').click();
     const overflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `${width}x${height} 横向溢出`).toBeLessThanOrEqual(0);
-    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
   }
 });

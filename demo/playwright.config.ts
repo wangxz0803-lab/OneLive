@@ -2,8 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 const isCI = Boolean(process.env.CI);
 
-// 演示台是纯静态单文件，测试直接以 file:// 打开——与现场"双击即开"完全同一条路径。
-// 刻意不设 webServer，也不复用根配置（根配置会拉起 React 应用的 mock server）。
+// 3D GLB 需要通过 HTTP 读取；这里使用与现场 start-demo.cmd 相同的零依赖静态服务器。
+// file:// 仍会安全回退到环绕视频，但不作为完整3D验收路径。
 export default defineConfig({
   testDir: './e2e',
   outputDir: '../artifacts/demo-playwright-results',
@@ -13,6 +13,12 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 8_000 },
   reporter: [['list']],
+  webServer: {
+    command: 'node serve-demo.mjs',
+    url: 'http://127.0.0.1:4173/',
+    reuseExistingServer: !isCI,
+    env: { ONELIVE_DEMO_NO_OPEN: '1' },
+  },
   use: {
     colorScheme: 'dark',
     viewport: { width: 1440, height: 900 },
