@@ -34,6 +34,9 @@ let futureDragging=false, futureDragStartX=0, futureDragStartAngle=0, future3d=n
 let futureSuspendedDemoMedia=[];
 
 function suspendDemoMedia(){
+  // 取消可能仍在等待 seek/loadeddata 的主演示同步任务，避免慢机器上旧任务稍后重新 play()。
+  mediaTransitionEpoch++;
+  document.body.classList.remove("media-syncing");
   futureSuspendedDemoMedia=[...document.querySelectorAll("#mv video")].map(video=>({video,resume:!video.paused}));
   futureSuspendedDemoMedia.forEach(({video})=>video.pause());
 }
@@ -184,6 +187,13 @@ function futureMediaFailed(){
   futureEls.media.classList.remove("is-loading","is-ready");futureEls.media.classList.add("is-error");
   $("futureMediaState").textContent="视频未加载，使用中间帧预演";
 }
+function prepareFutureMedia(){
+  const video=futureEls.video;
+  if(video.dataset.bufferRequested==="true")return;
+  video.dataset.bufferRequested="true";
+  video.preload="auto";
+  video.load();
+}
 function moveFutureMedia(slot){ if(futureEls.media.parentElement!==slot) slot.appendChild(futureEls.media); }
 function playFutureProduction(reset=false){
   const video=futureEls.video; video.muted=true;video.loop=false;video.pause();
@@ -211,6 +221,7 @@ function openFuture(){
   if(futureOpen)return;
   futureOpen=true;futureMode="production";futureReturnFocus=document.activeElement;
   suspendDemoMedia();
+  prepareFutureMedia();
   $("evidence").hidden=true;$("evToggle").setAttribute("aria-expanded","false");
   futureEls.production.hidden=false;futureEls.audience.hidden=true;moveFutureMedia(futureEls.programSlot);
   renderFutureMediaMode();

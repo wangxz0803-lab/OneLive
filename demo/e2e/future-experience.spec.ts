@@ -36,6 +36,11 @@ test('未来体验打开后暂停后台解码且关闭后无重载恢复主演�
   expect(current.futureOrbitDuration).toBeCloseTo(7.533, 2);
   await expect(page.locator('.future-rig-cam')).toHaveCount(3);
   await expect(page.locator('.future-rig-monitor img')).toHaveCount(3);
+  const cameraSources = await page.locator('.future-rig-monitor img').evaluateAll((images) =>
+    images.map((image) => (image as HTMLImageElement).getAttribute('src')));
+  expect(new Set(cameraSources).size).toBe(3);
+  expect(await page.locator('.future-rig-monitor img').evaluateAll((images) =>
+    images.every((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   await expect(page.locator('#future3DLayer')).toHaveClass(/is-ready/);
   await expect(page.locator('#future3DLayer canvas')).toHaveCount(1);
   await expect(page.locator('#futureOrbitVideo')).toBeVisible();
@@ -44,11 +49,19 @@ test('未来体验打开后暂停后台解码且关闭后无重载恢复主演�
 
   await page.locator('.future-rig-cam.left').click();
   await expect.poll(async () => (await state(page)).futureAngle).toBe(25);
+  await expect.poll(async () => page.locator('#futureOrbitVideo').evaluate((video) => {
+    const media = video as HTMLVideoElement;
+    return media.duration > 0 ? media.currentTime / media.duration : 0;
+  })).toBeGreaterThan(0.9);
   await expect(page.locator('.future-rig-cam.left')).toHaveAttribute('aria-pressed', 'true');
   await page.waitForTimeout(450);
   expect((await state(page)).futureAngle).toBe(25);
   await page.locator('.future-rig-cam.right').click();
   await expect.poll(async () => (await state(page)).futureAngle).toBe(-25);
+  await expect.poll(async () => page.locator('#futureOrbitVideo').evaluate((video) => {
+    const media = video as HTMLVideoElement;
+    return media.duration > 0 ? media.currentTime / media.duration : 1;
+  })).toBeLessThan(0.1);
   await expect(page.locator('#futureOrbitVideo')).toBeVisible();
   expect(await page.locator('#futureOrbitVideo').evaluate((video) => (video as HTMLVideoElement).paused)).toBe(true);
 
