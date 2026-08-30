@@ -34,10 +34,10 @@ test('四路监看指向新素材且标签为三市场', async ({ page }) => {
     els.map((el) => (el as HTMLVideoElement).getAttribute('src')),
   );
   expect(srcs).toEqual([
-    'assets/original-zh-demo.mp4',
-    'assets/japan-ja-demo.mp4',
-    'assets/latam-es-demo.mp4',
-    'assets/india-en-demo.mp4',
+    'assets/original-zh-demo.mp4?v=20260830-26',
+    'assets/japan-ja-demo.mp4?v=20260830-26',
+    'assets/latam-es-demo.mp4?v=20260830-26',
+    'assets/india-en-demo.mp4?v=20260830-26',
   ]);
 
   await page.locator('#go').click();

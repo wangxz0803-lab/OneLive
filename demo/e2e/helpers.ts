@@ -1,7 +1,6 @@
 import type { Page } from '@playwright/test';
 
-// 相对本文件定位，与 cwd 无关：仓库根或 demo/ 目录下运行都指向同一个文件。
-export const DEMO_URL = new URL('../index.html', import.meta.url).href;
+export const DEMO_URL = process.env.ONELIVE_DEMO_URL ?? 'http://127.0.0.1:4173/';
 
 export interface DemoState {
   topo: 'edge' | 'cloud';
@@ -23,12 +22,14 @@ export interface DemoState {
   e2e: number;
   av: number;
   futureOpen: boolean;
-  futureMode: 'multi' | 'spatial';
-  futureDelivery: 'all' | 'viewport';
-  futureView: 'front' | 'side' | 'overhead';
+  futureMode: 'production' | 'viewer';
+  futureNetwork: 'good' | 'latency' | 'congested' | 'weak';
+  futureQod: boolean;
   futureAngle: number;
-  futureStreams: number | null;
-  futureDemand: number | null;
+  futureRequestedAngle: number;
+  futurePitch: number;
+  future3dReady: boolean;
+  futureOrbitDuration: number;
 }
 
 export async function openDemo(page: Page): Promise<void> {

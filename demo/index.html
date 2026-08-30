@@ -223,7 +223,12 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .tile:focus-visible{outline:2px solid var(--brand2);outline-offset:2px}
 .tile img,.tile video,.tile canvas{position:absolute;inset:0;width:100%;height:100%;
   object-fit:cover;object-position:50% 50%}
-.tile video{opacity:0} .tile canvas{display:none} .tile.rd canvas{display:block} .tile.rd img{display:none}
+/* 小窗直接走浏览器媒体合成，避免把四路视频逐帧复制到 Canvas。
+   PROGRAM 仍使用 Canvas 承担交付帧率和降采样模拟。 */
+.tile video{opacity:0;transition:filter .2s var(--e)}
+.tile canvas{display:none}.tile.rd video{opacity:1}.tile.rd img{display:none}
+.tile[data-quality="720P"] video{filter:saturate(.9) contrast(.97) blur(.2px)}
+.tile[data-quality="480P"] video{filter:saturate(.72) contrast(.9) brightness(.92) blur(1.05px);transform:scale(1.012)}
 .tile::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(0,0,0,.42),transparent 42%,rgba(0,0,0,.68))}
 .tile-l{position:absolute;left:6px;bottom:5px;z-index:3;font-size:10px;font-weight:600;
@@ -575,6 +580,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 }
 
 </style>
+<link rel="stylesheet" href="future-v3.css?v=20260830-26">
 </head>
 <body>
 <div class="boot-shell" id="bootShell" aria-label="演示素材加载状态">
@@ -747,91 +753,141 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
   <div class="future-shell" id="futureShell" hidden>
     <section class="future-dialog" id="futureDialog" role="dialog" aria-modal="true" aria-labelledby="futureTitle">
       <header class="future-head">
-        <div class="future-title"><strong id="futureTitle">OneLive <b>ViewLab</b></strong><span>多视角和空间交付预演</span></div>
-        <span class="future-state">CONCEPT / EMULATED</span>
-        <div class="future-tabs" role="tablist" aria-label="未来体验模式">
-          <button class="future-tab" id="futureMultiTab" type="button" role="tab" aria-selected="true" aria-controls="futureMulti">多视图</button>
-          <button class="future-tab" id="futureSpatialTab" type="button" role="tab" aria-selected="false" aria-controls="futureSpatial">空间直播</button>
+        <button class="future-back" id="futureBack" type="button" aria-label="返回OneLive控制台">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 5-7 7 7 7"/><path d="M8 12h11"/></svg>
+        </button>
+        <div class="future-brand"><strong id="futureTitle">OneLive <i>Spatial</i></strong><span>FUTURE EXPERIENCE</span></div>
+        <div class="future-scene-name"><b>上海外滩 · 城市漫游</b><span>多机位采集 / 云端空间重建 / 交互式视口</span></div>
+        <div class="future-head-spacer"></div>
+        <div class="future-provenance">CONCEPT / EMULATED</div>
+        <div class="future-head-network">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18h2M8 15h2M12 11h2M16 7h2"/><path d="M5 18V7m4 8V5m4 6V3m4 4V2"/></svg>
+          <div><b>5G SA</b> <span id="futureHeadNetwork">优秀</span></div>
         </div>
         <button class="future-close" id="futureClose" type="button">关闭</button>
       </header>
 
-      <div class="future-body">
-        <section class="future-visual" aria-label="未来体验预演舞台">
-          <div class="future-multi" id="futureMulti" role="tabpanel" aria-labelledby="futureMultiTab">
-            <div class="future-frame" id="futureFrame">
-              <img class="future-main-prev" id="futureMainPrev" alt="" aria-hidden="true">
-              <img class="future-main-image" id="futureMainImage" src="assets/future/front.webp" alt="AI 生成的正面主播机位概念画面">
-              <canvas class="future-fallback" id="futureFallbackCanvas" aria-label="当前节目回退画面" hidden></canvas>
-              <div class="future-frame-hud"><strong id="futureFrameTitle">正面主播</strong><span id="futureFrameState">AI 关键帧 / 概念</span></div>
-              <div class="future-frame-copy"><strong id="futureFrameTask">人物表达与商品关系</strong><span id="futureFrameDesc">同一时刻生成独立横屏机位，不再依靠放大裁切。</span></div>
-              <div class="future-network-note"><b id="futureFrameNeed">55.44M</b><span id="futureFrameNetwork">全量同步目标需求</span></div>
+      <div class="future-production" id="futureProduction">
+        <main class="future-workspace">
+          <section class="future-stage future-net-good" id="futureStage" aria-label="空间直播制作台主监看">
+            <div class="future-program-slot" id="futureProgramSlot">
+              <div class="future-media-stack is-loading" id="futureOrbitMedia">
+                <img class="future-orbit-poster" src="assets/future/orbit-front.jpg?v=20260830-7" alt="上海外滩空间直播环绕视频封面">
+                <video class="future-orbit-video" id="futureOrbitVideo" src="assets/future/spatial-multiview-output.mp4?v=20260830-7" muted playsinline preload="metadata" aria-label="多视角融合后的上海外滩连续环绕预览"></video>
+                <div class="future-3d-layer is-loading" id="future3DLayer" aria-label="预生成三维人物实时渲染区">
+                  <div class="future-3d-loading" id="future3DLoading" role="status" aria-live="polite">
+                    <span id="future3DLoadingText">正在载入预生成 3D 人物…</span>
+                    <i><b id="future3DProgress"></b></i>
+                  </div>
+                  <div class="future-3d-stamp"><b>PRE-GENERATED 3D</b><span>LOCAL LIVE RENDER</span></div>
+                  <div class="future-3d-hint" id="future3DHint">三机位切换观察角度</div>
+                </div>
+                <span class="future-media-state" id="futureMediaState">正在准备环绕素材…</span>
+              </div>
             </div>
-            <div class="future-director" id="futureViews" aria-label="AI 导演机位">
-              <button class="future-view is-primary" type="button" data-future-view="front" aria-pressed="true">
-                <img src="assets/future/front.webp" alt="正面主播机位缩略图"><span class="future-view-copy"><strong>正面主播</strong><span>人物、表情和商品关系</span><em>CAM A</em></span>
-              </button>
-              <button class="future-view" type="button" data-future-view="side" aria-pressed="false">
-                <img src="assets/future/side.webp" alt="侧面互动机位缩略图"><span class="future-view-copy"><strong>侧面互动</strong><span>横向视差和台面深度</span><em>CAM B</em></span>
-              </button>
-              <button class="future-view" type="button" data-future-view="overhead" aria-pressed="false">
-                <img src="assets/future/overhead.webp" alt="俯拍商品机位缩略图"><span class="future-view-copy"><strong>俯拍商品</strong><span>锅内结构和操作细节</span><em>CAM C</em></span>
-              </button>
+            <div class="future-grid" aria-hidden="true"></div>
+            <div class="future-stage-head">
+              <div class="future-program-label"><i></i><b>LIVE VIEWPORT</b><span>外滩环绕直播视口</span></div>
+              <div class="future-stage-status"><b>VIEWPORT STREAM · 01</b><span id="futureStageStatus">视角连续 · 高清</span></div>
             </div>
-          </div>
 
-          <div class="future-spatial" id="futureSpatial" role="tabpanel" aria-labelledby="futureSpatialTab" hidden>
-            <div class="future-scene" id="futureScene">
-              <img class="future-spatial-media" id="futureSpatialImage" src="assets/future/spatial.webp" alt="AI 生成的空间重建概念画面">
-              <img class="future-spatial-depth" src="assets/future/spatial.webp" alt="" aria-hidden="true">
-              <div class="future-spatial-head"><div><strong>空间直播视口</strong><span>拖动画面改变观察方向，环境层产生深度视差</span></div><em>2.5D 预演 / 非实时 3D</em></div>
-              <div class="future-viewport" id="futurePlane" aria-hidden="true"></div>
-              <label class="future-angle-wrap"><span>观察方向</span><input class="future-angle" id="futureAngle" type="range" min="-30" max="30" step="1" value="0"><span class="future-angle-val" id="futureAngleValue">0°</span></label>
+            <div class="future-rig" aria-label="三台同步采集相机围绕直播现场">
+              <div class="future-rig-caption"><b>三机位输入示意</b> · 左前、正面、右前三个采集视角共同描述人物与现场空间</div>
+              <svg class="future-rig-links" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true">
+                <path class="baseline" d="M92 97 Q500 130 908 97"/><path class="beam" d="M142 91 Q292 46 454 19"/>
+                <path class="beam" d="M500 91 L500 16"/><path class="beam" d="M858 91 Q708 46 546 19"/>
+                <circle class="focus" cx="500" cy="17" r="2.6"/><text x="463" y="9">SYNC FOCUS</text>
+              </svg>
+              <button class="future-rig-cam left" type="button" data-future-camera="25" aria-label="切换到左前机位" aria-pressed="false">
+                <div class="future-rig-monitor"><img src="assets/future/orbit-right.jpg?v=20260830-7" alt="左前机位取景"><b>CAM A</b><span>SYNC</span></div>
+                <svg class="future-rig-body" viewBox="0 0 72 48" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><rect x="16" y="10" width="36" height="20" rx="4"/><path d="m52 15 10-5v20l-10-5z"/><circle cx="34" cy="20" r="6"/><path d="M29 30 24 45M39 30l5 15M34 30v15"/><path d="M12 15h4M12 25h4"/></svg>
+                <div class="future-rig-name"><strong>左前 25°</strong> · 环境纵深</div>
+              </button>
+              <button class="future-rig-cam center" type="button" data-future-camera="0" aria-label="切换到正面主机位" aria-pressed="true">
+                <div class="future-rig-monitor"><img src="assets/future/orbit-front.jpg?v=20260830-7" alt="正面主机位取景"><b>CAM B</b><span>LOCKED</span></div>
+                <svg class="future-rig-body" viewBox="0 0 72 48" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><rect x="16" y="10" width="36" height="20" rx="4"/><path d="m52 15 10-5v20l-10-5z"/><circle cx="34" cy="20" r="6"/><path d="M29 30 24 45M39 30l5 15M34 30v15"/><path d="M12 15h4M12 25h4"/></svg>
+                <div class="future-rig-name"><strong>正面 0°</strong> · 当前节目</div>
+              </button>
+              <button class="future-rig-cam right" type="button" data-future-camera="-25" aria-label="切换到右前机位" aria-pressed="false">
+                <div class="future-rig-monitor"><img src="assets/future/orbit-left.jpg?v=20260830-7" alt="右前机位取景"><b>CAM C</b><span>SYNC</span></div>
+                <svg class="future-rig-body" viewBox="0 0 72 48" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><rect x="16" y="10" width="36" height="20" rx="4"/><path d="m52 15 10-5v20l-10-5z"/><circle cx="34" cy="20" r="6"/><path d="M29 30 24 45M39 30l5 15M34 30v15"/><path d="M12 15h4M12 25h4"/></svg>
+                <div class="future-rig-name"><strong>右前 25°</strong> · 天际线视差</div>
+              </button>
             </div>
-          </div>
-        </section>
 
-        <aside class="future-insight" aria-label="未来网络需求说明">
-          <section class="future-story">
-            <span class="future-k" id="futureNarrativeLabel">全量同步</span>
-            <h3 id="futureStoryTitle">一个现场，九路交付</h3>
-            <p id="futureStoryCopy">三个市场同时获得三个镜位，语言数量与视图数量相乘。</p>
-            <div class="future-scale"><strong id="futureScale">3语言 × 3视图</strong><span id="futureStreams">9 路概念流</span></div>
-            <div class="future-demand" id="futureDemandWrap"><strong id="futureDemand">55.44</strong><span id="futureDemandUnit">Mbps 目标需求</span></div>
-            <p class="future-status" id="futureStatus">全量分发将同时编码和交付九路内容，显著超出当前保障预算。</p>
+            <div class="future-preview-angle" aria-label="多视角输出查看进度">
+              <span>环绕直播视角</span><input class="future-preview-scrubber" id="futurePreviewTrack" type="range" min="-25" max="25" step="1" value="0" aria-label="拖动查看连续环绕结果"><output id="futurePreviewAngleValue">0°</output>
+            </div>
           </section>
 
-          <section class="future-matrix-wrap" id="futureMatrixWrap">
-            <div class="future-matrix-title"><b>语言 × 视图交付矩阵</b><span id="futureMatrixHint">九路持续编码</span></div>
-            <div class="future-matrix" id="futureMatrix" aria-label="三语言三视图交付矩阵">
-              <span></span><span class="mh">正面</span><span class="mh">侧面</span><span class="mh">俯拍</span>
-              <span class="mr">日本</span><i class="future-route all" data-row="0" data-col="front"></i><i class="future-route all" data-row="0" data-col="side"></i><i class="future-route all" data-row="0" data-col="overhead"></i>
-              <span class="mr">拉美</span><i class="future-route all" data-row="1" data-col="front"></i><i class="future-route all" data-row="1" data-col="side"></i><i class="future-route all" data-row="1" data-col="overhead"></i>
-              <span class="mr">印度</span><i class="future-route all" data-row="2" data-col="front"></i><i class="future-route all" data-row="2" data-col="side"></i><i class="future-route all" data-row="2" data-col="overhead"></i>
+          <aside class="future-rail" aria-label="空间直播工作链路与素材映射">
+            <section class="future-rail-head">
+              <span class="future-kicker">CURRENT OUTPUT</span>
+              <div class="future-rail-title"><h2>多视角融合输出</h2><output id="futureRailAngle">0°</output></div>
+              <p>三路采集视角经过空间重建，先形成连续环绕结果，再进入人物与场景联动的空间视口。</p>
+            </section>
+            <div class="future-metrics">
+              <div><span>视口响应</span><b id="futureResponseMetric">82<small>ms</small></b></div>
+              <div><span>空间完整度</span><b id="futureGeometryMetric">96<small>%</small></b></div>
             </div>
-            <div class="future-cap"><div><span>当前演示预算</span><strong id="futureBudget">8.25 Mbps</strong></div><div><span>目标需求差额</span><strong id="futureGap">-47.19 Mbps</strong></div></div>
-          </section>
+            <section class="future-pipeline">
+              <div class="future-section-title"><b>实时工作链路</b><span>SCENE-DRIVEN LOAD</span></div>
+              <div class="future-flow">
+                <div class="future-node"><i class="future-node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></svg></i><div class="future-node-copy"><b>多机位同步采集</b><span>左前 / 正面 / 右前三路输入</span></div><em class="future-node-state good">3 CAM</em></div>
+                <div class="future-node"><i class="future-node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 19h12M8 15h8M10 11h4M12 11V4"/><circle cx="12" cy="4" r="2"/></svg></i><div class="future-node-copy"><b>5G 并发上行</b><span>持续承载多源视频与同步信息</span></div><em class="future-node-state" id="futureUplinkState">动态负载</em></div>
+                <div class="future-node"><i class="future-node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 18h10a4 4 0 0 0 1-7.9A6 6 0 0 0 6.3 8.4 4.8 4.8 0 0 0 7 18Z"/><path d="m9 14 3-3 3 3M12 11v6"/></svg></i><div class="future-node-copy"><b>云端空间重建</b><span>时空对齐、场景建模与视口渲染</span></div><em class="future-node-state good">READY</em></div>
+                <div class="future-node"><i class="future-node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16v10H4z"/><path d="m9 10 3 2 3-2M8 21h8"/></svg></i><div class="future-node-copy"><b>当前视口下行</b><span>只交付正在观看的方向与音频</span></div><em class="future-node-state good" id="futureViewportState">CLEAR</em></div>
+              </div>
+            </section>
+            <section class="future-output-map" aria-label="素材到空间体验的对应关系">
+              <div class="future-section-title"><b>素材到体验</b><span>PRE-GENERATED DEMO</span></div>
+              <div class="future-output-flow">
+                <div class="future-output-step"><em>INPUT</em><div><b>三路相机输入</b><span>左前、正面、右前三个采集视角</span></div></div>
+                <div class="future-output-step"><em>OUTPUT</em><div><b>环绕直播视口</b><span>点击机位或拖动视角，查看多视角融合结果</span></div></div>
+                <div class="future-output-step final"><em>3D</em><div><b>空间直播形态</b><span>进入人物与场景同步变化的360°空间视口</span></div></div>
+              </div>
+            </section>
+            <section class="future-network-panel" hidden aria-hidden="true">
+              <div class="future-section-title"><b>网络体验对比</b><span>EMULATED</span></div>
+              <div class="future-profiles" role="group" aria-label="未来体验网络状态">
+                <button class="future-net" type="button" data-future-net="good" aria-pressed="true">优秀</button>
+                <button class="future-net" type="button" data-future-net="latency" aria-pressed="false">高时延</button>
+                <button class="future-net" type="button" data-future-net="congested" aria-pressed="false">拥塞</button>
+                <button class="future-net" type="button" data-future-net="weak" aria-pressed="false">弱覆盖</button>
+              </div>
+              <div class="future-network-result" id="futureNetworkResult"><b id="futureResultTitle">视角连续跟随</b><p id="futureResultCopy">拖动视角后，当前视口快速响应，空间画面保持完整清晰。</p></div>
+              <div class="future-qod-row">
+                <div class="future-qod-copy"><b>当前视口优先保障</b><span>QoD优先画面、核心音频与控制流</span></div>
+                <button class="future-qod-toggle" type="button" data-future-qod aria-label="开启当前视口优先保障" aria-pressed="false"></button>
+              </div>
+            </section>
+          </aside>
+        </main>
 
-          <p class="future-spatial-policy" id="futureSpatialPolicy" hidden>Edge 预测用户观察方向，只渲染和交付当前视口。负载由空间资产、编码和交互范围决定，因此不显示虚构固定码率。</p>
-
-          <section>
-            <span class="future-k">网络链路</span>
-            <div class="future-pipeline">
-              <div class="future-node"><b>多源采集</b><span>同步机位或深度输入，当前使用 AI 关键帧预演</span></div>
-              <div class="future-node"><b>Edge 引擎</b><span>时空对齐、视图合成、重建与当前视口渲染</span></div>
-              <div class="future-node"><b>5G / QoD</b><span>优先保障当前视口、核心音频和交互控制</span></div>
-            </div>
-          </section>
-        </aside>
+        <footer class="future-footer">
+          <section class="future-audio-summary"><i class="future-audio-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg></i><div class="future-audio-copy"><b>核心音频 · 独立通道</b><span>改变视角时，讲解声音保持连续</span><div class="future-wave" aria-hidden="true"><i style="--h:4px"></i><i style="--h:9px"></i><i style="--h:5px"></i><i style="--h:11px"></i><i style="--h:7px"></i><i style="--h:10px"></i><i style="--h:4px"></i><i style="--h:8px"></i><i style="--h:5px"></i><i style="--h:10px"></i></div></div></section>
+          <section class="future-delivery"><div class="future-delivery-copy"><b>同一空间节目</b><span>多语言下行观看</span></div><div class="future-markets"><div class="future-market"><strong>EN</strong><div><b>North America</b><span>Viewport 01</span></div></div><div class="future-market"><strong>JA</strong><div><b>日本</b><span>Viewport 02</span></div></div><div class="future-market"><strong>AR</strong><div><b>الخليج</b><span>Viewport 03</span></div></div></div></section>
+          <section class="future-enter-wrap"><div class="future-enter-copy"><b>最终空间直播示意</b><span>从连续多视角输出进入人物与场景联动的空间视口</span></div><button class="future-enter" id="futureEnterViewer" type="button" aria-busy="true">3D准备中 0%</button></section>
+        </footer>
       </div>
 
-      <footer class="future-boundary">
-        <span class="future-foot-copy"><b>能力边界：</b>多视图使用 AI 生成关键帧，空间模式使用 2.5D 视差，没有真实多机位采集或实时三维重建。</span>
-        <div class="future-foot-actions"><div class="future-policies" id="futurePolicies">
-          <button class="future-policy" type="button" data-future-policy="all" aria-pressed="true">全量同步<small>9路 / 55.44M</small></button>
-          <button class="future-policy" type="button" data-future-policy="viewport" aria-pressed="false">当前视角优先<small>3路 / 18.48M</small></button>
-        </div><span class="future-keys">V 打开或关闭　Esc 关闭</span></div>
-      </footer>
+      <section class="future-audience future-net-good" id="futureAudience" aria-label="观众自由视角预演" hidden>
+        <div class="future-viewer-slot" id="futureViewerSlot"></div>
+        <div class="future-viewer-grid" aria-hidden="true"></div><div class="future-viewer-frame" aria-hidden="true"></div>
+        <header class="future-viewer-top">
+          <button class="future-viewer-back" id="futureViewerBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 5-7 7 7 7"/><path d="M8 12h11"/></svg>返回制作台</button>
+          <div class="future-viewer-title"><b>上海外滩 · 3D空间自由视角</b><span>左右环绕 · 上下俯仰 · 双击复位</span></div><div class="future-viewer-spacer"></div>
+          <div class="future-viewer-badge"><b>PRE-GENERATED 3D · LIVE RENDER</b><span>CONCEPT / EMULATED PIPELINE</span></div>
+        </header>
+        <aside class="future-viewer-side"><h3 id="futureViewerTitle">视角连续跟随</h3><output id="futureViewerAngleValue">0°</output><p id="futureViewerCopy">拖动后立即显示对应方向，核心音频保持连续。</p></aside>
+        <div class="future-viewer-profiles" role="group" aria-label="观众端网络状态" hidden>
+          <button class="future-net" type="button" data-future-net="good" aria-pressed="true">优秀</button><button class="future-net" type="button" data-future-net="latency" aria-pressed="false">高时延</button><button class="future-net" type="button" data-future-net="congested" aria-pressed="false">拥塞</button><button class="future-net" type="button" data-future-net="weak" aria-pressed="false">弱覆盖</button>
+        </div>
+        <button class="future-qod-badge" type="button" data-future-qod aria-pressed="false" hidden><i></i><span>当前视口优先保障</span></button>
+        <button class="future-viewer-audio" id="futureAudioControl" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 9v6h4l5 4V5L9 9H5Z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg><span>播放独立音频</span></button>
+        <label class="future-viewer-bottom"><span>精确选择视角</span><input class="future-angle" id="futureAngle" type="range" min="-180" max="180" step="1" value="0"><output id="futureAngleValue">0°</output><span class="future-angle-range"><i>−180°</i><i>0°</i><i>+180°</i></span></label>
+        <audio id="futureCoreAudio" src="assets/future/spatial-audio.m4a" preload="metadata" loop></audio>
+      </section>
     </section>
   </div>
 </div>
@@ -859,22 +915,22 @@ const NETS = [
   { id:4, n:"弱覆盖", m:"4G 边缘", cap:0.42, rtt:420, loss:11.5, drop:.62, jit:240, st:"var(--crit)" }
 ];
 const SRC = [
-  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh-demo.mp4",
+  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh-demo.mp4?v=20260830-26",
     lang:"原始信号", always:true,
     subs:["梅特德菲多功能电气锅，插上电源即可轻松烹饪。手柄触控面板配备九种功能。",
           "炒、蒸、火锅、汤、粥、煮饭、预约和保温，选择想做的料理即可。",
           "一台锅覆盖日常多种料理，操作直观，也更适合轻松展示。"] },
-  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja-demo.mp4",
+  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja-demo.mp4?v=20260830-26",
     lang:"日本語",
     subs:["メテドフィの多機能電気鍋です。コンセントにつなぐだけで簡単に調理できます。ハンドルのタッチパネルには9つの機能を搭載。",
           "炒め物、蒸し料理、鍋、スープ、おかゆ、炊飯、予約、保温まで、作りたい料理を選ぶだけです。",
           "一台で毎日のさまざまな料理に対応。操作も直感的で、手軽に使えます。"] },
-  { id:"es", label:"拉美 · 西语", tag:"CH2", ph:"assets/latam-es.jpg", vid:"assets/latam-es-demo.mp4",
+  { id:"es", label:"拉美 · 西语", tag:"CH2", ph:"assets/latam-es.jpg", vid:"assets/latam-es-demo.mp4?v=20260830-26",
     lang:"Español",
     subs:["Esta es la olla eléctrica multifunción Metedfi. Solo tienes que enchufarla para cocinar fácilmente. El panel táctil del mango incluye nueve funciones.",
           "Elige saltear, cocinar al vapor, olla caliente, sopa, avena, arroz, programación o conservación del calor.",
           "Una sola olla cubre muchas comidas diarias, con controles sencillos y una presentación clara."] },
-  { id:"en", label:"印度 · 英语", tag:"CH3", ph:"assets/india-en.jpg", vid:"assets/india-en-demo.mp4",
+  { id:"en", label:"印度 · 英语", tag:"CH3", ph:"assets/india-en.jpg", vid:"assets/india-en-demo.mp4?v=20260830-26",
     lang:"English (IN)",
     subs:["This is Metedfi’s multifunction electric pot. Just plug it in and start cooking. The handle’s touch panel offers nine cooking modes.",
           "Choose stir-fry, steaming, hot pot, soup, porridge, rice, scheduling or keep-warm mode.",
@@ -902,15 +958,10 @@ let platOn = PLAT.map(()=>true);
 let subsOn = true;
 let micGain = .72;
 let tiles = [], cmtN = 0;
-let futureOpen = false, futureMode = "multi", futureDelivery = "all", futureView = "front";
-let futureAngle = 0, futureReturnFocus = null, futureSwitchTimer = 0;
+let futureOpen = false, futureMode = "production", futureNetwork = "good", futureQod = false;
+let futureAngle = 0, futureRequestedAngle = 0, futureOrbitDuration = 0, futureReturnFocus = null, future3dReady = false;
 const bootStartedAt = performance.now(), bootReady = new Set(), bootFailed = new Set();
 let bootFinished = false, bootTimeout = 0;
-const FUTURE_ASSETS = {
-  front:{src:"assets/future/front.webp",title:"正面主播",task:"人物表达与商品关系",desc:"同一时刻生成独立横屏机位，不再依靠放大裁切。"},
-  side:{src:"assets/future/side.webp",title:"侧面互动",task:"横向视差与空间关系",desc:"侧机位补充台面深度、手势和主播与商品的位置关系。"},
-  overhead:{src:"assets/future/overhead.webp",title:"俯拍商品",task:"商品结构与操作细节",desc:"俯拍机位把锅内结构、双手动作和操作区域交付给观众。"}
-};
 
 /* 拓扑与 QoD 状态（Task 5/6 接线） */
 let topo = "cloud", qod = false;
@@ -1087,10 +1138,10 @@ const wrapTime=(v,d)=>((v%d)+d)%d;
 // 多路本地 MP4 的 currentTime 采样会有约百毫秒抖动，seek 本身又需要重新解码关键帧。
 // 过窄的硬对齐阈值会让 200ms 校时器持续写 currentTime，把 30fps 视频压成约 5fps。
 // 只有显著漂移才硬 seek；稳定阶段用很小的 playbackRate 差异缓慢牵引。
-const MEDIA_SYNC_SNAP_S = 0.75;
 const MEDIA_SYNC_RATE_DEADBAND_S = 0.025;
 const MEDIA_SYNC_RATE_GAIN = 0.35;
 const MEDIA_SYNC_MAX_RATE_DELTA = 0.05;
+const MEDIA_SYNC_CATCHUP_RATE_DELTA = 0.10;
 const MEDIA_SYNC_CHECK_MS = 500;
 function circularDelta(target,current,duration){
   let delta=target-current;
@@ -1106,15 +1157,18 @@ function alignGeneratedMedia(force=false,only=null){
     if(!chActive(i) || !v.duration || (v.seeking && !force)) return;
     const target=wrapTime(master.currentTime-sourceLagMs()/1000,v.duration);
     const delta=circularDelta(target,v.currentTime,v.duration);
-    if(force || Math.abs(delta)>MEDIA_SYNC_SNAP_S){
+    // 只有用户显式切换路径/档位时做一次 seek。运行中的周期校时绝不跳时间轴，
+    // 否则某一路短暂解码落后会被放大成肉眼可见的 1 秒跳帧。
+    if(force){
       v.currentTime=target;
       v.playbackRate=1;
       return;
     }
     // 只牵引整路复用媒体，音频和画面一起变化。小偏差用缓慢追帧，避免频繁 seek 拖垮解码。
+    const maxRateDelta=Math.abs(delta)>.75?MEDIA_SYNC_CATCHUP_RATE_DELTA:MEDIA_SYNC_MAX_RATE_DELTA;
     v.playbackRate=Math.abs(delta)<MEDIA_SYNC_RATE_DEADBAND_S
       ? 1
-      : 1+clamp(delta*MEDIA_SYNC_RATE_GAIN,-MEDIA_SYNC_MAX_RATE_DELTA,MEDIA_SYNC_MAX_RATE_DELTA);
+      : 1+clamp(delta*MEDIA_SYNC_RATE_GAIN,-maxRateDelta,maxRateDelta);
   });
 }
 function actualMediaLagMs(i=pgm){
@@ -1455,6 +1509,7 @@ function recompute(){
   $("bwPct").textContent = live ? Math.round(pct)+"%" : "—";
 
   const abr = live && active.some(i=>qualityFor(i)!==targetQ);
+  tiles.forEach((tile,i)=>{tile.el.dataset.quality=i===0?"LOCAL":LADDER[qualityFor(i)].id;});
   $("abr").hidden = !abr || !live;
   if(abr) $("abrTxt").textContent = qod
     ? `15.00 Mbps 保障预算优先承载两路 VIP 1080P；其余 Best Effort 使用剩余资源`
@@ -1521,7 +1576,8 @@ function stop(){
 }
 addEventListener("keydown",e=>{
   if(futureOpen){
-    if(e.key==="Escape"||e.key.toLowerCase()==="v"){e.preventDefault();closeFuture();}
+    if(e.key==="Escape"){e.preventDefault();futureMode==="viewer"?exitFutureViewer():closeFuture();}
+    else if(e.key.toLowerCase()==="v"){e.preventDefault();closeFuture();}
     return;
   }
   if(e.target.matches("input,textarea")) return;
@@ -1566,7 +1622,7 @@ function resetDeliveryClock(){
    它永远满帧、满清晰、零错位。劣化只发生在跨网交付的三路上。
    这不只是正确性：原始 vs 交付的同屏对比本身就是"网络在挤压交付"的证据。 */
 function mkOff(){ const c=document.createElement("canvas"); return {c:c, x:c.getContext("2d")}; }
-const offT=mkOff(), offP=mkOff();          // 小窗与大画面各自离屏，避免每帧来回改尺寸
+const offP=mkOff();                         // 大画面独立离屏，避免每帧来回改尺寸
 function paint(cv,v,now,slot,W,o,pristine,qualityIndex,force=false){
   if(!pristine && !force){
     const minFrameMs = 1000/DELIVERY[topo].fps;
@@ -1594,7 +1650,7 @@ function paint(cv,v,now,slot,W,o,pristine,qualityIndex,force=false){
 /* PROGRAM 必须有独立 slot：与小窗共用时第二次 paint 的抖动判据恒为 0，
    jit>0 时大画面会整个冻住而不是卡顿。 */
 const pgmSlot={last:0};
-let tileTick=0, bgTick=0;
+let bgTick=0;
 function primeProgramFrame(i){
   const t=tiles[i];
   if(!live || !t || !t.ok || !t.vd.videoWidth) return false;
@@ -1610,171 +1666,12 @@ function primeProgramFrame(i){
   return painted;
 }
 
-/* Future Experience V2：优先使用 AI 多机位关键帧，失败时回退到已解码 PROGRAM */
-function futureMediaSource(){
-  const program=$("pgmCv"), frame=document.querySelector(".pgm-frame");
-  if(live&&frame&&frame.classList.contains("rd")&&program.width&&program.height) return program;
-  const tile=tiles[pgm], img=tile&&tile.el.querySelector("img");
-  return img&&img.complete&&img.naturalWidth ? img : null;
-}
-function sourceSize(source){
-  return {w:source.videoWidth||source.naturalWidth||source.width||0,
-          h:source.videoHeight||source.naturalHeight||source.height||0};
-}
-function coverRect(sw,sh,dw,dh){
-  const scale=Math.max(dw/sw,dh/sh), w=dw/scale, h=dh/scale;
-  return {sx:(sw-w)/2,sy:(sh-h)/2,sw:w,sh:h};
-}
-function drawFutureFallback(){
-  const canvas=$("futureFallbackCanvas"),source=futureMediaSource();
-  if(!canvas||!source) return;
-  const rect=canvas.getBoundingClientRect();
-  if(rect.width<2||rect.height<2) return;
-  const dpr=Math.min(window.devicePixelRatio||1,1.5), W=Math.round(rect.width*dpr), H=Math.round(rect.height*dpr);
-  if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;}
-  const {w:sw,h:sh}=sourceSize(source); if(!sw||!sh) return;
-  const c=canvas.getContext("2d"); c.clearRect(0,0,W,H); c.fillStyle="#02040A"; c.fillRect(0,0,W,H);
-  const crop=coverRect(sw,sh,W,H);
-  c.drawImage(source,crop.sx,crop.sy,crop.sw,crop.sh,0,0,W,H);
-}
-function futureSnapshot(){
-  if(futureMode==="spatial") return {streams:null,demand:null};
-  return futureDelivery==="all" ? {streams:9,demand:55.44} : {streams:3,demand:18.48};
-}
-function setFutureAngle(value){
-  futureAngle=clamp(Math.round(Number(value)||0),-30,30);
-  $("futureAngle").value=String(futureAngle);
-  $("futureAngleValue").textContent=(futureAngle>0?"+":"")+futureAngle+"°";
-  $("futurePlane").style.setProperty("--angle",futureAngle+"deg");
-  $("futureScene").style.setProperty("--spatial-pan",(futureAngle/30).toFixed(3));
-}
-function showFutureAsset(animate){
-  const asset=FUTURE_ASSETS[futureView],main=$("futureMainImage"),prev=$("futureMainPrev"),frame=$("futureFrame"),fallback=$("futureFallbackCanvas");
-  if(!asset)return;
-  clearTimeout(futureSwitchTimer);
-  if(animate&&main.src){prev.src=main.currentSrc||main.src;frame.classList.remove("is-switching");void frame.offsetWidth;frame.classList.add("is-switching");}
-  main.onerror=()=>{main.hidden=true;fallback.hidden=false;$("futureFrameState").textContent="同源回退 / 概念";drawFutureFallback();};
-  main.onload=()=>{main.hidden=false;fallback.hidden=true;$("futureFrameState").textContent="AI 关键帧 / 概念";};
-  main.alt="AI 生成的"+asset.title+"概念画面";main.src=asset.src;
-  if(main.complete&&main.naturalWidth){main.hidden=false;fallback.hidden=true;}
-  $("futureFrameTitle").textContent=asset.title;$("futureFrameTask").textContent=asset.task;$("futureFrameDesc").textContent=asset.desc;
-  futureSwitchTimer=setTimeout(()=>frame.classList.remove("is-switching"),420);
-}
-function renderFutureRoutes(){
-  const viewport=futureDelivery==="viewport",protectedMode=qod&&qodAvailable();
-  document.querySelectorAll(".future-route").forEach(route=>{
-    route.className="future-route";
-    if(!viewport){route.classList.add("active","warn","all");return;}
-    if(route.dataset.col!==futureView)return;
-    const row=Number(route.dataset.row);route.classList.add("active");
-    if(protectedMode&&row<2)route.classList.add("vip");else route.classList.add("best");
-  });
-  $("futureMatrixHint").textContent=viewport?"每个市场只保留当前视角":"九路持续编码";
-}
-function renderFuture(){
-  const multi=futureMode==="multi";
-  $("futureMulti").hidden=!multi; $("futureSpatial").hidden=multi;
-  $("futureMultiTab").setAttribute("aria-selected",String(multi));
-  $("futureSpatialTab").setAttribute("aria-selected",String(!multi));
-  $("futureMultiTab").tabIndex=multi?0:-1; $("futureSpatialTab").tabIndex=multi?-1:0;
-  $("futurePolicies").hidden=!multi; $("futureMatrixWrap").hidden=!multi; $("futureSpatialPolicy").hidden=multi;
-  document.querySelectorAll("[data-future-policy]").forEach(button=>
-    button.setAttribute("aria-pressed",String(button.dataset.futurePolicy===futureDelivery)));
-  document.querySelectorAll("[data-future-view]").forEach(button=>{
-    const selected=button.dataset.futureView===futureView;
-    button.classList.toggle("is-primary",selected);button.classList.toggle("is-sleeping",multi&&futureDelivery==="viewport"&&!selected);
-    button.setAttribute("aria-pressed",String(selected));
-  });
-  const demandWrap=$("futureDemandWrap"); demandWrap.className="future-demand";
-  if(multi){
-    const viewport=futureDelivery==="viewport",snapshot=futureSnapshot(),budget=capEffective(),gap=budget-snapshot.demand;
-    $("futureNarrativeLabel").textContent=viewport?"当前视角优先":"全量同步";
-    $("futureStoryTitle").textContent=viewport?"只交付正在看的镜位":"一个现场，九路交付";
-    $("futureStoryCopy").textContent=viewport?"Edge 为每个市场生成当前视角，未选镜位进入待命。":"三个市场同时获得三个镜位，语言数量与视图数量相乘。";
-    $("futureScale").textContent="3语言 × 3视图";
-    $("futureStreams").textContent=snapshot.streams+" 路概念流";
-    $("futureDemand").textContent=snapshot.demand.toFixed(2);
-    $("futureDemandUnit").textContent="Mbps 目标需求";
-    $("futureBudget").textContent=budget.toFixed(2)+" Mbps";$("futureGap").textContent=(gap>=0?"+":"")+gap.toFixed(2)+" Mbps";
-    $("futureGap").style.color=gap>=0?"var(--ok)":"var(--warn)";
-    $("futureStatus").textContent=viewport
-      ? (qod&&qodAvailable()?"当前 15M QoD 模型仍只保障两路 VIP 1080P，一路 Best Effort 480P。":"当前视口已减少六路常驻交付，但仍受现有网络预算约束。")
-      : "所有镜位持续编码和交付，目标需求显著超出当前网络预算。";
-    $("futureFrameNeed").textContent=snapshot.demand.toFixed(2)+"M";$("futureFrameNetwork").textContent=viewport?"当前视角目标需求":"全量同步目标需求";
-    if(viewport) demandWrap.classList.add("focus");
-    renderFutureRoutes();
-  }else{
-    $("futureNarrativeLabel").textContent="视口自适应";$("futureStoryTitle").textContent="空间资产只交付当前观察区域";
-    $("futureStoryCopy").textContent="Edge 根据观察方向完成视口渲染，QoD 优先保障画面、声音和控制。";
-    $("futureScale").textContent="自由视点"; $("futureStreams").textContent="负载随场景变化";
-    $("futureDemand").textContent="场景相关"; $("futureDemandUnit").textContent="按视口自适应";
-    $("futureStatus").textContent="真实负载取决于空间资产、编码方式和交互范围，因此不展示虚构固定码率。";
-    demandWrap.classList.add("focus");
-  }
-  setFutureAngle(futureAngle);
-}
-function setFutureSiblingsInert(inert){
-  const shell=$("futureShell");
-  [...shell.parentElement.children].forEach(el=>{if(el!==shell) el.inert=inert;});
-}
-function openFuture(){
-  if(futureOpen) return;
-  futureOpen=true; futureReturnFocus=document.activeElement;
-  $("evidence").hidden=true; $("evToggle").setAttribute("aria-expanded","false");
-  const shell=$("futureShell"); shell.hidden=false; document.body.classList.add("future-open");
-  setFutureSiblingsInert(true); renderFuture();showFutureAsset(false);
-  requestAnimationFrame(()=>shell.classList.add("open"));
-  setTimeout(()=>$("futureClose").focus(),40);
-}
-function closeFuture(){
-  if(!futureOpen) return;
-  futureOpen=false; const shell=$("futureShell"); shell.classList.remove("open");
-  document.body.classList.remove("future-open"); setFutureSiblingsInert(false);
-  setTimeout(()=>{if(!futureOpen)shell.hidden=true;},190);
-  const target=futureReturnFocus; futureReturnFocus=null;
-  if(target&&typeof target.focus==="function") setTimeout(()=>target.focus(),0);
-}
-function trapFutureFocus(event){
-  if(event.key!=="Tab") return;
-  const focusable=[...$("futureDialog").querySelectorAll("button,input")]
-    .filter(el=>!el.disabled&&!el.hidden&&el.offsetParent!==null);
-  if(!focusable.length) return;
-  const first=focusable[0],last=focusable[focusable.length-1];
-  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
-  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
-}
-
-$("futureOpen").onclick=openFuture; $("futureClose").onclick=closeFuture;
-$("futureMultiTab").onclick=()=>{futureMode="multi";renderFuture();};
-$("futureSpatialTab").onclick=()=>{futureMode="spatial";renderFuture();};
-document.querySelectorAll("[data-future-view]").forEach(button=>button.onclick=()=>{
-  if(futureView===button.dataset.futureView)return;futureView=button.dataset.futureView;showFutureAsset(true);renderFuture();
-});
-document.querySelectorAll("[data-future-policy]").forEach(button=>button.onclick=()=>{
-  futureDelivery=button.dataset.futurePolicy;renderFuture();
-});
-$("futureAngle").oninput=event=>setFutureAngle(event.target.value);
-$("futureDialog").addEventListener("keydown",trapFutureFocus);
-$("futureShell").addEventListener("click",event=>{if(event.target===$("futureShell"))closeFuture();});
-{
-  const scene=$("futureScene"); let dragging=false,startX=0,startAngle=0;
-  scene.addEventListener("pointerdown",event=>{
-    if(event.target.closest("input")) return;
-    dragging=true;startX=event.clientX;startAngle=futureAngle;scene.setPointerCapture(event.pointerId);
-  });
-  scene.addEventListener("pointermove",event=>{
-    if(!dragging)return;setFutureAngle(startAngle+(event.clientX-startX)*.12);
-  });
-  const end=()=>{dragging=false;}; scene.addEventListener("pointerup",end);scene.addEventListener("pointercancel",end);
-}
+/* Future Experience V3 的独立状态机与媒体交互位于 future-v3.js。 */
 requestAnimationFrame(function loop(now){
   if(live){
-    const doTiles = now-tileTick >= 80;    // 小窗是监看画面，12fps 足够
-    if(doTiles) tileTick = now;
     tiles.forEach((t,i)=>{
       if(!t.ok||t.el.classList.contains("off")) return;
       const pristine = i===0;            // CAM=本地采集，见上
-      if(doTiles) paint(t.cv,t.vd,now,t,180,offT,pristine,qualityFor(i));
       if(i===pgm && paint($("pgmCv"),t.vd,now,pgmSlot,360,offP,pristine,qualityFor(i)) && now-bgTick>=160){
         bgTick = now;                      // 垫底虚化是 blur(34px)，每帧重算极贵且看不出
         const sc2=$("pgmCv"), bg=$("pgmBg");
@@ -1848,12 +1745,14 @@ window.__demo = {
       gap:  +(capEffective() - uplinkNeedMbps()).toFixed(2),
       head: +(capEffective() - uplinkRealMbps()).toFixed(2),
       sourceLag: sourceLagMs(), actualMediaLag: actualMediaLagMs(), e2e: e2eMs(), av: avSkewMs(),
-      futureOpen, futureMode, futureDelivery, futureView, futureAngle,
-      futureStreams: futureSnapshot().streams, futureDemand: futureSnapshot().demand
+      futureOpen, futureMode, futureNetwork, futureQod, futureAngle, futureRequestedAngle, futurePitch, future3dReady,
+      futureOrbitDuration
     };
   }
 };
 
 </script>
+  <script src="future-3d.bundle.js?v=20260830-26"></script>
+<script src="future-v3.js?v=20260830-26"></script>
 </body>
 </html>

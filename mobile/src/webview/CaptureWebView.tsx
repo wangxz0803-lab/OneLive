@@ -9,6 +9,7 @@ import { type Endpoint } from "../net/endpoint";
 
 // capture-native.html 作为 metro 资源（metro.config.js 已把 .html 加入 assetExts）。
 // require 经 @types/node 返回 any，无需额外模块声明；用核心 RN 解析出可加载的 uri。
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro assets use the React Native require() contract.
 const CAPTURE_HTML = require("../../assets/capture-native.html");
 
 // WebView 上桥的消息形状（见 capture-native.html 的三处编辑）。

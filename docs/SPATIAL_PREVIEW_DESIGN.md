@@ -1,6 +1,6 @@
-# OneLive Future Experience 设计稿（V1，已由 V2 替代）
+# OneLive Future Experience 设计稿（V1，已由V3替代）
 
-> 当前实现与素材规范请以 `docs/FUTURE_EXPERIENCE_V2.md` 为准。本文件保留用于追踪第一版设计取舍。
+> 当前实现与素材规范请以 `docs/FUTURE_EXPERIENCE_V3.md` 为准。本文件保留用于追踪第一版设计取舍。
 
 ## 1. 设计目标
 
