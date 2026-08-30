@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-const MODEL_URL = "assets/future/presenter-natural-lite.glb?v=20260830-24";
-const PANORAMA_URL = "assets/future/shanghai-bund-360-v2.png?v=20260830-24";
+const MODEL_URL = "assets/future/presenter-natural-lite.glb?v=20260830-28";
+const PANORAMA_URL = "assets/future/shanghai-bund-360-v2.png?v=20260830-28";
 const PRESENTER_GROUND_OFFSET = -0.75;
 const RENDER_INTERVAL_MS = 1000 / 30;
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");

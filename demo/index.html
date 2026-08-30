@@ -227,8 +227,8 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
    PROGRAM 仍使用 Canvas 承担交付帧率和降采样模拟。 */
 .tile video{opacity:0;transition:filter .2s var(--e)}
 .tile canvas{display:none}.tile.rd video{opacity:1}.tile.rd img{display:none}
-.tile[data-quality="720P"] video{filter:saturate(.9) contrast(.97) blur(.2px)}
-.tile[data-quality="480P"] video{filter:saturate(.72) contrast(.9) brightness(.92) blur(1.05px);transform:scale(1.012)}
+.tile[data-quality="720P"] video{filter:blur(.2px)}
+.tile[data-quality="480P"] video{filter:blur(1.05px);transform:scale(1.012)}
 .tile::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(0,0,0,.42),transparent 42%,rgba(0,0,0,.68))}
 .tile-l{position:absolute;left:6px;bottom:5px;z-index:3;font-size:10px;font-weight:600;
@@ -580,7 +580,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 }
 
 </style>
-<link rel="stylesheet" href="future-v3.css?v=20260830-26">
+<link rel="stylesheet" href="future-v3.css?v=20260830-28">
 </head>
 <body>
 <div class="boot-shell" id="bootShell" aria-label="演示素材加载状态">
@@ -772,8 +772,8 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
           <section class="future-stage future-net-good" id="futureStage" aria-label="空间直播制作台主监看">
             <div class="future-program-slot" id="futureProgramSlot">
               <div class="future-media-stack is-loading" id="futureOrbitMedia">
-                <img class="future-orbit-poster" src="assets/future/orbit-front.jpg?v=20260830-7" alt="上海外滩空间直播环绕视频封面">
-                <video class="future-orbit-video" id="futureOrbitVideo" src="assets/future/spatial-multiview-output.mp4?v=20260830-7" muted playsinline preload="metadata" aria-label="多视角融合后的上海外滩连续环绕预览"></video>
+                <img class="future-orbit-poster" src="assets/future/orbit-front.jpg?v=20260830-28" alt="上海外滩空间直播环绕视频封面">
+                <video class="future-orbit-video" id="futureOrbitVideo" src="assets/future/spatial-multiview-output.mp4?v=20260830-28" muted playsinline preload="metadata" aria-label="多视角融合后的上海外滩连续环绕预览"></video>
                 <div class="future-3d-layer is-loading" id="future3DLayer" aria-label="预生成三维人物实时渲染区">
                   <div class="future-3d-loading" id="future3DLoading" role="status" aria-live="polite">
                     <span id="future3DLoadingText">正在载入预生成 3D 人物…</span>
@@ -799,17 +799,17 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
                 <circle class="focus" cx="500" cy="17" r="2.6"/><text x="463" y="9">SYNC FOCUS</text>
               </svg>
               <button class="future-rig-cam left" type="button" data-future-camera="25" aria-label="切换到左前机位" aria-pressed="false">
-                <div class="future-rig-monitor"><img src="assets/future/orbit-right.jpg?v=20260830-7" alt="左前机位取景"><b>CAM A</b><span>SYNC</span></div>
+                <div class="future-rig-monitor"><img src="assets/future/orbit-right.jpg?v=20260830-28" alt="左前机位取景"><b>CAM A</b><span>SYNC</span></div>
                 <svg class="future-rig-body" viewBox="0 0 72 48" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><rect x="16" y="10" width="36" height="20" rx="4"/><path d="m52 15 10-5v20l-10-5z"/><circle cx="34" cy="20" r="6"/><path d="M29 30 24 45M39 30l5 15M34 30v15"/><path d="M12 15h4M12 25h4"/></svg>
                 <div class="future-rig-name"><strong>左前 25°</strong> · 环境纵深</div>
               </button>
               <button class="future-rig-cam center" type="button" data-future-camera="0" aria-label="切换到正面主机位" aria-pressed="true">
-                <div class="future-rig-monitor"><img src="assets/future/orbit-front.jpg?v=20260830-7" alt="正面主机位取景"><b>CAM B</b><span>LOCKED</span></div>
+                <div class="future-rig-monitor"><img src="assets/future/orbit-front.jpg?v=20260830-28" alt="正面主机位取景"><b>CAM B</b><span>LOCKED</span></div>
                 <svg class="future-rig-body" viewBox="0 0 72 48" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><rect x="16" y="10" width="36" height="20" rx="4"/><path d="m52 15 10-5v20l-10-5z"/><circle cx="34" cy="20" r="6"/><path d="M29 30 24 45M39 30l5 15M34 30v15"/><path d="M12 15h4M12 25h4"/></svg>
                 <div class="future-rig-name"><strong>正面 0°</strong> · 当前节目</div>
               </button>
               <button class="future-rig-cam right" type="button" data-future-camera="-25" aria-label="切换到右前机位" aria-pressed="false">
-                <div class="future-rig-monitor"><img src="assets/future/orbit-left.jpg?v=20260830-7" alt="右前机位取景"><b>CAM C</b><span>SYNC</span></div>
+                <div class="future-rig-monitor"><img src="assets/future/orbit-left.jpg?v=20260830-28" alt="右前机位取景"><b>CAM C</b><span>SYNC</span></div>
                 <svg class="future-rig-body" viewBox="0 0 72 48" fill="none" stroke="currentColor" stroke-width="1.35" aria-hidden="true"><rect x="16" y="10" width="36" height="20" rx="4"/><path d="m52 15 10-5v20l-10-5z"/><circle cx="34" cy="20" r="6"/><path d="M29 30 24 45M39 30l5 15M34 30v15"/><path d="M12 15h4M12 25h4"/></svg>
                 <div class="future-rig-name"><strong>右前 25°</strong> · 天际线视差</div>
               </button>
@@ -886,7 +886,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
         <button class="future-qod-badge" type="button" data-future-qod aria-pressed="false" hidden><i></i><span>当前视口优先保障</span></button>
         <button class="future-viewer-audio" id="futureAudioControl" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 9v6h4l5 4V5L9 9H5Z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg><span>播放独立音频</span></button>
         <label class="future-viewer-bottom"><span>精确选择视角</span><input class="future-angle" id="futureAngle" type="range" min="-180" max="180" step="1" value="0"><output id="futureAngleValue">0°</output><span class="future-angle-range"><i>−180°</i><i>0°</i><i>+180°</i></span></label>
-        <audio id="futureCoreAudio" src="assets/future/spatial-audio.m4a" preload="metadata" loop></audio>
+        <audio id="futureCoreAudio" src="assets/future/spatial-audio.m4a?v=20260830-28" preload="metadata" loop></audio>
       </section>
     </section>
   </div>
@@ -1047,7 +1047,7 @@ tiles.forEach((t,i)=>{
     const firstReady=!t.ok;
     t.ok=true;
     markBootReady(i);
-    if(live&&chActive(i)){
+    if(live&&!futureOpen&&chActive(i)){
       t.vd.play().then(()=>{
         t.el.classList.add("rd");
         if(firstReady&&i>0) alignGeneratedMedia(true,i);
@@ -1197,18 +1197,26 @@ function waitForMediaSeek(v,timeout=1200){
   });
 }
 async function synchronizeMediaTransition(){
-  if(!live) return;
+  if(!live||futureOpen) return;
   const epoch=++mediaTransitionEpoch;
   const active=tiles.filter((_,i)=>chActive(i));
   document.body.classList.add("media-syncing");
   active.forEach(t=>{t.vd.pause();t.vd.muted=true;t.vd.volume=0;t.vd.playbackRate=1;});
   alignGeneratedMedia(true);
   await Promise.all(active.map(t=>waitForMediaSeek(t.vd)));
-  if(epoch!==mediaTransitionEpoch || !live) return;
+  if(epoch!==mediaTransitionEpoch || !live || futureOpen){
+    if(futureOpen) active.forEach(t=>t.vd.pause());
+    if(epoch===mediaTransitionEpoch || futureOpen) document.body.classList.remove("media-syncing");
+    return;
+  }
   await Promise.all(active.map(t=>t.vd.play().then(()=>t.el.classList.add("rd")).catch(()=>{
     t.num.textContent="点击重试";
   })));
-  if(epoch!==mediaTransitionEpoch || !live) return;
+  if(epoch!==mediaTransitionEpoch || !live || futureOpen){
+    if(futureOpen) active.forEach(t=>t.vd.pause());
+    if(epoch===mediaTransitionEpoch || futureOpen) document.body.classList.remove("media-syncing");
+    return;
+  }
   routeProgramAudio(-1,pgm,false);
   document.body.classList.remove("media-syncing");
 }
@@ -1752,7 +1760,7 @@ window.__demo = {
 };
 
 </script>
-  <script src="future-3d.bundle.js?v=20260830-26"></script>
-<script src="future-v3.js?v=20260830-26"></script>
+  <script src="future-3d.bundle.js?v=20260830-28"></script>
+<script src="future-v3.js?v=20260830-28"></script>
 </body>
 </html>
