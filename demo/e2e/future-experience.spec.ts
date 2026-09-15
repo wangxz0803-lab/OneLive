@@ -1,5 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { openDemo, state } from './helpers';
+
+async function openSpatialPrototype(page: Page) {
+  await page.locator('#futureOpen').click();
+  await expect(page.locator('#visionShell')).toBeVisible();
+  await page.locator('#visionEnterSpatial').click();
+  await expect(page.locator('#futureDialog')).toBeVisible();
+}
 
 test('未来体验打开后暂停后台解码且关闭后无重载恢复主演示', async ({ page }) => {
   const errors: string[] = [];
@@ -20,6 +27,11 @@ test('未来体验打开后暂停后台解码且关闭后无重载恢复主演�
     }
   });
   await page.locator('#futureOpen').click();
+  await expect(page.locator('#visionShell')).toBeVisible();
+  await expect(page.locator('#visionVideo')).toHaveAttribute('src', /onelive-vision\.mp4/);
+  await expect.poll(async () => page.locator('#mv video').evaluateAll((videos) =>
+    videos.every((video) => (video as HTMLVideoElement).paused))).toBe(true);
+  await page.locator('#visionEnterSpatial').click();
   await expect(page.locator('#futureDialog')).toBeVisible();
   await expect(page.locator('#futureProduction')).toBeVisible();
   await page.waitForFunction(() => {
@@ -98,7 +110,7 @@ test('未来体验打开后暂停后台解码且关闭后无重载恢复主演�
 test('观众端支持水平与俯仰自由视角及独立音频', async ({ page }) => {
   test.setTimeout(90_000);
   await openDemo(page);
-  await page.locator('#futureOpen').click();
+  await openSpatialPrototype(page);
   await page.waitForFunction(() => (window as unknown as { __demo: { state(): { future3dReady: boolean } } }).__demo.state().future3dReady,
     undefined, { timeout: 20_000 });
   await page.locator('#futureEnterViewer').click();
@@ -144,7 +156,7 @@ test('观众端支持水平与俯仰自由视角及独立音频', async ({ page 
 
 test.skip('未来体验不重复承担网络对比，网络差异由六步主演示验证', async ({ page }) => {
   await openDemo(page);
-  await page.locator('#futureOpen').click();
+  await openSpatialPrototype(page);
   await page.waitForFunction(() => (window as unknown as { __demo: { state(): { future3dReady: boolean } } }).__demo.state().future3dReady,
     undefined, { timeout: 20_000 });
   await page.locator('#futureProduction [data-future-net="congested"]').click();
@@ -183,6 +195,9 @@ test('V、Esc与返回按钮维持正确层级和焦点', async ({ page }) => {
   await openDemo(page);
   await page.locator('#futureOpen').focus();
   await page.keyboard.press('v');
+  await expect(page.locator('#visionShell')).toBeVisible();
+  await expect(page.locator('#visionClose')).toBeFocused();
+  await page.locator('#visionEnterSpatial').click();
   await expect(page.locator('#futureDialog')).toBeVisible();
   await expect(page.locator('#futureClose')).toBeFocused();
 
@@ -203,6 +218,16 @@ test('未来体验在桌面与手机视口无页面横向溢出', async ({ page 
     await page.setViewportSize({ width, height });
     await openDemo(page);
     await page.locator('#futureOpen').click();
+
+    const filmBounds = await page.locator('.vision-dialog').boundingBox();
+    expect(filmBounds, `${width}x${height} 影片对话框应存在`).not.toBeNull();
+    expect(filmBounds!.x, `${width}x${height} 影片左边界`).toBeGreaterThanOrEqual(0);
+    expect(filmBounds!.x + filmBounds!.width, `${width}x${height} 影片右边界`).toBeLessThanOrEqual(width + 1);
+    expect(filmBounds!.y, `${width}x${height} 影片上边界`).toBeGreaterThanOrEqual(0);
+    expect(filmBounds!.y + filmBounds!.height, `${width}x${height} 影片下边界`).toBeLessThanOrEqual(height + 1);
+
+    await page.locator('#visionEnterSpatial').click();
+    await expect(page.locator('#futureDialog')).toBeVisible();
 
     const bounds = await page.locator('#futureDialog').boundingBox();
     expect(bounds, `${width}x${height} 对话框应存在`).not.toBeNull();

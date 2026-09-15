@@ -24,13 +24,13 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
   await shot(page, '1-live');
 
   // 2 本地化深度
-  // PROGRAM 默认从中文原流开始。先切 CH2 再切 CH1，让这一步同时验证跨频道切换
-  // 和「中文输入 → 多语言生成」的叙事起点。
+  // PROGRAM 默认从中文原流开始。先切日本日语 CH1，再切海湾阿语 CH2，
+  // 同时验证跨频道切换，并让留证画面停在真正的本地化内容上。
   const pgmLang = page.locator('#pgmLang');
-  await page.locator('#mv .tile').nth(2).click();
-  await expect(pgmLang).toHaveText(/西/);
   await page.locator('#mv .tile').nth(1).click();
-  await expect(pgmLang).toHaveText(/日/);
+  await expect(pgmLang).toHaveText(/日语/);
+  await page.locator('#mv .tile').nth(2).click();
+  await expect(pgmLang).toHaveText(/阿拉伯/);
   await expect(page.locator('#pgmSide .lz-row')).toHaveCount(3);
   await shot(page, '2-localized');
 
@@ -41,6 +41,13 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
   expect(s.sourceLag).toBe(3965);
   expect(s.deliveryFps).toBe(30);
   await shot(page, '3-high-latency');
+  await page.locator('#qodCtl').click();
+  s = await state(page);
+  expect(s.sourceLag).toBe(2450);
+  expect(s.latencyBreakdown.process).toBe(1250);
+  expect(s.assuranceFlows.filter(flow => flow.status === 'active')).toHaveLength(2);
+  await shot(page, '3-cloud-assured');
+  await page.locator('#qodCtl').click();
   await page.locator('#netList button').nth(2).click();
   await expect(page.locator('#abr')).toBeVisible();
   await shot(page, '3-congested');
@@ -49,7 +56,7 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
   // 4 切拓扑
   await page.locator('#topoCtl button[data-topo="edge"]').click();
   s = await state(page);
-  expect(s.gap).toBeCloseTo(-10.23, 2);
+  expect(s.gap).toBeCloseTo(-9.08, 2);
   expect(s.quality).toBe('480P');
   expect(s.channelQualities).toEqual(['LOCAL', '480P', '480P', '480P']);
   expect(s.av).toBe(0);
@@ -58,13 +65,14 @@ test('六步动线全程可走，逐步留证', async ({ page }) => {
   await expect(page.locator('#pgmMotion')).toHaveText('流畅交付 · 30fps');
   await shot(page, '4-edge');
 
-  // 5 开 QoD
+  // 5 开业务保障服务
   await page.locator('#qodCtl').click();
   s = await state(page);
   expect(s.quality).toBe('1080P');
   expect(s.channelQualities).toEqual(['LOCAL', '1080P', '1080P', '480P']);
-  expect(s.cap).toBeCloseTo(15, 2);
-  expect(s.uplinkReal).toBeCloseTo(13.68, 2);
+  expect(s.serviceCap).toBeCloseTo(15, 2);
+  expect(s.cap).toBeCloseTo(12, 2);
+  expect(s.uplinkReal).toBeCloseTo(11.68, 2);
   expect(s.deliveryMode).toBe('smooth');
   await shot(page, '5-qod');
 

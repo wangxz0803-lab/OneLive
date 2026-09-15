@@ -4,7 +4,7 @@ import { openDemo } from './helpers';
 // Trace 会与被测视频共享 GPU/编码资源，反过来制造掉帧；性能证据必须关闭录屏型诊断。
 test.use({ trace: 'off', screenshot: 'off' });
 
-test('近端路径必须持续取得真实新媒体帧，不能只重复绘制旧 Canvas', async ({ page }) => {
+test('端侧路径必须持续取得真实新媒体帧，不能只重复绘制旧 Canvas', async ({ page }) => {
   await openDemo(page);
   await page.locator('#go').click();
   await page.waitForFunction(() => document.body.classList.contains('live'));
@@ -47,6 +47,6 @@ test('近端路径必须持续取得真实新媒体帧，不能只重复绘制�
      可见浏览器还需以 --headed 复测，验证现场合成路径。 */
   expect(result.decodedFrames, '3 秒内应解码至少 75 个真实视频帧').toBeGreaterThanOrEqual(75);
   expect(result.frames, '无头合成器应持续提交媒体帧回调').toBeGreaterThanOrEqual(12);
-  expect(result.maxMediaGap, '近端路径媒体时间不应出现秒级跳帧').toBeLessThan(500);
-  expect(result.maxWallGap, '近端路径不应出现秒级解码冻结').toBeLessThan(500);
+  expect(result.maxMediaGap, '端侧路径媒体时间不应出现秒级跳帧').toBeLessThan(500);
+  expect(result.maxWallGap, '端侧路径不应出现秒级解码冻结').toBeLessThan(500);
 });

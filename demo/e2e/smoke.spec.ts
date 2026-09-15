@@ -34,24 +34,24 @@ test('四路监看指向新素材且标签为三市场', async ({ page }) => {
     els.map((el) => (el as HTMLVideoElement).getAttribute('src')),
   );
   expect(srcs).toEqual([
-    'assets/original-zh-demo.mp4?v=20260830-26',
-    'assets/japan-ja-demo.mp4?v=20260830-26',
-    'assets/latam-es-demo.mp4?v=20260830-26',
-    'assets/india-en-demo.mp4?v=20260830-26',
+    'assets/original-zh-demo.mp4?v=20260910-orchard-3',
+    'assets/japan-ja-demo.mp4?v=20260910-orchard-3',
+    'assets/gulf-ar-demo.mp4?v=20260910-orchard-3',
+    'assets/latam-es-demo.mp4?v=20260910-orchard-3',
   ]);
 
   await page.locator('#go').click();
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>('#mv video')]
-    .every((video) => video.duration === 15 && !video.paused));
+    .every((video) => video.duration === 14 && !video.paused));
   expect(await page.locator('#mv video').evaluateAll((els) =>
     els.map((el) => (el as HTMLVideoElement).muted),
   )).toEqual([false, true, true, true]);
 
   const labels = await page.locator('#mv .tile-l').allTextContents();
-  expect(labels).toEqual(['原始中文', '日本 · 日语', '拉美 · 西语', '印度 · 英语']);
+  expect(labels).toEqual(['原始中文', '日本 · 日语', '海湾 · 阿拉伯语', '拉美 · 西语']);
 });
 
-test('左栏状态灯随链路和 QoD 分配显示稳定、波动与受限', async ({ page }) => {
+test('左栏状态灯随链路和保障分配显示稳定、波动与受限', async ({ page }) => {
   await openDemo(page);
   await page.locator('#go').click();
   await page.waitForFunction(() => document.body.classList.contains('live'));
@@ -219,15 +219,18 @@ test('平台关闭时右栏流量行与底部机架口径一致', async ({ page 
 
 test('PROGRAM 侧栏逐句展示中文原文与目标语译文', async ({ page }) => {
   await openDemo(page);
-  await page.locator('#mv .tile').nth(1).click(); // 切到日本频道
+  await page.locator('#mv .tile').nth(1).click(); // 切到日本日语频道
 
   const rows = page.locator('#pgmSide .lz-row');
   await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0).locator('.lz-zh')).toContainText('梅特德菲多功能电气锅');
-  await expect(rows.nth(0).locator('.lz-tt')).toContainText('メテドフィの多機能電気鍋');
+  await expect(rows.nth(0).locator('.lz-zh')).toContainText('欢迎来到果园直播间');
+  await expect(rows.nth(0).locator('.lz-tt')).toContainText('果樹園からのライブ配信');
 
-  await page.locator('#mv .tile').nth(2).click(); // 切到拉美频道
-  await expect(rows.nth(0).locator('.lz-tt')).toContainText('olla eléctrica multifunción');
+  await page.locator('#mv .tile').nth(2).click(); // 切到海湾阿语频道
+  await expect(rows.nth(0).locator('.lz-tt')).toContainText('بثنا المباشر من البستان');
+
+  await page.locator('#mv .tile').nth(3).click(); // 切到拉美西语频道
+  await expect(rows.nth(0).locator('.lz-tt')).toContainText('transmisión desde el huerto');
 });
 
 test('顶栏标注能力边界，右栏按平台列出口流量', async ({ page }) => {
@@ -237,7 +240,7 @@ test('顶栏标注能力边界，右栏按平台列出口流量', async ({ page 
   await expect(caps).toHaveCount(4);
   await expect(caps.nth(0)).toContainText('输入');
   await expect(caps.nth(0)).toContainText('预生成同步母版');
-  await expect(caps.nth(3)).toContainText('QoD');
+  await expect(caps.nth(3)).toContainText('保障');
 
   await page.locator('#go').click();
   await page.waitForFunction(() => document.body.classList.contains('live'));
@@ -262,7 +265,7 @@ test('证据抽屉默认收起，展开后列出可追溯实测', async ({ page 
 });
 
 test('任何桌面宽度下拓扑开关都必须可点', async ({ page }) => {
-  // 演示第 4 步要切到「近端生成」。曾有 @media(max-width:1280px){.rail{display:none}}
+  // 演示第 4 步要切到「端侧生成」。曾有 @media(max-width:1280px){.rail{display:none}}
   // 在 1280px 投影仪上把整个左栏隐藏，动线直接断掉，而当时没有任何测试覆盖到。
   for (const [width, height] of [
     [1920, 1080],
@@ -277,13 +280,39 @@ test('任何桌面宽度下拓扑开关都必须可点', async ({ page }) => {
     await openDemo(page);
 
     const edge = page.locator('#topoCtl button[data-topo="edge"]');
-    await expect(edge, `${width}x${height} 近端生成按钮应可见`).toBeVisible();
+    await expect(edge, `${width}x${height} 端侧生成按钮应可见`).toBeVisible();
     await edge.click();
-    expect((await state(page)).topo, `${width}x${height} 点击后应切到近端`).toBe('edge');
+    expect((await state(page)).topo, `${width}x${height} 点击后应切到端侧`).toBe('edge');
 
     const hOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(hOverflow, `${width}x${height} 横向溢出`).toBeLessThanOrEqual(0);
+  }
+});
+
+test('海外频道启用保障后时延卡与台词区保持可读', async ({ page }) => {
+  for (const [width, height] of [[1440, 900], [1920, 1080], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await openDemo(page);
+    await page.locator('#go').click();
+    await page.locator('#mv .tile').nth(1).click();
+    await page.locator('#netList button').nth(1).click();
+    await page.locator('#qodCtl').click();
+    await expect(page.locator('#assuranceDown')).toHaveAttribute('data-status', 'active');
+    const layout = await page.evaluate(() => ({
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      verticalOverflow: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      translationHeight: document.querySelector('.lz')!.getBoundingClientRect().height,
+    }));
+    expect(layout.horizontalOverflow, `${width}px 横向溢出`).toBeLessThanOrEqual(0);
+    if (width >= 1440) {
+      expect(layout.verticalOverflow, `${width}px 纵向溢出`).toBeLessThanOrEqual(0);
+      expect(layout.translationHeight, `${width}px 台词区域高度`).toBeGreaterThanOrEqual(90);
+      await page.locator('#netList button').nth(0).click();
+      await page.locator('#topoCtl button[data-topo="edge"]').click();
+      const sideOverflow = await page.locator('.side').evaluate(el => el.scrollHeight - el.clientHeight);
+      expect(sideOverflow, `${width}px 端侧保障提示不得挤掉平台流量行`).toBeLessThanOrEqual(0);
+    }
   }
 });

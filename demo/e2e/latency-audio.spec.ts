@@ -8,7 +8,7 @@ async function goLive(page: import('@playwright/test').Page) {
     .every((video) => video.readyState >= 3 && !video.paused));
 }
 
-test('云端返回流真实落后本地 2500ms，切近端后收敛到 180ms', async ({ page }) => {
+test('云端返回流真实落后本地 2500ms，切端侧后收敛到 180ms', async ({ page }) => {
   await openDemo(page);
   await goLive(page);
   await page.locator('#mv .tile').nth(1).click();
@@ -16,7 +16,11 @@ test('云端返回流真实落后本地 2500ms，切近端后收敛到 180ms', a
   let s = await state(page);
   expect(s.sourceLag).toBe(2500);
   expect(s.av).toBe(0);
-  await expect(page.locator('#mE2E')).toHaveText('+2500 ms');
+  await expect(page.locator('#mE2E')).toHaveText('2.50 s');
+  await expect(page.locator('#latencyUp')).toHaveText('250 ms');
+  await expect(page.locator('#latencyProcess')).toHaveText('1250 ms');
+  await expect(page.locator('#latencyDown')).toHaveText('1000 ms');
+  await expect(page.locator('#latencyTotal')).toHaveText('2.50 s');
   await expect(page.locator('#mAV')).toHaveText('同步 · 同源');
   await expect.poll(async () => Math.abs((await state(page)).actualMediaLag - 2500), {
     message: '云端返回流必须在媒体时间轴上真实落后本地',
@@ -25,10 +29,75 @@ test('云端返回流真实落后本地 2500ms，切近端后收敛到 180ms', a
   await page.locator('#topoCtl button[data-topo="edge"]').click();
   s = await state(page);
   expect(s.sourceLag).toBe(180);
-  await expect(page.locator('#mE2E')).toHaveText('+180 ms');
+  await expect(page.locator('#mE2E')).toHaveText('0.18 s');
   await expect.poll(async () => Math.abs((await state(page)).actualMediaLag - 180), {
-    message: '近端流必须追近本地，而不只是修改指标',
+    message: '端侧流必须追近本地，而不只是修改指标',
   }).toBeLessThan(90);
+});
+
+test('云端双流保障降低时延和波动，端侧只保障上行并按处理顺序展示', async ({ page }) => {
+  test.setTimeout(60_000);
+  await openDemo(page);
+  await goLive(page);
+  await page.locator('#mv .tile').nth(1).click();
+
+  const before = await state(page);
+  expect(before.latencyBreakdown).toMatchObject({
+    up: 250, process: 1250, down: 1000, total: 2500, protected: false,
+  });
+
+  await page.locator('#qodCtl').click();
+  const after = await state(page);
+  expect(after.latencyBreakdown).toMatchObject({
+    up: 120, process: 1250, down: 580, total: 1950,
+    baseline: 2500, upSaved: 130, downSaved: 420, protected: true,
+  });
+  await expect(page.locator('#latencyUp')).toHaveText('120 ms');
+  await expect(page.locator('#latencyUpSaved')).toHaveText('↓ 130 ms');
+  await expect(page.locator('#latencyProcess')).toHaveText('1250 ms');
+  await expect(page.locator('#latencyDown')).toHaveText('580 ms');
+  await expect(page.locator('#latencyDownSaved')).toHaveText('↓ 420 ms');
+  await expect(page.locator('#latencyTotal')).toHaveText('1.95 s');
+  await expect(page.locator('#qodNote')).toContainText('云端处理不变');
+  await expect.poll(async () => Math.abs((await state(page)).actualMediaLag - 1950))
+    .toBeLessThan(120);
+  expect(after.serviceCap).toBe(before.serviceCap);
+  expect(after.assuranceFlows.map(flow => flow.status)).toEqual(['active', 'active']);
+  expect(after.latencyBreakdown.upVariation).toBeLessThan(before.latencyBreakdown.upVariation);
+  expect(after.latencyBreakdown.downVariation).toBeLessThan(before.latencyBreakdown.downVariation);
+  await expect(page.locator('#assuranceUp')).toContainText('主播采集上行');
+  await expect(page.locator('#assuranceDown')).toContainText('当前观众下行');
+
+  await page.locator('#netList button').nth(1).click();
+  expect((await state(page)).sourceLag).toBe(2450);
+  await expect.poll(async () => Math.abs((await state(page)).actualMediaLag - 2450)).toBeLessThan(120);
+  await expect(page.locator('#latencyTotalSaved')).toHaveText('原 3.97s');
+  await expect(page.locator('#latencyUpVariation')).toContainText('±25ms');
+  await expect(page.locator('#latencyDownVariation')).toContainText('±50ms');
+  await page.locator('#qodCtl').click();
+  expect((await state(page)).sourceLag).toBe(3965);
+  await expect(page.locator('#mE2E')).toHaveText('3.97 s');
+  await expect(page.locator('#assuranceDown')).toHaveAttribute('data-status', 'inactive');
+  await expect(page.locator('#latencyDownSaved')).toHaveText('基线');
+
+  await page.locator('#netList button').nth(0).click();
+  await page.getByRole('button', { name: /^端侧生成/ }).click();
+  const deviceBefore = await state(page);
+  expect(await page.locator('[data-stage]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-stage'))))
+    .toEqual(['process', 'up', 'down']);
+  await page.locator('#qodCtl').click();
+  const deviceAfter = await state(page);
+  expect(deviceAfter.serviceCap).toBe(15);
+  expect(deviceAfter.assuranceFlows.map(flow => flow.status)).toEqual(['active', 'standard']);
+  expect(deviceAfter.latencyBreakdown.process).toBe(deviceBefore.latencyBreakdown.process);
+  expect(deviceAfter.latencyBreakdown.down).toBe(deviceBefore.latencyBreakdown.down);
+  expect(deviceAfter.latencyBreakdown.downVariation).toBe(deviceBefore.latencyBreakdown.downVariation);
+  expect(deviceAfter.sourceLag).toBe(165);
+  await expect(page.locator('#assuranceDown')).toContainText('普通分发');
+  await page.getByRole('button', { name: /^云端生成/ }).click();
+  expect(await page.locator('[data-stage]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-stage'))))
+    .toEqual(['up', 'process', 'down']);
+  expect((await state(page)).serviceCap).toBe(8);
 });
 
 test('部署路径切换必须覆盖尚未完成的旧媒体 seek', async ({ page }) => {
@@ -36,7 +105,7 @@ test('部署路径切换必须覆盖尚未完成的旧媒体 seek', async ({ pag
   await goLive(page);
   await page.locator('#mv .tile').nth(1).click();
 
-  // 同一事件循环内先制造一个尚未完成的旧 seek，再切换近端路径。
+  // 同一事件循环内先制造一个尚未完成的旧 seek，再切换端侧路径。
   // 旧实现会因为 video.seeking 而丢弃新目标，500ms 后才补一次约 2.5 秒跳转。
   await page.evaluate(() => {
     const runtime = window as unknown as { __seekEvents: number };
@@ -81,10 +150,10 @@ test('每路视频自带声音，仅 PROGRAM 路解除静音', async ({ page }) 
       paused: (el as HTMLVideoElement).paused,
     })),
   )).toEqual([
-    { muted: false, duration: 15, paused: false },
-    { muted: true, duration: 15, paused: false },
-    { muted: true, duration: 15, paused: false },
-    { muted: true, duration: 15, paused: false },
+    { muted: false, duration: 14, paused: false },
+    { muted: true, duration: 14, paused: false },
+    { muted: true, duration: 14, paused: false },
+    { muted: true, duration: 14, paused: false },
   ]);
   await expect(page.locator('#pgmAudios')).toHaveCount(0);
 });
@@ -123,7 +192,7 @@ test('切 PROGRAM 只切监听与主画面，不重新 load 四路媒体', async
   expect(after.muted).toEqual([true, true, false, true]);
 });
 
-test('跨过 15 秒循环边界后四路仍维持同一叙事周期和云端滞后', async ({ page }) => {
+test('跨过 14 秒循环边界后四路仍维持同一叙事周期和云端滞后', async ({ page }) => {
   test.setTimeout(40_000);
   await openDemo(page);
   await goLive(page);
@@ -136,7 +205,7 @@ test('跨过 15 秒循环边界后四路仍维持同一叙事周期和云端滞�
   const durations = await page.locator('#mv video').evaluateAll((els) =>
     els.map((el) => (el as HTMLVideoElement).duration),
   );
-  expect(durations).toEqual([15, 15, 15, 15]);
+  expect(durations).toEqual([14, 14, 14, 14]);
 });
 
 test('两条部署路径都保持流畅，差异来自整路时延而非音画错位', async ({ page }) => {

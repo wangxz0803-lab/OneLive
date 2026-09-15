@@ -1,16 +1,21 @@
-import { createReadStream, statSync } from 'node:fs';
+import { createReadStream, realpathSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const root = dirname(fileURLToPath(import.meta.url));
+const canonicalRoot = realpathSync(root);
+const instanceId = createHash('sha256')
+  .update(process.platform === 'win32' ? canonicalRoot.toLowerCase() : canonicalRoot)
+  .digest('hex');
 const preferredPort = Number(process.env.ONELIVE_DEMO_PORT || 4173);
 let port = preferredPort;
 const host = '127.0.0.1';
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8', '.fbx': 'application/octet-stream', '.mp4': 'video/mp4', '.m4a': 'audio/mp4',
+  '.json': 'application/json; charset=utf-8', '.glb': 'model/gltf-binary', '.fbx': 'application/octet-stream', '.mp4': 'video/mp4', '.m4a': 'audio/mp4',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml'
 };
 
@@ -27,6 +32,11 @@ function openBrowser(url) {
 const server = createServer((request, response) => {
   try {
     const url = new URL(request.url || '/', `http://${host}:${port}`);
+    if (url.pathname === '/__onelive_instance') {
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+        .end(JSON.stringify({ app: 'OneLive', instanceId }));
+      return;
+    }
     const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
     const file = resolve(root, `.${pathname}`);
     if (file !== root && !file.startsWith(`${root}${sep}`)) {
@@ -77,9 +87,9 @@ server.on('error', async (error) => {
   if (error.code === 'EADDRINUSE') {
     const occupiedUrl = `http://${host}:${port}/`;
     try {
-      const response = await fetch(occupiedUrl, { signal: AbortSignal.timeout(1200) });
-      const html = await response.text();
-      if (html.includes('id="futureOpen"') && html.includes('OneLive')) {
+      const response = await fetch(`${occupiedUrl}__onelive_instance`, { signal: AbortSignal.timeout(1200) });
+      const instance = response.ok ? await response.json() : null;
+      if (instance?.app === 'OneLive' && instance.instanceId === instanceId) {
         console.log(`OneLive is already running at ${occupiedUrl}`);
         if (process.env.ONELIVE_DEMO_NO_OPEN !== '1') openBrowser(occupiedUrl);
         process.exit(0);

@@ -202,6 +202,47 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .mcell .mtk{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;color:var(--t3);display:block}
 .mcell .mtv{font-family:var(--mono);font-size:16px;margin-top:3px;display:block}
 .mcell .mtv.ok{color:var(--ok)} .mcell .mtv.warn{color:var(--warn)} .mcell .mtv.bad{color:var(--crit)}
+@media(min-width:901px){.mcell{padding:7px 9px;display:flex;align-items:center;justify-content:space-between;gap:4px}
+  .mcell .mtk{letter-spacing:0}.mcell .mtv{font-size:14px;margin-top:0;white-space:nowrap}}
+@media(max-width:900px){.capbar{flex-wrap:wrap;row-gap:6px}.capcell{min-width:0}}
+.latency-map{border-radius:var(--r2);padding:10px 12px;background:rgba(7,13,22,.82);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);flex:none}
+.latency-map-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.latency-map-h b{font-size:12px;font-weight:600;color:#c8d5e5}
+.latency-map-h em{font-style:normal;font-size:11px;color:#a8b8cd}
+.latency-map-h em.on{color:var(--ok)}
+.latency-flow{display:grid;grid-template-columns:minmax(0,1fr) 8px minmax(0,1fr) 8px minmax(0,1fr) 10px auto;gap:5px;align-items:center}
+.latency-node{min-width:0;padding:7px;border-radius:7px;background:rgba(255,255,255,.035);border-top:2px solid #506278}
+.latency-node span{display:block;font-size:11px;color:#b2c1d4}
+.latency-node b{display:inline-block;margin:4px 5px 0 0;font:600 15px/1.15 var(--mono);font-variant-numeric:tabular-nums}
+.latency-node small{display:inline-block;margin-top:4px;font:500 10px/1.2 var(--mono);color:#a8b8cd}
+.latency-node small.saved{color:var(--ok)}
+.latency-node .latency-jitter{font:10px/1.25 var(--ui);margin-top:4px;color:#a8b8cd}
+.latency-node.is-protected{border-top-color:var(--ok)}
+.latency-node.is-variable{border-top-color:var(--warn)}
+.latency-envelope{height:3px;background:#263647;margin-top:6px;overflow:hidden;border-radius:2px}
+.latency-envelope i{display:block;height:100%;background:var(--warn);transform-origin:left;transition:transform .25s ease,background-color .25s ease}
+.is-protected .latency-envelope i{background:var(--ok)}
+.latency-total{font-variant-numeric:tabular-nums}
+.latency-arrow{font:700 10px var(--mono);color:#52647c;text-align:center}
+.latency-total{min-width:58px;text-align:right}
+.latency-total span{display:block;font-size:10px;color:#a8b8cd}
+.latency-total b{display:block;margin-top:4px;font:650 17px/1 var(--mono);color:var(--brand2)}
+.latency-total small{display:block;min-height:12px;margin-top:5px;font:500 10px/1.2 var(--mono);color:var(--ok)}
+.latency-context{margin:7px 0 0;color:#a8b8cd;font-size:10px;line-height:1.4}
+.assurance-flows{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding-top:8px;margin-top:8px;border-top:1px solid #243141}
+.assurance-flow{display:flex;gap:6px;align-items:center;min-width:0;font-size:11px;color:#b2c1d4}
+.assurance-flow i{width:5px;height:5px;background:#738399;flex:none}
+.assurance-flow b{font-weight:500}.assurance-flow em{font-style:normal;margin-left:auto;font-size:10px;white-space:nowrap}
+.assurance-flow[data-status="active"] i{background:var(--ok)}
+.assurance-flow[data-status="active"] em{color:var(--ok)}
+.assurance-flow[data-status="unavailable"] em{color:var(--warn)}
+.latency-local-note{font-size:12px;line-height:1.6;color:#b2c1d4;margin:4px 0}
+.latency-map.is-local .latency-flow,.latency-map.is-local .latency-context,.latency-map.is-local .assurance-flows{display:none}
+@media(max-width:1180px){.latency-node{padding-inline:5px}.latency-node b{font-size:14px}.latency-flow{gap:3px}}
+@media(max-width:640px){.latency-flow{grid-template-columns:minmax(0,1fr) 8px minmax(0,1fr) 8px minmax(0,1fr)}
+  .latency-equals{display:none}.latency-total{grid-column:1/-1;display:flex;gap:10px;align-items:center;text-align:left;padding-top:6px}
+  .latency-total b,.latency-total small{margin:0}.assurance-flows{grid-template-columns:1fr;gap:7px}}
 
 /* ── MULTIVIEW ── */
 /* 已嵌在 .program 这张玻璃卡里，用与 .lz / .mcell 同级的浅描边，不再叠一层 --lift 大卡 */
@@ -213,6 +254,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .mv-hint{font-size:10px;color:var(--t3)}
 /* 竖屏素材：四窗等分副列宽度，高度由 9:16 推出——宽度先定，行右侧不留空档。 */
 .mv-row{display:flex;gap:9px;align-items:flex-start}
+@media(min-width:901px){.mv-row{justify-content:space-between}.mv-row .tile{max-width:clamp(108px,7.6vw,145px)}}
 .tile{position:relative;border-radius:var(--r1);overflow:hidden;cursor:pointer;background:var(--void);
   aspect-ratio:9/16;flex:1 1 0;min-width:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:.28s var(--e)}
 /* 必须排在 .tile 之后：同等特异性下后写的赢。写在前面时 flex:1 1 0 会盖掉
@@ -231,10 +273,10 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 .tile[data-quality="480P"] video{filter:blur(1.05px);transform:scale(1.012)}
 .tile::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(0,0,0,.42),transparent 42%,rgba(0,0,0,.68))}
-.tile-l{position:absolute;left:6px;bottom:5px;z-index:3;font-size:10px;font-weight:600;
+.tile-l{position:absolute;left:6px;bottom:18px;z-index:3;font-size:10px;font-weight:600;
   text-shadow:0 1px 4px rgba(0,0,0,.95)}
-.tile-n{position:absolute;right:6px;bottom:5px;z-index:3;font-family:var(--mono);font-size:9px;
-  color:rgba(255,255,255,.82);text-shadow:0 1px 4px rgba(0,0,0,.95);text-align:right}
+.tile-n{position:absolute;left:6px;bottom:5px;z-index:3;font-family:var(--mono);font-size:9px;
+  color:rgba(255,255,255,.82);text-shadow:0 1px 4px rgba(0,0,0,.95);text-align:left}
 .tile-b{position:absolute;top:5px;left:6px;z-index:3;font-family:var(--mono);font-size:8px;
   letter-spacing:.1em;padding:2px 5px;border-radius:3px;background:rgba(0,0,0,.55);
   color:rgba(255,255,255,.8)}
@@ -253,6 +295,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 /* 有余量时评论区吃掉全部余量；余量为负时（1366×768 这类矮屏）它先让位，
    把高度留给下面的平台流量表——余量总得有个去处，评论区是最合适的那个。 */
 .panel.grow{flex:1 1 auto;min-height:112px}
+@media(min-width:1440px){.panel.grow{min-height:84px}}
 .p-h{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;
   box-shadow:inset 0 -1px 0 rgba(255,255,255,.06);flex:none}
 .p-t{font-size:12px;font-weight:600}
@@ -581,6 +624,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 
 </style>
 <link rel="stylesheet" href="future-v3.css?v=20260830-28">
+<link rel="stylesheet" href="vision-film.css?v=20260906-1">
 </head>
 <body>
 <div class="boot-shell" id="bootShell" aria-label="演示素材加载状态">
@@ -606,13 +650,13 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
       <span class="capcell"><b>输入</b><em>预生成同步母版 · 模拟</em></span>
       <span class="capcell"><b>网络</b><em id="capNet">优秀 5G SA · 模拟</em></span>
       <span class="capcell"><b>生成</b><em id="capInfer">云端路径 · 模拟</em></span>
-      <span class="capcell"><b>QoD</b><em id="capQod">未启用 · 模拟</em></span>
+      <span class="capcell"><b>保障</b><em id="capQod">未启用 · 模拟</em></span>
     </div>
     <div class="sp"></div>
     <div class="dests" id="dests" aria-label="分发平台开关"></div>
     <div class="linkpill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18.5" r="1.7"/><path d="M8.2 14.4a5.6 5.6 0 0 1 7.6 0M5 11a10.2 10.2 0 0 1 14 0" stroke-linecap="round"/></svg>
-      <b id="lqName">优秀</b><span id="lqBr">8.25</span><small>Mbps</small></div>
-    <button class="future-open-btn" id="futureOpen" type="button" aria-haspopup="dialog" aria-controls="futureShell">未来体验</button>
+      <b id="lqName">优秀</b><span id="lqBr">8.00</span><small>Mbps</small></div>
+    <button class="future-open-btn" id="futureOpen" type="button" aria-haspopup="dialog" aria-controls="visionShell">未来体验</button>
     <button class="golive" id="go" disabled>开始直播</button>
   </header>
 
@@ -626,7 +670,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
           <button class="ctl on" type="button" data-topo="cloud" aria-pressed="true">
             <span class="cd"></span><span class="cl">云端生成</span><span class="cq">单路上云</span></button>
           <button class="ctl" type="button" data-topo="edge" aria-pressed="false">
-            <span class="cd"></span><span class="cl">近端生成</span><span class="cq">多路上行</span></button>
+            <span class="cd"></span><span class="cl">端侧生成</span><span class="cq">多路上行</span></button>
         </div>
       </div>
       <div class="rg">
@@ -688,13 +732,13 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
           </div>
           <div class="bwrow"><span class="bk">上行需求 <small id="bwUpLanes">1</small> 路</span>
             <span class="bv" id="bwNeed">0.00</span><span class="bs">Mbps</span></div>
-          <div class="bwrow"><span class="bk">实际上行</span>
-            <span class="bv" id="bwUp">0.00</span><span class="bs">/ <span id="bwCap">8.25</span> Mbps</span></div>
+          <div class="bwrow"><span class="bk">实际上行 / 编码可用</span>
+            <span class="bv" id="bwUp">0.00</span><span class="bs">/ <span id="bwCap">6.40</span> Mbps</span></div>
           <div class="bwtrack"><i class="bwfill ok" id="bwBar" style="width:0%"></i>
             <span class="bwpct" id="bwPct">—</span></div>
-          <div class="bwrow"><span class="bk">容量缺口</span><span class="bv ok" id="bwGap">+8.25</span>
+          <div class="bwrow"><span class="bk">容量缺口</span><span class="bv ok" id="bwGap">+6.40</span>
             <span class="bs">Mbps</span></div>
-          <div class="bwrow"><span class="bk">链路余量</span><span class="bv ok" id="bwHead">+8.25</span>
+          <div class="bwrow"><span class="bk">编码余量</span><span class="bv ok" id="bwHead">+6.40</span>
             <span class="bs">Mbps</span></div>
           <div class="abr" id="abr" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4.5M12 17.5h.01"/><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
             <span id="abrTxt"></span></div>
@@ -725,8 +769,8 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
       <div class="netrow" id="netList" role="group" aria-label="链路条件"></div>
       <div class="qodrow">
         <button class="ctl" id="qodCtl" type="button" aria-pressed="false">
-          <span class="cd"></span><span class="cl">QoD 业务保障</span><span class="cq" id="qodCap">15.00M</span></button>
-        <span class="qodnote" id="qodNote">为 OneLive 多路上行申请 VIP 保障预算</span>
+          <span class="cd"></span><span class="cl">业务保障服务</span><span class="cq" id="qodCap">可申请</span></button>
+        <span class="qodnote" id="qodNote">为关键直播流申请稳定时延与优先吞吐</span>
       </div>
     </section>
     <section class="bus">
@@ -735,7 +779,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
     </section>
   </footer>
 
-  <p class="legal">成片为<b>预生成干净母版</b> · 云端 / 近端交付、网络 / QoD / 时延为<b>可控模拟</b>，不代表生产部署或商用 SLA · 帧率、画质劣化与带宽账本为<b>实时计算</b>
+  <p class="legal">成片为<b>预生成干净母版</b> · 云端 / 端侧交付、网络 / 保障服务 / 时延为<b>可控模拟</b>，不代表生产部署或商用 SLA · 帧率、画质劣化与带宽账本为<b>实时计算</b>
     　·　空格 开播 · 1–4 链路 · Q/W/E 切频道 · V 未来体验
     <button class="evbtn" id="evToggle" type="button" aria-expanded="false" aria-controls="evidence">实测证据</button></p>
   <div class="evidence" id="evidence" hidden>
@@ -748,6 +792,35 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
       <li>引擎端到端时延：中位 674ms（浏览器采集全链路）<span>docs/superpowers/m1c-results.md</span></li>
       <li>回归网：Python 171 项 + 控制台 E2E 5/5 + 手机传输 33/33<span>docs/superpowers/m4-results.md</span></li>
     </ul>
+  </div>
+
+  <div class="vision-shell" id="visionShell" hidden>
+    <section class="vision-dialog" role="dialog" aria-modal="true" aria-labelledby="visionTitle">
+      <header class="vision-head">
+        <button class="vision-back" id="visionClose" type="button" aria-label="返回 OneLive 控制台">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 5-7 7 7 7"/><path d="M8 12h11"/></svg>
+        </button>
+        <div class="vision-brand"><strong id="visionTitle">OneLive <i>Future</i></strong><span>下一代全球空间直播</span></div>
+        <div class="vision-head-spacer"></div>
+        <div class="vision-meta"><b>01:46</b><span>愿景影片</span></div>
+        <button class="vision-spatial" id="visionEnterSpatial" type="button">进入空间交互</button>
+      </header>
+      <main class="vision-stage">
+        <video id="visionVideo" class="vision-video" src="assets/future/onelive-vision.mp4?v=20260906-1" poster="assets/future/onelive-vision-poster.jpg?v=20260906-1" preload="metadata" playsinline controls aria-label="OneLive 下一代全球空间直播愿景影片"></video>
+        <button class="vision-start" id="visionStart" type="button" aria-label="播放愿景影片">
+          <i><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M11 7.5 25 16 11 24.5Z"/></svg></i>
+          <span><b>播放愿景影片</b><small>真实现场 · 全球访问 · 个性化体验 · Agent 闭环</small></span>
+        </button>
+        <div class="vision-ended" id="visionEnded" hidden>
+          <div><span>ONE LIVE SOURCE · MANY EXPERIENCES</span><h2>一场直播，成为不断进化的空间体验</h2></div>
+          <div class="vision-ended-actions">
+            <button id="visionReplay" type="button">重新播放</button>
+            <button class="primary" id="visionEnterSpatialEnd" type="button">进入空间交互</button>
+          </div>
+        </div>
+      </main>
+      <footer class="vision-foot"><span><kbd>Space</kbd> 播放 / 暂停</span><span><kbd>Esc</kbd> 返回主演示</span><b>本地影片 · 离线可用</b></footer>
+    </section>
   </div>
 
   <div class="future-shell" id="futureShell" hidden>
@@ -866,7 +939,7 @@ body.live .pgm-veil{opacity:0;pointer-events:none}
 
         <footer class="future-footer">
           <section class="future-audio-summary"><i class="future-audio-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg></i><div class="future-audio-copy"><b>核心音频 · 独立通道</b><span>改变视角时，讲解声音保持连续</span><div class="future-wave" aria-hidden="true"><i style="--h:4px"></i><i style="--h:9px"></i><i style="--h:5px"></i><i style="--h:11px"></i><i style="--h:7px"></i><i style="--h:10px"></i><i style="--h:4px"></i><i style="--h:8px"></i><i style="--h:5px"></i><i style="--h:10px"></i></div></div></section>
-          <section class="future-delivery"><div class="future-delivery-copy"><b>同一空间节目</b><span>多语言下行观看</span></div><div class="future-markets"><div class="future-market"><strong>EN</strong><div><b>North America</b><span>Viewport 01</span></div></div><div class="future-market"><strong>JA</strong><div><b>日本</b><span>Viewport 02</span></div></div><div class="future-market"><strong>AR</strong><div><b>الخليج</b><span>Viewport 03</span></div></div></div></section>
+          <section class="future-delivery"><div class="future-delivery-copy"><b>同一空间节目</b><span>多语言下行观看</span></div><div class="future-markets"><div class="future-market"><strong>JA</strong><div><b>日本</b><span>Viewport 01</span></div></div><div class="future-market"><strong>AR</strong><div><b>الخليج</b><span>Viewport 02</span></div></div><div class="future-market"><strong>ES</strong><div><b>Latinoamérica</b><span>Viewport 03</span></div></div></div></section>
           <section class="future-enter-wrap"><div class="future-enter-copy"><b>最终空间直播示意</b><span>从连续多视角输出进入人物与场景联动的空间视口</span></div><button class="future-enter" id="futureEnterViewer" type="button" aria-busy="true">3D准备中 0%</button></section>
         </footer>
       </div>
@@ -899,42 +972,45 @@ const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 
 /* ── 画质阶梯：码率(Mbps) + 渲染缩放（真实作用于画面） ── */
 const LADDER = [
-  { id:"1080P", v:6.00, sc:1.00 },
-  { id:"720P",  v:3.00, sc:0.72 },
+  { id:"1080P", v:5.00, sc:1.00 },
+  { id:"720P",  v:2.50, sc:0.72 },
   { id:"480P",  v:1.20, sc:0.45 },
-  { id:"360P",  v:0.70, sc:0.30 },
-  { id:"240P",  v:0.35, sc:0.18 }
+  { id:"360P",  v:0.63, sc:0.30 },
+  { id:"240P",  v:0.50, sc:0.18 }
 ];
 const AUDIO_MBPS = 0.16;              // 每路音频码率
+const STREAM_HEADROOM_RATIO = 0.20;   // 直播编码预留 20% 链路余量
 
-/* ── 链路档位：容量 + 丢包/抖动（与画质解耦，两者都真实） ── */
+/* ── 链路档位：均为 EMULATED 场景预设，不代表某一运营商的普遍性能。
+   cap 是业务获得的链路预算；编码器只使用其中 80%，避免把链路长期跑满。
+   高时延把无线/跨域 RTT 与应用缓冲分开，避免把 1.5 秒误写成 5G RTT。 ── */
 const NETS = [
-  { id:1, n:"优秀",   m:"5G SA",   cap:8.25, rtt:35,  loss:0,    drop:0,   jit:0,   st:"var(--ok)" },
-  { id:2, n:"高时延", m:"5G SA",   cap:8.25, rtt:1500,loss:0,    drop:0,   jit:0,   st:"var(--warn)" },
-  { id:3, n:"拥塞",   m:"4G",      cap:1.45, rtt:180, loss:3.2,  drop:.34, jit:100, st:"var(--warn)" },
-  { id:4, n:"弱覆盖", m:"4G 边缘", cap:0.42, rtt:420, loss:11.5, drop:.62, jit:240, st:"var(--crit)" }
+  { id:1, n:"优秀",   m:"5G SA",        cap:8.00, rtt:35,  buffer:0,    loss:0.1, drop:0,   jit:0,   qod:true,  st:"var(--ok)" },
+  { id:2, n:"高时延", m:"5G SA · 跨域", cap:8.00, rtt:220, buffer:1280, loss:0.3, drop:0,   jit:0,   qod:true,  st:"var(--warn)" },
+  { id:3, n:"拥塞",   m:"4G 共享",      cap:2.50, rtt:180, buffer:0,    loss:3.0, drop:.34, jit:100, qod:false, st:"var(--warn)" },
+  { id:4, n:"弱覆盖", m:"4G 弱覆盖",    cap:1.00, rtt:350, buffer:0,    loss:10,  drop:.62, jit:200, qod:false, st:"var(--crit)" }
 ];
 const SRC = [
-  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh-demo.mp4?v=20260830-26",
+  { id:"zh", label:"原始中文", tag:"CAM", ph:"assets/original-zh.jpg", vid:"assets/original-zh-demo.mp4?v=20260910-orchard-3",
     lang:"原始信号", always:true,
-    subs:["梅特德菲多功能电气锅，插上电源即可轻松烹饪。手柄触控面板配备九种功能。",
-          "炒、蒸、火锅、汤、粥、煮饭、预约和保温，选择想做的料理即可。",
-          "一台锅覆盖日常多种料理，操作直观，也更适合轻松展示。"] },
-  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja-demo.mp4?v=20260830-26",
+    subs:["大家好，欢迎来到果园直播间，今天带大家看看刚采摘的新鲜鲜橙。",
+          "这些橙子在枝头自然成熟，果肉饱满、汁水充足，酸甜清香。",
+          "产地现采现发，让不同市场的观众都能看到同一个真实果园。"] },
+  { id:"ja", label:"日本 · 日语", tag:"CH1", ph:"assets/japan-ja.jpg", vid:"assets/japan-ja-demo.mp4?v=20260910-orchard-3",
     lang:"日本語",
-    subs:["メテドフィの多機能電気鍋です。コンセントにつなぐだけで簡単に調理できます。ハンドルのタッチパネルには9つの機能を搭載。",
-          "炒め物、蒸し料理、鍋、スープ、おかゆ、炊飯、予約、保温まで、作りたい料理を選ぶだけです。",
-          "一台で毎日のさまざまな料理に対応。操作も直感的で、手軽に使えます。"] },
-  { id:"es", label:"拉美 · 西语", tag:"CH2", ph:"assets/latam-es.jpg", vid:"assets/latam-es-demo.mp4?v=20260830-26",
+    subs:["皆さん、こんにちは。果樹園からのライブ配信へようこそ。今日は採れたての新鮮なオレンジをご紹介します。",
+          "樹上で自然に熟したオレンジは果肉が豊かで、果汁たっぷり。甘酸っぱく爽やかな香りです。",
+          "産地から採れたてを直送し、世界のさまざまな市場へ、この本物の果樹園の様子を届けます。"] },
+  { id:"ar", label:"海湾 · 阿拉伯语", tag:"CH2", ph:"assets/gulf-ar.jpg", vid:"assets/gulf-ar-demo.mp4?v=20260910-orchard-3",
+    lang:"العربية",
+    subs:["مرحباً بكم في بثنا المباشر من البستان، لنشاهد البرتقال الطازج الذي قُطف اليوم.",
+          "نضجت هذه الثمار طبيعياً على الأشجار، وهي غنية بالعصير بطعم متوازن ومنعش.",
+          "نقطفها ونرسلها مباشرة من المزرعة ليشاهد الجمهور حول العالم البستان نفسه."] },
+  { id:"es", label:"拉美 · 西语", tag:"CH3", ph:"assets/latam-es.jpg", vid:"assets/latam-es-demo.mp4?v=20260910-orchard-3",
     lang:"Español",
-    subs:["Esta es la olla eléctrica multifunción Metedfi. Solo tienes que enchufarla para cocinar fácilmente. El panel táctil del mango incluye nueve funciones.",
-          "Elige saltear, cocinar al vapor, olla caliente, sopa, avena, arroz, programación o conservación del calor.",
-          "Una sola olla cubre muchas comidas diarias, con controles sencillos y una presentación clara."] },
-  { id:"en", label:"印度 · 英语", tag:"CH3", ph:"assets/india-en.jpg", vid:"assets/india-en-demo.mp4?v=20260830-26",
-    lang:"English (IN)",
-    subs:["This is Metedfi’s multifunction electric pot. Just plug it in and start cooking. The handle’s touch panel offers nine cooking modes.",
-          "Choose stir-fry, steaming, hot pot, soup, porridge, rice, scheduling or keep-warm mode.",
-          "One compact pot handles everyday meals with simple controls and an easy live demonstration."] }
+    subs:["Bienvenidos a nuestra transmisión desde el huerto; hoy les mostramos naranjas recién cosechadas.",
+          "Maduraron naturalmente en el árbol: tienen mucha pulpa, jugo abundante y un sabor fresco.",
+          "Las cosechamos y enviamos desde el origen para acercar este mismo huerto a distintos mercados."] }
 ];
 
 /* 中文原文，供 PROGRAM 侧栏做逐句对照（索引与各路 subs 对齐） */
@@ -943,10 +1019,10 @@ const PLAT = [{n:"YouTube",c:"#FF0033",t:"▶"},{n:"Facebook",c:"#1877F2",t:"f"}
               {n:"TikTok",c:"#0F0F0F",t:"♪"},{n:"Twitch",c:"#9146FF",t:"T"},{n:"X",c:"#000",t:"X"}];
 const NAMES=["Mia","Kenji","Sofía","Liam","Yuki","Diego","Emma","Haru","Lucía","Noah"];
 const CMTS={
-  "原始信号":["这个锅看着好实用","多少钱呀主播","有没有优惠券","已下单，期待"],
-  "日本語":["便利そうですね！","お値段はいくらですか","日本にも発送できますか","注文しました！"],
-  "Español":["¡Qué práctica se ve!","¿Cuánto cuesta?","¿Envían a México?","¡Ya la pedí!"],
-  "English (IN)":["This looks so useful!","What's the price?","Do you ship to India?","Just ordered one!"]};
+  "原始信号":["果园现场很真实","鲜橙看起来不错","支持产地直播","已下单，期待"],
+  "日本語":["とても新鮮そうです！","日本にも配送できますか？","2箱注文しました！","産地ライブを応援します"],
+  "العربية":["تبدو طازجة جداً!","هل يوجد توصيل؟","طلبت صندوقين الآن!","تحية من دبي"],
+  "Español":["¡Se ven muy frescas!","¿Envían a México?","Acabo de pedir dos cajas","¡Saludos desde Lima!"]};
 
 /* ── 状态 ── */
 let net = NETS[0], live = false, pgm = 0, t0 = 0;
@@ -963,13 +1039,14 @@ let futureAngle = 0, futureRequestedAngle = 0, futureOrbitDuration = 0, futureRe
 const bootStartedAt = performance.now(), bootReady = new Set(), bootFailed = new Set();
 let bootFinished = false, bootTimeout = 0;
 
-/* 拓扑与 QoD 状态（Task 5/6 接线） */
+/* 拓扑与业务保障状态（内部沿用 qod 命名，界面统一使用“保障服务”） */
 let topo = "cloud", qod = false;
-// 演示值：5G SA 下，运营商调度器可为 OneLive 业务类提供 15 Mbps 保障预算。
-// 这是该业务获得的可用资源提升，不代表物理频谱或小区总容量被凭空扩大。
-const QOD_GUARANTEE = {"5G SA":15};
-function qodAvailable(){ return topo === "edge" && QOD_GUARANTEE[net.m] !== undefined; }
-function capEffective(){ return qod && qodAvailable() ? QOD_GUARANTEE[net.m] : net.cap; }
+// 演示目标：保障服务为 OneLive 业务申请 15 Mbps 服务预算；具体 QoS Profile 仍由运营商定义。
+// 经过 20% 直播余量后，12 Mbps 编码预算可稳定分配为 2×1080P + 1×480P。
+const QOD_GUARANTEE_MBPS = 15;
+function qodAvailable(){ return net.qod; }
+function serviceBudgetMbps(){ return topo==="edge" && qod && qodAvailable() ? QOD_GUARANTEE_MBPS : net.cap; }
+function capEffective(){ return serviceBudgetMbps() * (1 - STREAM_HEADROOM_RATIO); }
 function upLanes(){ return topo === "edge" ? chOn.filter(Boolean).length : 1; }
 function perLaneAt(qi){ return LADDER[qi].v + AUDIO_MBPS; }
 function qualityFor(i){ return i===0 ? 0 : actualQByChannel[i]; }
@@ -987,14 +1064,59 @@ function uplinkRealMbps(){
   if(topo === "cloud") return perLaneAt(actualQByChannel[priorityChannel()]);
   return [1,2,3].filter(i=>chActive(i)).reduce((sum,i)=>sum+perLaneAt(actualQByChannel[i]),0);
 }
-/* ── 两条部署路径的取舍模型 ──
-   云端：一条原流上云，云端生成三路内容；相对本地原流多出推理、跨网与回传时延。
-   近端：生成可落在设备、场馆边缘或运营商边缘；路径更短，但要承载多路并发上行。
-   两条路径生成的每一路都保持路内音画同步。这里比较的是整路内容相对本地原流的
-   交付滞后，不能把整体时延误写成声音与画面的错位。数值均为可控模拟。 */
-const LAT = { edge:{ infer:100, extra:45 }, cloud:{ infer:1250, extra:1215 } };
+/* ── 两条部署路径的时延瀑布（全部为可控模拟） ──
+   云端顺序：上行 → AI/编码 → 下行；端侧顺序：AI/编码 → 多路上行 → 下行。
+   “下行”包含跨域分发、传输排队和播放缓冲，因此高于单纯无线空口时延。
+   保障服务只减少运营商可控网络段的排队与抖动余量，不改变 AI 处理时间。
+   基线总量继续与既有演示一致：优秀云端 2500ms、高时延云端 3965ms、优秀端侧 180ms。 */
+const LATENCY_PATHS = {
+  cloud:{
+    1:{up:250, process:1250, downTransport:250, playbackBuffer:750, upVariation:40, downVariation:80,
+      protectedUp:120, protectedTransport:180, protectedBuffer:400, protectedUpVariation:15, protectedDownVariation:25},
+    2:{up:720, process:1250, downTransport:495, playbackBuffer:1500, upVariation:180, downVariation:300,
+      protectedUp:260, protectedTransport:340, protectedBuffer:600, protectedUpVariation:25, protectedDownVariation:50},
+    3:{up:650, process:1250, downTransport:345, playbackBuffer:400, upVariation:240, downVariation:180},
+    4:{up:800, process:1250, downTransport:365, playbackBuffer:400, upVariation:360, downVariation:250}
+  },
+  edge:{
+    1:{up:40, process:100, downTransport:20, playbackBuffer:20, upVariation:15, downVariation:10,
+      protectedUp:25, protectedUpVariation:5},
+    2:{up:390, process:100, downTransport:255, playbackBuffer:900, upVariation:160, downVariation:240,
+      protectedUp:180, protectedUpVariation:25},
+    3:{up:120, process:100, downTransport:55, playbackBuffer:50, upVariation:90, downVariation:60},
+    4:{up:210, process:100, downTransport:85, playbackBuffer:100, upVariation:160, downVariation:100}
+  }
+};
+function latencyBreakdown(){
+  const base=LATENCY_PATHS[topo][net.id];
+  const protectedPath=qod&&qodAvailable();
+  const protectedDown=protectedPath&&topo==="cloud";
+  const up=protectedPath?base.protectedUp:base.up;
+  const downTransport=protectedDown?base.protectedTransport:base.downTransport;
+  const playbackBuffer=protectedDown?base.protectedBuffer:base.playbackBuffer;
+  const down=downTransport+playbackBuffer, baselineDown=base.downTransport+base.playbackBuffer;
+  return {
+    up, process:base.process, down, total:up+base.process+down,
+    baseline:base.up+base.process+baselineDown,
+    upSaved:base.up-up, downSaved:baselineDown-down,
+    downTransport, playbackBuffer,
+    upVariation:protectedPath?base.protectedUpVariation:base.upVariation,
+    downVariation:protectedDown?base.protectedDownVariation:base.downVariation,
+    baselineUpVariation:base.upVariation, baselineDownVariation:base.downVariation,
+    protected:protectedPath, protectedDown
+  };
+}
+function assuranceFlows(){
+  const status=!qodAvailable()?"unavailable":qod?"active":"inactive";
+  return [
+    {id:"uplink",label:topo==="cloud"?"主播采集上行":"主播多路上行",status},
+    {id:"downlink",label:"当前观众下行",status:topo==="cloud"?status:"standard"}
+  ];
+}
+// 先对毫秒取整到厘秒，避免 3965ms 被浮点 toFixed 错显示为 3.96s。
+function latencySeconds(ms){ return (Math.round(ms/10)/100).toFixed(2); }
 const AV_SYNC_TARGET_MS = 0;
-function sourceLagMs(){ const L = LAT[topo]; return Math.round(net.rtt + L.infer + L.extra); }
+function sourceLagMs(){ return latencyBreakdown().total; }
 function e2eMs(){ return sourceLagMs(); } // 保留测试钩子的旧字段名
 function avSkewMs(){ return AV_SYNC_TARGET_MS; }
 
@@ -1075,10 +1197,28 @@ function renderPgmSide(){
     </div>`).join("");
   $("pgmSide").innerHTML = `
     <div class="mbar">
-      <div class="mcell"><span class="mtk">相对原流</span><span class="mtv" id="mE2E">— ms</span></div>
+      <div class="mcell"><span class="mtk">观众端总时延</span><span class="mtv" id="mE2E">— s</span></div>
       <div class="mcell"><span class="mtk">路内音画</span><span class="mtv" id="mAV">—</span></div>
       <div class="mcell"><span class="mtk">当前流码率</span><span class="mtv" id="mBr">— M</span></div>
     </div>
+    <section class="latency-map" id="latencyMap" aria-label="端到端时延拆解">
+      <div class="latency-map-h"><b id="latencyTitle">云端交付路径 · 模拟</b><em id="latencyStatus">保障关闭</em></div>
+      <p class="latency-local-note" id="latencyLocalNote" hidden>当前是主播本地监看。切换海外频道，可查看交付时延与保障收益。</p>
+      <div class="latency-flow">
+        <div class="latency-node" data-stage="up"><span id="latencyUpLabel">采集上行</span><b id="latencyUp">— ms</b><small id="latencyUpSaved"></small><span class="latency-jitter" id="latencyUpVariation"></span><div class="latency-envelope" aria-hidden="true"><i id="upEnvelope"></i></div></div>
+        <i class="latency-arrow">›</i>
+<div class="latency-node" data-stage="process"><span id="latencyProcessLabel">云端处理</span><b id="latencyProcess">— ms</b><small>不变</small><span class="latency-jitter">AI 生成 + 编码</span><div class="latency-envelope" aria-hidden="true"></div></div>
+        <i class="latency-arrow">›</i>
+        <div class="latency-node" data-stage="down"><span>下行 + 缓冲</span><b id="latencyDown">— ms</b><small id="latencyDownSaved"></small><span class="latency-jitter" id="latencyDownVariation"></span><div class="latency-envelope" aria-hidden="true"><i id="downEnvelope"></i></div></div>
+        <i class="latency-arrow latency-equals">=</i>
+        <div class="latency-total"><span>观众看到</span><b id="latencyTotal">— s</b><small id="latencyTotalSaved"></small></div>
+      </div>
+      <p class="latency-context" id="latencyContext"></p>
+      <div class="assurance-flows" aria-label="业务保障范围" id="assuranceFlows">
+        <div class="assurance-flow" id="assuranceUp"><i aria-hidden="true"></i><b></b><em></em></div>
+        <div class="assurance-flow" id="assuranceDown"><i aria-hidden="true"></i><b></b><em></em></div>
+      </div>
+    </section>
     <div class="lz">
       <div class="lz-h"><b>本地化文案对照</b><em>${isSrc ? "原始信号" : "ZH-CN 原文 ↕ " + s.lang}</em></div>
       ${rows}
@@ -1094,14 +1234,63 @@ function paintMetrics(){
     $("mAV").textContent  = "本地"; $("mAV").className  = "mtv ok";
     $("mBr").textContent  = perLaneAt(0).toFixed(2) + " M";
     $("mBr").className    = "mtv";
+    paintLatencyBreakdown(true);
     return;
   }
   const e = sourceLagMs();
   const cls = (v,good,warn)=> v<=good ? "mtv ok" : v<=warn ? "mtv warn" : "mtv bad";
-  $("mE2E").textContent = "+" + e + " ms";  $("mE2E").className = cls(e,300,700);
+  $("mE2E").textContent = latencySeconds(e) + " s";  $("mE2E").className = cls(e,300,2500);
   $("mAV").textContent  = "同步 · 同源";  $("mAV").className = "mtv ok";
   $("mBr").textContent  = perLaneAt(qualityFor(pgm)).toFixed(2) + " M";
   $("mBr").className    = "mtv";
+  paintLatencyBreakdown(false);
+}
+
+function paintLatencyBreakdown(local=false){
+  if(!$("latencyMap")) return;
+  const L=latencyBreakdown();
+  const map=$("latencyMap"), flow=map.querySelector(".latency-flow");
+  map.classList.toggle("is-local",local);
+  $("latencyLocalNote").hidden=!local;
+  if(map.dataset.topo!==topo){
+    const up=flow.querySelector('[data-stage="up"]'), processing=flow.querySelector('[data-stage="process"]');
+    const arrows=flow.querySelectorAll(".latency-arrow");
+    flow.prepend(topo==="cloud"?up:processing,arrows[0],topo==="cloud"?processing:up,arrows[1]);
+    map.dataset.topo=topo;
+  }
+  $("latencyTitle").textContent = local ? "本地监看路径" : `${topo==="cloud"?"云端":"端侧"}交付路径 · 模拟`;
+  $("latencyStatus").textContent = local ? "原始信号" : (L.protected?`保障后 ↓${latencySeconds(L.baseline-L.total)}s`:qodAvailable()?"保障关闭":"本档保障不可用");
+  $("latencyStatus").className = L.protected&&!local ? "on" : "";
+  $("latencyProcessLabel").textContent = topo==="cloud" ? "云端处理" : "端侧处理";
+  $("latencyUpLabel").textContent = topo==="cloud" ? "采集上行" : "多路上行";
+  const values=local?{up:0,process:0,down:0,total:0}:L;
+  $("latencyUp").textContent = values.up + " ms";
+  $("latencyProcess").textContent = values.process + " ms";
+  $("latencyDown").textContent = values.down + " ms";
+  $("latencyTotal").textContent = local ? "本地" : latencySeconds(values.total) + " s";
+  $("latencyUpSaved").textContent = !local&&L.upSaved ? `↓ ${L.upSaved} ms` : "基线";
+  $("latencyDownSaved").textContent = !local&&L.downSaved ? `↓ ${L.downSaved} ms` : "基线";
+  $("latencyUpSaved").className = L.upSaved&&!local ? "saved" : "";
+  $("latencyDownSaved").className = L.downSaved&&!local ? "saved" : "";
+  $("latencyTotalSaved").textContent = !local&&L.protected ? `原 ${latencySeconds(L.baseline)}s` : "";
+  ["up","down"].forEach(key=>{
+    const capital=key==="up"?"Up":"Down", active=key==="up"?L.protected:L.protectedDown;
+    const budget=L[key+"Variation"], baseline=L["baseline"+capital+"Variation"];
+    $("latency"+capital+"Variation").textContent=`波动预算 ±${budget}ms`;
+    $("latency"+capital+"Variation").title=`模拟网络段预算：保障前 ±${baseline}ms；当前 ±${budget}ms。不是实测抖动或置信区间。`;
+    $(key+"Envelope").style.transform=`scaleX(${budget/400})`;
+    const node=flow.querySelector(`[data-stage="${key}"]`);
+    node.classList.toggle("is-protected",active);
+    node.classList.toggle("is-variable",!active&&budget>=80);
+  });
+  $("latencyContext").textContent=`下行含分发 ${L.downTransport}ms + 播放缓冲 ${L.playbackBuffer}ms；波动预算为模拟。`;
+  const labels={active:"已保障",inactive:"未开启",unavailable:"不可用",standard:"普通分发"};
+  assuranceFlows().forEach((item,i)=>{
+    const el=$(i===0?"assuranceUp":"assuranceDown");
+    el.dataset.status=item.status;
+    el.querySelector("b").textContent=item.label;
+    el.querySelector("em").textContent=labels[item.status];
+  });
 }
 
 /* ── 右栏：平台流量数据（运维口径，非宣传板） ── */
@@ -1126,13 +1315,13 @@ function renderFlow(){
   tiles.forEach((t,i)=>{
     const on = !t.el.classList.contains("off");
     t.num.textContent = (live && on)
-      ? (i===0 ? "本地 · 30fps" : `+${sourceLagMs()}ms · ${LADDER[qualityFor(i)].id}`)
+      ? (i===0 ? "本地 · 30fps" : `+${latencySeconds(sourceLagMs())}s · ${LADDER[qualityFor(i)].id}`)
       : "—";
   });
 }
 
 /* ── 媒体时间轴：每路 MP4 自带音频，浏览器维护路内音画同步 ──
-   CAM 是本地时钟；云端返回的三路整体落后，近端三路接近本地。部署路径与网络 RTT
+   CAM 是本地时钟；云端返回的三路整体落后，端侧三路接近本地。部署路径与网络 RTT
    都真正作用于 video.currentTime，而不是只改面板数字。四个素材统一为 15s 周期。 */
 const wrapTime=(v,d)=>((v%d)+d)%d;
 // 多路本地 MP4 的 currentTime 采样会有约百毫秒抖动，seek 本身又需要重新解码关键帧。
@@ -1269,14 +1458,14 @@ function setPgm(i){
   routeProgramAudio(prev,i,prev!==i);
 }
 
-/* ── 左栏：两条部署路径（近端可以是设备、场馆边缘或运营商边缘） ── */
+/* ── 左栏：云端与主播终端；内部 edge 键仅为旧测试与状态兼容 ── */
 function renderTopo(){
   $("topoCtl").querySelectorAll("button").forEach(b=>{
     const on = b.dataset.topo === topo;
     b.classList.toggle("on", on);
     b.setAttribute("aria-pressed", String(on));
   });
-  $("topoNow").textContent = topo === "edge" ? "近端" : "云端";
+  $("topoNow").textContent = topo === "edge" ? "端侧" : "云端";
 }
 $("topoCtl").querySelectorAll("button").forEach(b=>{
   b.onclick = ()=>{
@@ -1288,7 +1477,7 @@ $("topoCtl").querySelectorAll("button").forEach(b=>{
   };
 });
 
-/* ── QoD 保障：业务获得更高的可用资源预算，依赖接入制式的调度能力 ── */
+/* ── 业务保障：云端路径稳定上下行时延；端侧路径同时获得多路上行预算 ── */
 function renderQod(){
   const ok = qodAvailable();
   const btn = $("qodCtl");
@@ -1296,16 +1485,27 @@ function renderQod(){
   if(!ok) qod = false;
   btn.classList.toggle("on", qod);
   btn.setAttribute("aria-pressed", String(qod));
-  const guarantee = QOD_GUARANTEE[net.m];
-  $("qodCap").textContent = ok ? `${guarantee.toFixed(2)}M` : "不可用";
+  const guarantee = QOD_GUARANTEE_MBPS;
+  $("qodCap").textContent = ok ? (topo==="cloud"?"双向时延":`${guarantee.toFixed(2)}M`) : "不可用";
   const vip=qodPriorityChannels(), standard=[1,2,3].filter(i=>chActive(i)&&!vip.includes(i));
-  $("qodNote").textContent = ok
-    ? (qod ? `VIP：${vip.map(i=>SRC[i].label).join(" / ")}；Best Effort：${standard.map(i=>SRC[i].label).join(" / ")||"—"}`
-           : `当前 Best Effort 为 ${net.cap.toFixed(2)} Mbps，可申请 ${guarantee.toFixed(2)} Mbps 业务保障`)
-    : (topo!=="edge" ? "云端只上传一条原流，无需启动近端多路上行保障"
-                     : `当前接入制式不支持 QoD 保障（${net.m}）`);
+  const L=latencyBreakdown();
+  if(!ok){
+    $("qodNote").textContent=`当前演示档位未配置保障服务（${net.n}），恢复后可重新申请`;
+  }else if(!qod){
+    $("qodNote").textContent=topo==="cloud"
+      ? "可保障云端关键流：主播采集上行 + 当前观众下行，分别申请"
+      : `可申请 ${guarantee.toFixed(2)}M 业务预算，并优先保障关键直播流`;
+  }else if(topo==="cloud"){
+    $("qodNote").textContent=`2 条关键流已保障 · 上行 ↓${L.upSaved}ms / 下行 ↓${L.downSaved}ms · 云端处理不变`;
+  }else{
+    $("qodNote").textContent=`优先：${vip.map(i=>SRC[i].label).join(" / ")}；普通：${standard.map(i=>SRC[i].label).join(" / ")||"—"} · 编码可用 ${capEffective().toFixed(2)}M`;
+  }
 }
-$("qodCtl").onclick = ()=>{ if(!qodAvailable()) return; qod = !qod; renderQod(); recompute(); };
+$("qodCtl").onclick = ()=>{
+  if(!qodAvailable()) return;
+  qod = !qod; renderQod(); recompute();
+  if(live) void synchronizeMediaTransition();
+};
 
 /* ── 左栏：频道开关（真实影响分发路数与带宽） ── */
 function renderChans(){
@@ -1366,11 +1566,11 @@ $("subCtl").onclick=()=>{ subsOn=!subsOn; renderSubs(); };
 
 /* ── 左栏状态灯：网络档位 + 实际频道画质共同决定，文字同步说明而非只靠颜色 ── */
 const HEALTH_LABEL={ok:"稳定",warn:"波动",crit:"受限"};
-function networkHealth(){ return net.id===4 ? "crit" : net.id===1 ? "ok" : "warn"; }
+function networkHealth(){ return net.id===4 ? "crit" : net.id===1 || (topo==="cloud"&&qod&&qodAvailable()) ? "ok" : "warn"; }
 function channelHealth(i){
   const qi=qualityFor(i), fps=deliveryFps();
   if(net.id===4 || fps<12 || qi>=3) return "crit";
-  if(net.id!==1 || fps<24 || qi>=1) return "warn";
+  if(networkHealth()!=="ok" || fps<24 || qi>=1) return "warn";
   return "ok";
 }
 function applyControlHealth(button,health){
@@ -1404,8 +1604,9 @@ function renderRailHealth(){
 NETS.forEach(n=>{
   const b=document.createElement("button");
   b.className="net"; b.type="button"; b.setAttribute("aria-pressed",n.id===net.id);
+  const latencyDetail = `基线 RTT ${n.rtt}ms · 丢包 ${n.loss}%`;
   b.innerHTML=`<span class="nm"><span class="nd" style="color:${n.st}"></span>${n.n}</span>
-    <span class="ns">容量 ${n.cap} Mbps<br>${n.rtt}ms · 丢包 ${n.loss}%</span>`;
+    <span class="ns">业务预算 ${n.cap.toFixed(2)} Mbps<br>${latencyDetail}</span>`;
   b.onclick=()=>{ const changed=net.id!==n.id; net=n; [...$("netList").children].forEach((x,i)=>x.setAttribute("aria-pressed",NETS[i].id===n.id));
     document.documentElement.style.setProperty("--st",n.st); renderQod(); recompute();
     if(live&&changed) void synchronizeMediaTransition(); };
@@ -1454,8 +1655,8 @@ function allocateChannelQualities(){
   }
 
   if(qod){
-    // QoD：先给每路最低可用预算，再优先升级两路 VIP；剩余预算继续给 Best Effort。
-    // 15 Mbps 场景下结果为 2×1080P + 1×480P，明确展示差异化服务，而非全员完美。
+    // 保障服务：先给每路最低可用预算，再优先升级两路关键频道；剩余预算继续公平分配。
+    // 15 Mbps 服务预算预留 20% 后，结果为 2×1080P + 1×480P。
     const worst=LADDER.length-1;
     active.forEach(i=>actualQByChannel[i]=worst);
     let used=active.length*perLaneAt(worst);
@@ -1520,13 +1721,13 @@ function recompute(){
   tiles.forEach((tile,i)=>{tile.el.dataset.quality=i===0?"LOCAL":LADDER[qualityFor(i)].id;});
   $("abr").hidden = !abr || !live;
   if(abr) $("abrTxt").textContent = qod
-    ? `15.00 Mbps 保障预算优先承载两路 VIP 1080P；其余 Best Effort 使用剩余资源`
-    : `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出当前可用预算 ${cap.toFixed(2)} Mbps，三路公平降至 ${LADDER[qualityFor(active[0])].id}`;
+    ? `15.00 Mbps 业务保障预留 20% 后，12.00 Mbps 编码预算优先承载两路关键频道 1080P；其余频道使用剩余资源`
+    : `上行需求 ${uplinkNeed.toFixed(2)} Mbps 超出预留 20% 后的编码预算 ${cap.toFixed(2)} Mbps，三路公平降至 ${q.id}`;
   $("pgmRes").textContent = q.id;
   renderDeliveryState();
   $("qNow").textContent = q.id;
-  $("lqName").textContent = net.n + (qod && qodAvailable() ? " · QoD" : "");
-  $("lqBr").textContent = cap.toFixed(2);
+  $("lqName").textContent = net.n + (qod && qodAvailable() ? " · 已保障" : "");
+  $("lqBr").textContent = serviceBudgetMbps().toFixed(2);
   $("laneNote").textContent = `${chN} 路语言 × ${plN} 个平台`;
   // 平台行的路数/画质就地刷新（不重建，避免与其自身的 toggle 递归）
   [...$("plats").children].forEach((el,i)=>{
@@ -1540,8 +1741,8 @@ function recompute(){
   paintMetrics();
   renderFlow();
   $("capNet").textContent   = `${net.n} ${net.m} · 模拟`;
-  $("capInfer").textContent = `${topo === "edge" ? "近端路径" : "云端路径"} · 模拟`;
-  $("capQod").textContent   = qod ? `VIP 业务保障 ${cap.toFixed(2)}M · 模拟` : "未启用 · 模拟";
+  $("capInfer").textContent = `${topo === "edge" ? "端侧路径" : "云端路径"} · 模拟`;
+  $("capQod").textContent   = qod ? `业务保障已启用 · 模拟` : "未启用 · 模拟";
   renderQod();
   renderRailHealth();
 }
@@ -1600,7 +1801,7 @@ addEventListener("keydown",e=>{
 
 /* ── 交付路径：两条部署路径都可稳定生成 30fps，网络丢包/抖动再叠加其上 ──
    云端的代价是整路内容相对原流更晚，而不是画面天然更卡或音画天然错位。
-   近端的代价是多路上行占用更多无线容量，画质仍由 ABR 单独决定。 */
+   端侧的代价是多路上行占用更多无线容量，画质仍由 ABR 单独决定。 */
 const DELIVERY = {
   cloud:{ fps:30, drop:0 },
   edge: { fps:30, drop:0 }
@@ -1676,7 +1877,7 @@ function primeProgramFrame(i){
 
 /* Future Experience V3 的独立状态机与媒体交互位于 future-v3.js。 */
 requestAnimationFrame(function loop(now){
-  if(live){
+  if(live&&!document.body.classList.contains("vision-film-open")){
     tiles.forEach((t,i)=>{
       if(!t.ok||t.el.classList.contains("off")) return;
       const pristine = i===0;            // CAM=本地采集，见上
@@ -1747,12 +1948,14 @@ window.__demo = {
       priorityChannel: priorityChannel(),
       deliveryFps: deliveryFps(),
       deliveryMode: pgm===0 ? "local" : (deliveryFps()>=24 ? "smooth" : deliveryFps()>=12 ? "limited" : "stalled"),
-      cap: +capEffective().toFixed(2),
+      serviceCap: +serviceBudgetMbps().toFixed(2),
+      cap: +capEffective().toFixed(2), headroomRatio: STREAM_HEADROOM_RATIO,
       uplinkNeed: +uplinkNeedMbps().toFixed(2),
       uplinkReal: +uplinkRealMbps().toFixed(2),
       gap:  +(capEffective() - uplinkNeedMbps()).toFixed(2),
       head: +(capEffective() - uplinkRealMbps()).toFixed(2),
       sourceLag: sourceLagMs(), actualMediaLag: actualMediaLagMs(), e2e: e2eMs(), av: avSkewMs(),
+      latencyBreakdown:{...latencyBreakdown()}, assuranceFlows:assuranceFlows(),
       futureOpen, futureMode, futureNetwork, futureQod, futureAngle, futureRequestedAngle, futurePitch, future3dReady,
       futureOrbitDuration
     };
@@ -1760,7 +1963,8 @@ window.__demo = {
 };
 
 </script>
-  <script src="future-3d.bundle.js?v=20260830-28"></script>
+<script src="future-3d.bundle.js?v=20260830-28"></script>
 <script src="future-v3.js?v=20260830-28"></script>
+<script src="vision-film.js?v=20260906-1"></script>
 </body>
 </html>
